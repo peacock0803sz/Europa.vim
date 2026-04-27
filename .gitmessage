@@ -1,0 +1,62 @@
+# Type commit message here. Write a short, imperative why the change was made, not how.
+# Ex. "Fix bug in user authentication" instead of "Fixed a bug in the user authentication module that caused login failures under certain conditions."
+# Keep the message concise and to the point, ideally under 50 characters for the subject line. If you need to provide more details, use the body of the commit message to explain the what and why of the change.
+# Use the present tense ("Add feature" not "Added feature") and the imperative mood ("Fix bug" not "Fixes bug" or "Fixed bug").
+# Separate the subject line from the body with a blank line. The subject line should be a brief summary of the change, while the body can provide more context and details about the change.
+# Use emojis to categorize your commits and make them more visually appealing. Here are some common emojis you can use:
+
+# ===This is a template===
+# :tada: Initial commit / New feature (major)
+# :bookmark: Release / Version tag
+# :sparkles: New feature (minor)
+# :bug: Bug fix
+# :card_index: Metadata
+# :books: Documentation
+# :bulb: Source code documentation
+# :racehorse: Performance improvement
+# :lipstick: UI improvement
+# :rotating_light: Test commit
+# :white_check_mark: Add test code
+# :heavy_check_mark: Tests passing
+# :zap: Update
+# :art: Formatting improvement
+# :recycle: Refactoring
+# :fire: Remove code/files
+# :green_heart: CI/CD fix
+# :lock: Security
+# :arrow_up: Upgrade dependency
+# :arrow_down: Downgrade dependency
+# :shirt: Remove linter warnings
+# :alien: Update due to external API
+# :pencil: Documentation maintenance
+# :ambulance: Hotfix
+# :rocket: Deploy commit
+# :apple: macOS
+# :penguin: Linux
+# :checkered_flag: Windows
+# :construction: WIP
+# :construction_worker: Add CI
+# :chart_with_upwards_trend: Analytics
+# :heavy_minus_sign: Remove dependency
+# :heavy_plus_sign: Add dependency
+# :whale: Docker
+# :wrench: Configuration files
+# :package: Binary files / Packages
+# :twisted_rightwards_arrows: Merge commit
+# :poop: Bad code
+# :rewind: Rollback
+# :boom: Breaking change
+# :ok_hand: Code review
+# :wheelchair: Accessibility
+# :truck: Move files
+# :globe_with_meridians: Internationalization / Localization
+# :pencil2: Typo fix
+# :page_facing_up: License
+# :loud_sound: Add logging
+# :mute: Remove logging
+# :busts_in_silhouette: Add contributor
+# :see_no_evil: .gitignore
+# :label: Types
+# :mag: SEO
+# :snowflake: Nix
+# :robot: AI agent
