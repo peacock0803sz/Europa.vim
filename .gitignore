@@ -240,3 +240,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Europa.vim project: keep notebook test fixtures despite global *.ipynb rule
+!tests/fixtures/*.ipynb
