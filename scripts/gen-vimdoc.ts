@@ -57,7 +57,7 @@ function buildVimdoc(sourcesBody: string, apiBody: string): string {
 }
 
 /**
- * Generate `doc/europa.txt` from current sources and write it atomically.
+ * Generate `doc/europa.txt` deterministically from current sources.
  *
  * @example
  * ```sh
