@@ -1,0 +1,16 @@
+{
+  "$comment": "Default panvimdoc CLI args consumed by scripts/gen-vimdoc.ts. Values stay aligned with kdheepak/panvimdoc semantics.",
+  "projectName": "europa",
+  "vimVersion": "Vim 9.1.1646 / Neovim 0.11.3+",
+  "toc": true,
+  "description": "Notebook viewer plugin for Vim and Neovim",
+  "titleDatePattern": "%Y %B %d",
+  "dedupSubheadings": true,
+  "demojify": true,
+  "treesitter": false,
+  "ignoreRawblocks": true,
+  "docMapping": false,
+  "docMappingProjectName": true,
+  "shiftHeadingLevelBy": 0,
+  "incrementHeadingLevelBy": 0
+}

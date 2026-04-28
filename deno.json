@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "ci": "deno fmt --check && deno lint && deno task gen:vimdoc && git diff --exit-code doc/europa.txt",
+    "gen:vimdoc": "deno run --allow-read --allow-write scripts/gen-vimdoc.ts",
+    "smoke:ipynb": "deno run --allow-read scripts/smoke-ipynb.ts tests/fixtures/hello.ipynb"
+  },
+  "imports": {},
+  "nodeModulesDir": "auto",
+  "fmt": {
+    "include": ["**/*.ts", "**/*.js", "**/*.json", "**/*.jsonc"],
+    "exclude": [
+      "doc/europa.txt",
+      "tests/fixtures/",
+      "specs/",
+      ".specify/",
+      ".claude/"
+    ]
+  },
+  "lint": {
+    "include": ["**/*.ts", "**/*.js"],
+    "exclude": ["specs/", ".specify/", ".claude/"]
+  }
+}

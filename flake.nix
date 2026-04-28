@@ -65,6 +65,13 @@
               files = "\\.(ts|js|tsx|jsx)$";
               pass_filenames = false;
             };
+
+            gen-vimdoc-diff = {
+              enable = true;
+              name = "gen:vimdoc + git diff doc/europa.txt";
+              entry = "${pkgs.bash}/bin/bash -c '${pkgs.deno}/bin/deno task gen:vimdoc && git diff --exit-code doc/europa.txt'";
+              pass_filenames = false;
+            };
           };
 
           # Equivalent to  inputs'.nixpkgs.legacyPackages.hello;
