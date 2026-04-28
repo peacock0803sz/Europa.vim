@@ -29,6 +29,16 @@ else
   exit 2
 fi
 
+# tmux without sixel support intercepts Sixel escapes and either drops them or
+# prints a "SIXEL IMAGE (WxH)" placeholder. Most stock tmux builds (Homebrew,
+# nixpkgs default) ship without --enable-sixel, so the spike must run from a
+# raw terminal session. Warn and continue rather than exiting so the operator
+# can still inspect the output if they know what they are doing.
+if [[ -n "${TMUX:-}" ]]; then
+  echo "spike-sixel: detected TMUX session; sixel escapes likely will not render." >&2
+  echo "spike-sixel: open a new terminal window without tmux and rerun, or rebuild tmux with --enable-sixel." >&2
+fi
+
 # Stream Sixel directly to the terminal device so the calling shell renders it.
 # A non-Sixel terminal silently ignores the escape sequence; the spike does not
 # crash the session.
