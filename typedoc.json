@@ -1,0 +1,11 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["denops/europa", "schema", "contracts"],
+  "entryPointStrategy": "expand",
+  "out": "tmp/typedoc-out",
+  "plugin": ["typedoc-plugin-markdown"],
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "tsconfig": "tsconfig.json"
+}
