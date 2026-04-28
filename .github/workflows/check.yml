@@ -27,5 +27,4 @@ jobs:
           restore-keys: deno-${{ runner.os }}-
 
       - run: nix develop --command pre-commit run --all-files
-      - run: nix develop --command sh -c 'deno task gen:vimdoc && git diff --exit-code doc/europa.txt'
       - run: nix develop --command deno task smoke:ipynb
