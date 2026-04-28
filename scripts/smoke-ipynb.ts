@@ -70,6 +70,9 @@ function renderCell(cell: Record<string, unknown>, index: number): string {
 export async function smoke(path: string): Promise<string> {
   const raw = await Deno.readTextFile(path);
   const data = JSON.parse(raw) as Record<string, unknown>;
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Notebook is not a valid JSON object");
+  }
   const nbformat = data.nbformat;
   if (nbformat !== SUPPORTED_NBFORMAT) {
     throw new Error(
