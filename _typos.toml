@@ -1,0 +1,8 @@
+# typos overrides for Europa.vim. Vim modeline keywords look like typos to the
+# generic dictionary but are canonical Vim syntax.
+
+[default.extend-words]
+# Vim modeline option: "no expand tab" (do not convert tabs to spaces).
+noet = "noet"
+# Vim modeline option: "no right-to-left".
+norl = "norl"
