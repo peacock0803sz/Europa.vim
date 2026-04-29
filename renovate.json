@@ -1,0 +1,39 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "enabledManagers": [
+    "npm"
+  ],
+  "packageRules": [
+    {
+      "groupName": "vimdoc-toolchain",
+      "matchPackageNames": [
+        "typedoc",
+        "typedoc-plugin-markdown",
+        "@sinclair/typebox"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "automerge": false
+    },
+    {
+      "groupName": "vimdoc-toolchain-major",
+      "matchPackageNames": [
+        "typedoc",
+        "typedoc-plugin-markdown"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "addLabels": [
+        "needs-manual-review"
+      ]
+    }
+  ]
+}
