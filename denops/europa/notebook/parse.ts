@@ -46,7 +46,10 @@ export async function parseNotebook(content: string): Promise<Notebook> {
   try {
     raw = JSON.parse(content);
   } catch (e) {
-    throw new NotebookParseError(`JSON parse failed: ${e}`, []);
+    throw new NotebookParseError(
+      `JSON parse failed: ${e instanceof Error ? e.message : String(e)}`,
+      [],
+    );
   }
 
   // Stage 1: pre-normalize check (accepts string[] source)
