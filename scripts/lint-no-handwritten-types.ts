@@ -3,7 +3,8 @@
  *
  * Rule 1: No hand-written `interface` or `type X = ...` declarations under
  * `denops/europa/**\/*.ts`, except for the three whitelisted contract files.
- * TypeBox-derived types (`Static<typeof Schema>`) are allowed.
+ * Allowed derived patterns: `Static<typeof XxxSchema>`, `import("...").T`
+ * re-exports, and `typeof CONST_ARRAY[number]` indexed-access aliases.
  *
  * Rule 2: Any block of three or more consecutive non-TSDoc comments must
  * contain "why" content — not just "what", empty lines, or TODO markers.
