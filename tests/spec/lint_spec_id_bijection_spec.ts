@@ -56,8 +56,13 @@ describe("lint-spec-id-bijection (@spec-id bijection check)", () => {
   it("exits 1 when spec has an id missing from impl", async () => {
     // Spec fixture has europa.notebook.parse.normalize but impl dir is empty
     const specRoot = FIXTURES_DIR + "/tests/spec";
-    const { code } = await runBijectionLint(specRoot, "/tmp/nonexistent-impl");
-    assertEquals(code, 1, "missing impl-side id should exit 1");
+    const emptyImplRoot = await Deno.makeTempDir();
+    try {
+      const { code } = await runBijectionLint(specRoot, emptyImplRoot);
+      assertEquals(code, 1, "missing impl-side id should exit 1");
+    } finally {
+      await Deno.remove(emptyImplRoot, { recursive: true });
+    }
   });
 
   it("exits 1 when an area is not in the allowlist", async () => {
