@@ -1,0 +1,9 @@
+==============================================================================
+FREQUENTLY ASKED QUESTIONS				*europa-faq*
+
+TODO(phase-2): Seed the FAQ with capability-detection topics from `DESIGN.md`
+chapter 7 (rendering strategy): why DA1 query may time out, why Sixel falls
+back to the external preview, how `g:europa_image_backend` interacts with
+host/terminal capabilities, and how to diagnose missing kernels.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

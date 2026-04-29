@@ -1,0 +1,10 @@
+==============================================================================
+CONFIGURATION						*europa-configuration*
+
+TODO(phase-2): Document each `g:europa_*` option introduced by `schema/config.ts`
+once that module lands. At minimum cover `g:europa_image_backend`,
+`g:europa_jupyter_command`, and the venv detection overrides. Reference
+`DESIGN.md` chapter 9 (configuration / commands / mappings) for the option
+matrix.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

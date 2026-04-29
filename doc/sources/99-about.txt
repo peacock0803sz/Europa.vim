@@ -1,0 +1,10 @@
+==============================================================================
+ABOUT							*europa-about*
+
+TODO(phase-2): Record the project metadata: name (`Europa.vim`), upstream URL
+(`github.com/peacock0803sz/Europa.vim`), license (see `LICENCE` at the
+repository root), and credits to denops.vim, panvimdoc, typedoc, and the
+Jupyter project. Keep this short; everything substantive belongs in the
+preceding chapters.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

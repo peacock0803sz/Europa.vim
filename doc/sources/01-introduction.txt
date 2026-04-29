@@ -1,0 +1,9 @@
+==============================================================================
+INTRODUCTION						*europa-introduction*
+
+TODO(phase-2): Describe Europa.vim as a denops-based plugin for viewing (and
+later editing) Jupyter `.ipynb` notebooks inside Vim/Neovim. Cover the
+positioning relative to upstream Jupyter and the cross-host parity goal. See
+`DESIGN.md` chapter 1.1 (Identity) for source material.
+
+vim:tw=78:ts=8:noet:ft=help:norl:
