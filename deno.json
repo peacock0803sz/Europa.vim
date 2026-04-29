@@ -2,8 +2,9 @@
   "tasks": {
     "fmt:check": "deno fmt --check",
     "lint": "deno lint && deno run --allow-read scripts/lint-no-handwritten-types.ts",
+    "validate": "deno check schema/ contracts/",
     "gen:vimdoc": "deno run --allow-read --allow-write --allow-run scripts/gen-vimdoc.ts",
-    "ci": "deno task fmt:check && deno task lint && deno task gen:vimdoc && git diff --exit-code doc/europa.txt",
+    "ci": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && git diff --exit-code doc/europa.txt",
     "smoke:ipynb": "deno run --allow-read scripts/smoke-ipynb.ts tests/fixtures/hello.ipynb"
   },
   "imports": {
