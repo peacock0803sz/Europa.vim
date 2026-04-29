@@ -25,8 +25,8 @@ const FORBIDDEN_DIR = "docs";
 
 async function checkForbiddenDirectory(name: string): Promise<boolean> {
   try {
-    await Deno.stat(name);
-    return true;
+    const info = await Deno.stat(name);
+    return info.isDirectory;
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) return false;
     throw error;
@@ -39,7 +39,7 @@ if (import.meta.main) {
     console.error(
       `lint-no-handwritten-types: '${FORBIDDEN_DIR}/' is forbidden. ` +
         "Hand-written documentation belongs in repo-root markdown or " +
-        "doc/sources/*.txt only. See DESIGN.md ch. 3 / Constitution IV.",
+        "doc/sources/*.txt only. See DESIGN.md chapter 3 for the rule.",
     );
     Deno.exit(1);
   }
