@@ -1,0 +1,12 @@
+*europa-requirements*	Europa.vim requirements
+
+==============================================================================
+REQUIREMENTS						*europa-requirements*
+
+TODO(phase-2): List the runtime requirements: Vim 9.1.1646+ or Neovim 0.11.3+,
+Deno 2.3.0+, denops.vim plus `@denops/std`, and a user-supplied `jupyter`
+command (auto-detection via `.venv/`, `venv/`, `VIRTUAL_ENV`, `CONDA_PREFIX`).
+Cross-reference the constitution "Technology & Runtime Constraints" section
+and `DESIGN.md` chapter 6.5 (kernel connection / venv detection).
+
+vim:tw=78:ts=8:noet:ft=help:norl:
