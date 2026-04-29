@@ -23,7 +23,7 @@ export class SessionStore {
     this.store.set(session.bufnr, session);
   }
 
-  update(bufnr: number, patch: Partial<Session>): void {
+  update(bufnr: number, patch: Partial<Omit<Session, "bufnr">>): void {
     const existing = this.store.get(bufnr);
     if (existing) {
       this.store.set(bufnr, { ...existing, ...patch });
