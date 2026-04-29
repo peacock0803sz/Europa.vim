@@ -66,12 +66,23 @@ describe("lint-spec-id-bijection (@spec-id bijection check)", () => {
   });
 
   it("exits 1 when an area is not in the allowlist", async () => {
-    // Create an ad-hoc spec file with an invalid area and run bijection check
-    // This is validated structurally by the script's area allowlist constant.
-    // The fixture test above covers the positive case; area validation is
-    // covered by the script's own unit logic (tested via --target flag).
-    // Smoke-test: running on a dir with no files should exit 0
-    const { code } = await runBijectionLint("/tmp", "/tmp");
-    assertEquals(code, 0, "empty dirs with no ids should exit 0");
+    const specRoot = await Deno.makeTempDir();
+    const implRoot = await Deno.makeTempDir();
+    try {
+      const invalidId = "europa.bogusarea.topic";
+      const tsdoc = `/**\n * @spec-id ${invalidId}\n */\n`;
+      await Deno.writeTextFile(`${specRoot}/bogus_spec.ts`, tsdoc);
+      await Deno.writeTextFile(`${implRoot}/bogus.ts`, tsdoc);
+
+      const { code, stderr } = await runBijectionLint(specRoot, implRoot);
+      assertEquals(
+        code,
+        1,
+        `invalid allowlist area should exit 1; stderr: ${stderr}`,
+      );
+    } finally {
+      await Deno.remove(specRoot, { recursive: true });
+      await Deno.remove(implRoot, { recursive: true });
+    }
   });
 });
