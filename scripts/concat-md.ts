@@ -1,11 +1,12 @@
 /**
  * concat-md scaffold for the API Reference generation pipeline.
  *
- * Phase 1 only wires the call. The script walks `tmp/typedoc/**\/*.md`,
- * which stays empty until typedoc lands in Phase 2, and writes the
- * concatenated body to `tmp/api-reference.md` without applying any chapter
- * order. Chapter ordering, Modules then Classes then Functions then Types,
- * is Phase 2 work.
+ * Phase 1 only wires the call. The script walks the `tmp/typedoc/`
+ * directory tree for markdown files, which stays empty until typedoc
+ * lands in Phase 2, and writes the concatenated body to
+ * `tmp/api-reference.md` without applying any chapter order. Chapter
+ * ordering, Modules then Classes then Functions then Types, is Phase 2
+ * work.
  *
  * @module scripts/concat-md
  */
@@ -39,12 +40,9 @@ async function collectMarkdown(dir: string): Promise<string[]> {
 
 export async function generate(): Promise<void> {
   const files = await collectMarkdown(TYPEDOC_DIR);
-  const parts: string[] = [];
-  for (const path of files) {
-    parts.push(await Deno.readTextFile(path));
-  }
+  const parts = await Promise.all(files.map((path) => Deno.readTextFile(path)));
   await Deno.mkdir("tmp", { recursive: true });
-  await Deno.writeTextFile(OUTPUT_PATH, parts.join("\n"));
+  await Deno.writeTextFile(OUTPUT_PATH, parts.join("\n\n"));
 }
 
 if (import.meta.main) {
