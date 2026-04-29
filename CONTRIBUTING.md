@@ -1,6 +1,6 @@
 # Contributing to Europa.vim
 
-This document covers contributor mechanics: development setup, the `deno task` pipeline, the editing rules for `doc/sources/*.txt`, and the `@spec-id` linkage between BDD specs and TSDoc. For architecture, read `DESIGN.md`; the English version is authoritative and `DESIGN.ja.md` is the synchronized translation. For binding governance, read `.specify/memory/constitution.md`.
+This document covers contributor mechanics: development setup, the `deno task` pipeline, the editing rules for `doc/sources/*.txt`, and the `@spec-id` linkage between BDD specs and TSDoc. For architecture, read `DESIGN.md`; the English version is authoritative and `DESIGN.ja.md` is the synchronized translation.
 
 ## 1. Introduction
 
@@ -59,7 +59,7 @@ User-facing chapters live under `doc/sources/*.txt` in vim help format. The aggr
 
 - Edit only `doc/sources/<NN>-<slug>.txt`. Run `deno task gen:vimdoc` and commit both files in the same change.
 - The filename pattern is `<NN>-<slug>.txt`. The two-digit prefix orders chapters; `01`–`08` cover the canonical chapters and `99` closes with About. The slug is kebab-case English.
-- Every chapter carries a primary tag of the form `*europa-<slug>*` matching the filename slug. Sub-section tags follow `*europa-<slug>-<sub>*`. Tags must not collide with `doc/denops.txt`, which ships its own namespace.
+- Every chapter carries a primary tag of the form `*europa-<slug>*` matching the filename slug. Sub-section tags follow `*europa-<slug>-<subsection>*`. Tags must not collide with `doc/denops.txt`, which ships its own namespace.
 - Every chapter ends with the standard vim help modeline `vim:tw=78:ts=8:noet:ft=help:norl:`.
 - Files are UTF-8 with LF line endings.
 
@@ -76,7 +76,7 @@ Phase 1 establishes the operational rule only. The lint that enforces the biject
 
 ## 8. Commit and PR conventions
 
-- Documentation, in-code comments, and commit subjects are written in English. Internal planning artifacts under `specs/` and `.specify/` are exempt and may use any language.
+- Documentation, in-code comments, and commit subjects are written in English.
 - Commit messages follow the `.gitmessage` template. Each subject opens with an emoji prefix and stays at or under 72 columns; the body explains the why.
 - Every PR declares its phase, `Phase 0`–`Phase 5`. Mixing phases in one PR is rejected.
 - Once the bijection check lands in Phase 2, every PR lists the `@spec-id` values it covers. Phase 1 PRs are exempt and say so in the description, pointing to `plan.md` Complexity Tracking for the active feature.
