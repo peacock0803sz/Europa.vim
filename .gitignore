@@ -243,3 +243,4 @@ __marimo__/
 
 # Europa.vim project: keep notebook test fixtures despite global *.ipynb rule
 !tests/fixtures/*.ipynb
+node_modules/
