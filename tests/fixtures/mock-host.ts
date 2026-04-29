@@ -88,8 +88,11 @@ export class MockHost implements Denops {
     // Return the Vim default embedded in get(g:, 'europa_<key>', <default>)
     const getMatch = expr.match(/^get\(g:,\s*'europa_[^']+',\s*([\s\S]+)\)$/);
     if (getMatch) {
+      const literal = getMatch[1].trim();
+      if (literal === "v:true") return Promise.resolve(true);
+      if (literal === "v:false") return Promise.resolve(false);
       try {
-        return Promise.resolve(JSON.parse(getMatch[1]));
+        return Promise.resolve(JSON.parse(literal));
       } catch {
         return Promise.resolve(null);
       }
