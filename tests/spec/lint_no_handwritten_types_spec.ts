@@ -48,22 +48,12 @@ describe("lint-no-handwritten-types rule 1 (interface / type alias detection)", 
 
   it("exit 0 when only derived types are present (single good file)", async () => {
     const goodFile = FIXTURES + "/good-derived-type.ts";
-    const cmd = new Deno.Command("deno", {
-      args: [
-        "run",
-        "--allow-read",
-        SCRIPT,
-        "--target",
-        goodFile,
-      ],
-      stderr: "piped",
-      stdout: "null",
-    });
-    const result = await cmd.output();
-    // good-derived-type.ts has only TypeBox-derived types, should pass
-    // (code may be 0 or 1 depending on whether bad fixtures also in scope)
-    // The key assertion is that stderr mentions bad-interface.ts, not good-derived-type.ts
-    const stderr = new TextDecoder().decode(result.stderr);
+    const { code, stderr } = await runLintOnFixture(goodFile);
+    assertEquals(
+      code,
+      0,
+      `good-derived-type.ts should pass rule 1, got exit ${code}; stderr: ${stderr}`,
+    );
     assertEquals(
       stderr.includes("good-derived-type"),
       false,
