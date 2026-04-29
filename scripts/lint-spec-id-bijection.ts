@@ -88,9 +88,7 @@ async function collect(
     }
     const lines = text.split("\n");
     for (const [i, line] of lines.entries()) {
-      const re = new RegExp(SPEC_ID_RE.source, "g");
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(line)) !== null) {
+      for (const m of line.matchAll(SPEC_ID_RE)) {
         out.push({ id: m[1], file, line: i + 1 });
       }
     }
