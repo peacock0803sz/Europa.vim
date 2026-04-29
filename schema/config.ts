@@ -1,0 +1,58 @@
+/**
+ * TypeBox schema for Europa configuration options (`g:europa_*`).
+ *
+ * This module is the Source of Truth (SoT 1) for EuropaConfig.
+ * Phase 2 active options are Rendering and Behavior sections.
+ * Connection/Kernel options are reserved for Phase 3.
+ *
+ * @module schema/config
+ */
+
+import { type Static, Type } from "@sinclair/typebox";
+
+export const EuropaConfigSchema = Type.Object({
+  // Connection (Phase 1 reserve — not read by main.ts in Phase 2)
+  connection_mode: Type.Union([
+    Type.Literal("server"),
+    Type.Literal("zmq"),
+    Type.Literal("auto"),
+  ], { default: "auto" }),
+  jupyter_url: Type.String({ default: "http://localhost:8888" }),
+  jupyter_token: Type.String({ default: "" }),
+  jupyter_ws_subprotocol: Type.Union([
+    Type.Literal("default"),
+    Type.Literal("v1"),
+    Type.Literal("auto"),
+  ], { default: "default" }),
+  default_kernel: Type.String({ default: "python3" }),
+  auto_start_kernel: Type.Boolean({ default: false }),
+  jupyter_executable: Type.String({ default: "" }),
+  python_env_detect: Type.Union([
+    Type.Literal("auto"),
+    Type.Literal("disabled"),
+  ], { default: "auto" }),
+
+  // Rendering (Phase 2 active)
+  image_backend: Type.Union([
+    Type.Literal("auto"),
+    Type.Literal("placeholder"),
+    Type.Literal("sixel"),
+    Type.Literal("kitty_placeholder"),
+    Type.Literal("iterm2_osc1337"),
+  ], { default: "auto" }),
+  mime_priority: Type.Array(Type.String(), {
+    default: ["image/png", "image/jpeg", "text/html", "text/plain"],
+  }),
+  max_output_lines: Type.Integer({ minimum: 1, default: 100 }),
+  cell_border_chars: Type.Array(Type.String(), {
+    default: ["╭", "─", "╮", "╰", "╯"],
+  }),
+  lazy_padding: Type.Integer({ minimum: 0, default: 10 }),
+
+  // Behavior (Phase 2 active)
+  auto_save: Type.Boolean({ default: false }),
+  use_subprocess: Type.Boolean({ default: true }),
+  use_default_mappings: Type.Boolean({ default: false }),
+});
+
+export type EuropaConfig = Static<typeof EuropaConfigSchema>;
