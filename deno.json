@@ -1,7 +1,7 @@
 {
   "tasks": {
     "fmt:check": "deno fmt --check",
-    "lint": "deno lint && deno run --allow-read --allow-env scripts/lint-no-handwritten-types.ts",
+    "lint": "deno lint && deno run --allow-read scripts/lint-no-handwritten-types.ts",
     "gen:vimdoc": "deno run --allow-read --allow-write --allow-run scripts/gen-vimdoc.ts",
     "ci": "deno task fmt:check && deno task lint && deno task gen:vimdoc && git diff --exit-code doc/europa.txt",
     "smoke:ipynb": "deno run --allow-read scripts/smoke-ipynb.ts tests/fixtures/hello.ipynb"
