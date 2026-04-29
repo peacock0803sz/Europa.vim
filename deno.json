@@ -1,7 +1,7 @@
 {
   "tasks": {
     "fmt:check": "deno fmt --check",
-    "lint": "deno lint && deno run --allow-read scripts/lint-no-handwritten-types.ts",
+    "lint": "deno lint && deno run --allow-read --allow-env scripts/lint-no-handwritten-types.ts",
     "validate": "deno check schema/ contracts/ denops/europa/",
     "gen:vimdoc": "deno run --allow-read --allow-write --allow-run scripts/gen-vimdoc.ts",
     "ci": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && git diff --exit-code doc/europa.txt",
