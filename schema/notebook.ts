@@ -9,10 +9,14 @@
 
 import { type Static, Type } from "@sinclair/typebox";
 
-/** MIME bundle: maps MIME type to string content or JSON object. */
+/** MIME bundle: maps MIME type to string content, string arrays, or JSON object. */
 export const MimeBundleSchema = Type.Record(
   Type.String(),
-  Type.Union([Type.String(), Type.Record(Type.String(), Type.Any())]),
+  Type.Union([
+    Type.String(),
+    Type.Array(Type.String()),
+    Type.Record(Type.String(), Type.Any()),
+  ]),
 );
 export type MimeBundle = Static<typeof MimeBundleSchema>;
 
