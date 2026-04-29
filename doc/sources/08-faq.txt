@@ -1,5 +1,3 @@
-*europa-faq*	Europa.vim frequently asked questions
-
 ==============================================================================
 FREQUENTLY ASKED QUESTIONS				*europa-faq*
 

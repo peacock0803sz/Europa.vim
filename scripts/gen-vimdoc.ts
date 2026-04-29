@@ -17,10 +17,20 @@ import { generate as runConcatMd } from "./concat-md.ts";
 const SOURCES_DIR = "doc/sources";
 const OUTPUT_PATH = "doc/europa.txt";
 const API_REFERENCE_PATH = "tmp/api-reference.md";
+// Each `doc/sources/*.txt` carries its own vim help modeline so the file is
+// edit-friendly on its own; strip it before concatenating so the aggregated
+// `doc/europa.txt` ends up with the single modeline that `buildVimdoc`
+// appends, not one per chapter.
+const TRAILING_MODELINE = /\n+vim:[^\n]*\n*$/;
+
+function stripTrailingModeline(text: string): string {
+  return text.replace(TRAILING_MODELINE, "\n");
+}
 
 /**
  * Read every `.txt` file under `doc/sources/` in lexicographic order and
- * concatenate their contents.
+ * concatenate their contents, dropping each file's trailing modeline so the
+ * aggregated output keeps only the canonical one added by `buildVimdoc`.
  *
  * @returns Concatenated source body, or an empty string if no sources exist.
  */
@@ -33,7 +43,8 @@ async function readSources(): Promise<string> {
     }
     names.sort();
     for (const name of names) {
-      parts.push(await Deno.readTextFile(`${SOURCES_DIR}/${name}`));
+      const text = await Deno.readTextFile(`${SOURCES_DIR}/${name}`);
+      parts.push(stripTrailingModeline(text));
     }
   } catch (error) {
     if (!(error instanceof Deno.errors.NotFound)) throw error;

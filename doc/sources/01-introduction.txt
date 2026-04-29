@@ -1,5 +1,3 @@
-*europa-introduction*	Europa.vim introduction
-
 ==============================================================================
 INTRODUCTION						*europa-introduction*
 

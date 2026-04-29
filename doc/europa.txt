@@ -1,7 +1,5 @@
 *europa.txt*	europa.vim documentation
 
-*europa-introduction*	Europa.vim introduction
-
 ==============================================================================
 INTRODUCTION						*europa-introduction*
 
@@ -10,22 +8,13 @@ later editing) Jupyter `.ipynb` notebooks inside Vim/Neovim. Cover the
 positioning relative to upstream Jupyter and the cross-host parity goal. See
 `DESIGN.md` chapter 1.1 (Identity) for source material.
 
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-requirements*	Europa.vim requirements
-
 ==============================================================================
 REQUIREMENTS						*europa-requirements*
 
 TODO(phase-2): List the runtime requirements: Vim 9.1.1646+ or Neovim 0.11.3+,
 Deno 2.3.0+, denops.vim plus `@denops/std`, and a user-supplied `jupyter`
 command (auto-detection via `.venv/`, `venv/`, `VIRTUAL_ENV`, `CONDA_PREFIX`).
-Cross-reference the constitution "Technology & Runtime Constraints" section
-and `DESIGN.md` chapter 6.5 (kernel connection / venv detection).
-
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-setup*	Europa.vim setup
+Cross-reference `DESIGN.md` chapter 6.5 (kernel connection / venv detection).
 
 ==============================================================================
 SETUP							*europa-setup*
@@ -36,10 +25,6 @@ optional ImageMagick / rsvg-convert / pdftoppm / vl-convert binaries used by
 later phases. Contributor setup belongs in `CONTRIBUTING.md` section 3 and is
 out of scope here.
 
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-configuration*	Europa.vim configuration
-
 ==============================================================================
 CONFIGURATION						*europa-configuration*
 
@@ -49,10 +34,6 @@ once that module lands. At minimum cover `g:europa_image_backend`,
 `DESIGN.md` chapter 9 (configuration / commands / mappings) for the option
 matrix.
 
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-commands*	Europa.vim ex commands
-
 ==============================================================================
 COMMANDS						*europa-commands*
 
@@ -61,10 +42,6 @@ planned set is `:EuropaPreviewOutput`, `:EuropaEditCell`, and `:EuropaAttach`
 (P3+). Cross-reference `DESIGN.md` chapter 9 (configuration / commands /
 mappings) for the canonical command surface and phase mapping.
 
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-mappings*	Europa.vim default mappings
-
 ==============================================================================
 MAPPINGS						*europa-mappings*
 
@@ -72,10 +49,6 @@ TODO(phase-2): Document the default key mappings supplied by the plugin and
 the `<Plug>` handles users can rebind. Reference `DESIGN.md` chapter 9
 (configuration / commands / mappings) for the canonical list and the
 no-default-overlap policy with vim/neovim core bindings.
-
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-examples*	Europa.vim examples
 
 ==============================================================================
 EXAMPLES						*europa-examples*
@@ -86,10 +59,6 @@ navigate cell boundaries, preview an output (image/png placeholder via
 kernel. Each example should reference the relevant `@spec-id` once the BDD
 specs land.
 
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-faq*	Europa.vim frequently asked questions
-
 ==============================================================================
 FREQUENTLY ASKED QUESTIONS				*europa-faq*
 
@@ -97,10 +66,6 @@ TODO(phase-2): Seed the FAQ with capability-detection topics from `DESIGN.md`
 chapter 7 (rendering strategy): why DA1 query may time out, why Sixel falls
 back to the external preview, how `g:europa_image_backend` interacts with
 host/terminal capabilities, and how to diagnose missing kernels.
-
-vim:tw=78:ts=8:noet:ft=help:norl:
-
-*europa-about*	About Europa.vim
 
 ==============================================================================
 ABOUT							*europa-about*
@@ -110,8 +75,6 @@ TODO(phase-2): Record the project metadata: name (`Europa.vim`), upstream URL
 repository root), and credits to denops.vim, panvimdoc, typedoc, and the
 Jupyter project. Keep this short; everything substantive belongs in the
 preceding chapters.
-
-vim:tw=78:ts=8:noet:ft=help:norl:
 
 ==============================================================================
 API REFERENCE							*europa-api*

@@ -1,5 +1,3 @@
-*europa-examples*	Europa.vim examples
-
 ==============================================================================
 EXAMPLES						*europa-examples*
 

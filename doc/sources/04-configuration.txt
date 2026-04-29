@@ -1,5 +1,3 @@
-*europa-configuration*	Europa.vim configuration
-
 ==============================================================================
 CONFIGURATION						*europa-configuration*
 

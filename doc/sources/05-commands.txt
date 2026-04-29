@@ -1,5 +1,3 @@
-*europa-commands*	Europa.vim ex commands
-
 ==============================================================================
 COMMANDS						*europa-commands*
 
