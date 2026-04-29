@@ -1,13 +1,18 @@
 /**
- * Europa.vim vimdoc generator.
+ * Europa.vim vimdoc generator — Phase 2 pipeline.
  *
- * Phase 0 emits a deterministic, idempotent `doc/europa.txt` from whatever
- * sources exist under `doc/sources/` and the typedoc API reference, both
- * empty in that phase. Phase 1 wires `scripts/concat-md.ts` into the API
- * Reference path, so Phase 2 can replace the passthrough scaffold with
- * chapter-ordered output without touching this file. The pandoc plus
- * panvimdoc Lua filter pipeline configured through `panvimdoc.json` is
- * planned for later phases.
+ * Pipeline:
+ *   1. typedoc (typedoc-plugin-markdown) → tmp/typedoc/
+ *   2. concat-md.ts → tmp/api-reference.md  (Modules → Classes → Functions → Types)
+ *   3. doc/sources/*.txt + api-reference.md → doc/europa.txt
+ *
+ * typedoc invocation is graceful: if the binary is unavailable or fails (e.g.
+ * JSR import resolution not yet configured), the pipeline continues without an
+ * API reference section and logs a warning. This keeps `git diff --exit-code
+ * doc/europa.txt` stable when typedoc cannot run in a given environment.
+ *
+ * panvimdoc (Lua/pandoc filter) is deferred to Phase 3 when it will be
+ * available in the nix dev shell.
  *
  * @module scripts/gen-vimdoc
  */
@@ -91,6 +96,33 @@ async function readApiReference(): Promise<string> {
 }
 
 /**
+ * Attempt to run typedoc to populate `tmp/typedoc/` for the API reference.
+ *
+ * Fails silently with a console warning when typedoc is unavailable or errors
+ * (e.g. when JSR imports are unresolvable without additional tsconfig paths).
+ */
+async function runTypedoc(): Promise<void> {
+  const typedocBin = "node_modules/.bin/typedoc";
+  try {
+    const cmd = new Deno.Command(typedocBin, {
+      args: ["--options", "typedoc.json", "--out", "tmp/typedoc"],
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const { code } = await cmd.output();
+    if (code !== 0) {
+      console.warn(
+        "[gen-vimdoc] typedoc exited with non-zero status — API reference section will be empty.",
+      );
+    }
+  } catch {
+    console.warn(
+      "[gen-vimdoc] typedoc not available — API reference section will be empty.",
+    );
+  }
+}
+
+/**
  * Generate `doc/europa.txt` deterministically from current sources.
  *
  * @example
@@ -99,6 +131,7 @@ async function readApiReference(): Promise<string> {
  * ```
  */
 export async function generate(): Promise<void> {
+  await runTypedoc();
   await runConcatMd();
   const sourcesBody = await readSources();
   const apiBody = await readApiReference();
