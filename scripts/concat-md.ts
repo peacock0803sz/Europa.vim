@@ -55,8 +55,7 @@ async function collectSection(sectionDir: string): Promise<string[]> {
 // --- Heading demotion -------------------------------------------------------
 
 function demoteTopHeadings(text: string): string {
-  // `# Heading` → `## Heading` (one level down for section nesting)
-  return text.replace(/^# /gm, "## ");
+  return text.replace(/^(#+) /gm, "#$1 ");
 }
 
 // --- Main -------------------------------------------------------------------
