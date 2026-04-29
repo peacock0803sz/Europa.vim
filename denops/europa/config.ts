@@ -78,11 +78,17 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
  * @spec-id europa.config.invalid-rejected
  * @spec-id europa.contract.config-alignment
  */
+function vimLiteral(value: unknown): string {
+  if (value === true) return "v:true";
+  if (value === false) return "v:false";
+  return JSON.stringify(value);
+}
+
 export async function loadConfig(denops: Denops): Promise<EuropaConfig> {
   const raw: Record<string, unknown> = {};
 
   for (const opt of OPTIONS) {
-    const expr = `get(g:, 'europa_${opt.gvar}', ${JSON.stringify(opt.def)})`;
+    const expr = `get(g:, 'europa_${opt.gvar}', ${vimLiteral(opt.def)})`;
     try {
       raw[opt.key] = await denops.eval(expr);
     } catch {
