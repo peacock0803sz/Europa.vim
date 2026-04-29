@@ -154,30 +154,24 @@ if (import.meta.main) {
     }
   }
 
-  // Duplicate check (same file should not repeat same id — cross-file is OK)
+  // Strict bijection: each id must appear exactly once on each side.
   for (const [id, occs] of specById) {
-    const byFile = new Map<string, number>();
-    for (const o of occs) byFile.set(o.file, (byFile.get(o.file) ?? 0) + 1);
-    for (const [file, count] of byFile) {
-      if (count > 1) {
-        failed = true;
-        console.error(
-          `[europa.spec-id] duplicate in spec file: ${id} (${count}x in ${file})`,
-        );
-      }
+    if (occs.length > 1) {
+      failed = true;
+      console.error(
+        `[europa.spec-id] duplicate in spec: ${id} (${occs.length} occurrences)`,
+      );
+      for (const o of occs) console.error(`    - ${o.file}:${o.line}`);
     }
   }
 
   for (const [id, occs] of implById) {
-    const byFile = new Map<string, number>();
-    for (const o of occs) byFile.set(o.file, (byFile.get(o.file) ?? 0) + 1);
-    for (const [file, count] of byFile) {
-      if (count > 1) {
-        failed = true;
-        console.error(
-          `[europa.spec-id] duplicate in impl file: ${id} (${count}x in ${file})`,
-        );
-      }
+    if (occs.length > 1) {
+      failed = true;
+      console.error(
+        `[europa.spec-id] duplicate in impl: ${id} (${occs.length} occurrences)`,
+      );
+      for (const o of occs) console.error(`    - ${o.file}:${o.line}`);
     }
   }
 
