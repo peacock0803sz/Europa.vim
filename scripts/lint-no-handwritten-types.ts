@@ -171,7 +171,12 @@ function extractCommentBlocks(
       const contentLines = commentText
         .split("\n")
         .map((l) =>
-          l.replace(/^\s*\/\/\s?/, "").replace(/^\s*\*\s?/, "").trim()
+          l
+            .replace(/^\s*\/\/\s?/, "")
+            .replace(/^\s*\/\*+\s?/, "")
+            .replace(/\s*\*+\/\s*$/, "")
+            .replace(/^\s*\*\s?/, "")
+            .trim()
         );
       blocks.push({
         file: filePath,
