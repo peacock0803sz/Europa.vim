@@ -1,0 +1,104 @@
+/**
+ * Europa configuration loader.
+ *
+ * Reads all `g:europa_*` variables from the host and validates them against
+ * `EuropaConfigSchema` via TypeBox `Value.Check`. Throws `EuropaConfigError`
+ * on any validation failure (FR-039, FR-040).
+ *
+ * @module config
+ */
+
+import type { Denops } from "@denops/std";
+import { Value } from "@sinclair/typebox/value";
+import { type EuropaConfig, EuropaConfigSchema } from "../../schema/config.ts";
+
+/** Thrown when `g:europa_*` variable values fail schema validation. */
+export class EuropaConfigError extends Error {
+  constructor(
+    message: string,
+    public readonly path: string,
+    public readonly received: unknown,
+  ) {
+    super(
+      `EuropaConfigError at ${path}: ${message} (got ${
+        JSON.stringify(received)
+      })`,
+    );
+    this.name = "EuropaConfigError";
+  }
+}
+
+/**
+ * Option definitions: maps config key → Vim global variable name → default value.
+ */
+const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
+  [
+    { key: "connection_mode", gvar: "connection_mode", def: "auto" },
+    {
+      key: "jupyter_url",
+      gvar: "jupyter_url",
+      def: "http://localhost:8888",
+    },
+    { key: "jupyter_token", gvar: "jupyter_token", def: "" },
+    {
+      key: "jupyter_ws_subprotocol",
+      gvar: "jupyter_ws_subprotocol",
+      def: "default",
+    },
+    { key: "default_kernel", gvar: "default_kernel", def: "python3" },
+    { key: "auto_start_kernel", gvar: "auto_start_kernel", def: false },
+    { key: "jupyter_executable", gvar: "jupyter_executable", def: "" },
+    { key: "python_env_detect", gvar: "python_env_detect", def: "auto" },
+    { key: "image_backend", gvar: "image_backend", def: "auto" },
+    {
+      key: "mime_priority",
+      gvar: "mime_priority",
+      def: ["image/png", "image/jpeg", "text/html", "text/plain"],
+    },
+    { key: "max_output_lines", gvar: "max_output_lines", def: 100 },
+    {
+      key: "cell_border_chars",
+      gvar: "cell_border_chars",
+      def: ["╭", "─", "╮", "╰", "╯"],
+    },
+    { key: "lazy_padding", gvar: "lazy_padding", def: 10 },
+    { key: "auto_save", gvar: "auto_save", def: false },
+    { key: "use_subprocess", gvar: "use_subprocess", def: true },
+    { key: "use_default_mappings", gvar: "use_default_mappings", def: false },
+  ];
+
+/**
+ * Load and validate Europa configuration from the current Vim/Neovim session.
+ *
+ * @param denops - Denops instance for reading global variables.
+ * @returns Validated `EuropaConfig` record.
+ * @throws {EuropaConfigError} When any option fails schema validation.
+ * @spec-id europa.config.load
+ * @spec-id europa.config.default-values
+ * @spec-id europa.config.invalid-rejected
+ * @spec-id europa.contract.config-alignment
+ */
+export async function loadConfig(denops: Denops): Promise<EuropaConfig> {
+  const raw: Record<string, unknown> = {};
+
+  for (const opt of OPTIONS) {
+    const expr = `get(g:, 'europa_${opt.gvar}', ${JSON.stringify(opt.def)})`;
+    try {
+      raw[opt.key] = await denops.eval(expr);
+    } catch {
+      raw[opt.key] = opt.def;
+    }
+  }
+
+  if (!Value.Check(EuropaConfigSchema, raw)) {
+    const errors = [...Value.Errors(EuropaConfigSchema, raw)];
+    const first = errors[0];
+    throw new EuropaConfigError(
+      first?.message ?? "unknown",
+      first?.path ?? "/",
+      first?.value,
+    );
+  }
+
+  return raw as EuropaConfig;
+}
