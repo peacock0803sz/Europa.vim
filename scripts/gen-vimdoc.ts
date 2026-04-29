@@ -55,7 +55,7 @@ function buildVimdoc(sourcesBody: string, apiBody: string): string {
     "==============================================================================\nAPI REFERENCE\t\t\t\t\t\t\t*europa-api*\n\n" +
     (apiBody.length > 0
       ? apiBody
-      : "(generated from TSDoc; populated in Phase 1+)\n");
+      : "(generated from TSDoc; populated in Phase 2+)\n");
   const guideSection = sourcesBody.length > 0
     ? sourcesBody
     : "(guide chapters land in doc/sources/ during Phase 1)\n";
