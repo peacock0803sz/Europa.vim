@@ -102,10 +102,18 @@ async function readApiReference(): Promise<string> {
  * (e.g. when JSR imports are unresolvable without additional tsconfig paths).
  */
 async function runTypedoc(): Promise<void> {
-  const typedocBin = "node_modules/.bin/typedoc";
+  await Deno.remove("tmp/typedoc", { recursive: true }).catch(() => {});
   try {
-    const cmd = new Deno.Command(typedocBin, {
-      args: ["--options", "typedoc.json", "--out", "tmp/typedoc"],
+    const cmd = new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "-A",
+        "npm:typedoc",
+        "--options",
+        "typedoc.json",
+        "--out",
+        "tmp/typedoc",
+      ],
       stdout: "inherit",
       stderr: "inherit",
     });
