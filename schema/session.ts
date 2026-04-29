@@ -20,16 +20,25 @@ export const KernelStateSchema = Type.Union([
 export type KernelState = Static<typeof KernelStateSchema>;
 
 export const KernelInfoSchema = Type.Object({
-  id: Type.String(),
+  id: Type.String({ format: "uuid" }),
   name: Type.String(),
   state: KernelStateSchema,
 });
 export type KernelInfo = Static<typeof KernelInfoSchema>;
 
+export const CellMapEntrySchema = Type.Object({
+  cellIndex: Type.Integer({ minimum: 0 }),
+  bufLineStart: Type.Integer({ minimum: 0 }),
+  bufLineEnd: Type.Integer({ minimum: 0 }),
+});
+export type CellMapEntry = Static<typeof CellMapEntrySchema>;
+
 export const SessionSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
   bufnr: Type.Integer({ minimum: 0 }),
   notebookPath: Type.String(),
   notebook: NotebookSchema,
   kernel: Type.Optional(KernelInfoSchema),
+  cellMap: Type.Array(CellMapEntrySchema),
 });
 export type Session = Static<typeof SessionSchema>;
