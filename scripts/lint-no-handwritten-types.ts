@@ -85,7 +85,7 @@ function isTypeBoxDerived(node: ts.TypeAliasDeclaration): boolean {
           return true;
         }
       }
-      return true; // any Static<typeof ...> is considered derived
+      return false;
     }
   }
   // import("...") re-export patterns
