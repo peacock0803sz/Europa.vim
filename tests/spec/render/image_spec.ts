@@ -160,6 +160,44 @@ describe("renderImage — sixel-metadata", () => {
     });
     assertEquals(result.placement, undefined);
   });
+
+  it("reserves spacer rows beneath the placeholder for sixel backend", () => {
+    // 480px metadata height → ceil(480/20) = 24 spacer rows so subsequent
+    // cells are not visually overlaid by the inline image.
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+      height: 480,
+    });
+    assertEquals(result.fragment.lines.length, 25);
+    assertEquals(result.fragment.lines[0].startsWith("[image:"), true);
+    for (let i = 1; i < result.fragment.lines.length; i++) {
+      assertEquals(result.fragment.lines[i], "");
+    }
+  });
+
+  it("does not reserve spacer rows for placeholder backend", () => {
+    const result = renderImage(PNG_B64, "image/png", capsPlaceholder, {
+      cellIdx: 0,
+      outputIdx: 0,
+      height: 480,
+    });
+    assertEquals(
+      result.fragment.lines.length,
+      1,
+      "placeholder backend keeps the original single-line fragment",
+    );
+  });
+
+  it("decodes PNG header height when metadata height is missing", () => {
+    // The 1×1 PNG_B64 fixture has height=1 in its IHDR chunk → ceil(1/20)
+    // = 1 spacer row; total fragment length is 2 (placeholder + 1 spacer).
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.fragment.lines.length, 2);
+  });
 });
 
 describe("renderImage — unsupported-mime (via dispatchOutput)", () => {

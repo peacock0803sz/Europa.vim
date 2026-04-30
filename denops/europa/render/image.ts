@@ -8,11 +8,48 @@
  * @category Render
  */
 
+import { decodeBase64 } from "@std/encoding/base64";
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type {
   ImageRenderResult,
   RenderFragment,
 } from "../../../schema/render-plan.ts";
+
+// 20px is used because we cannot query the real cell height from a denops
+// plugin (no DA1 round-trip available) and it is a safe middle-of-the-road
+// estimate for WezTerm / Ghostty at typical font sizes (real cells range
+// from ~16px to ~32px).  This estimate must err slightly large so the
+// reserved spacer rows cover the image rather than under-shooting.
+const SIXEL_CELL_HEIGHT_PX = 20;
+
+/**
+ * Read pixel height from a base64-encoded PNG header.
+ *
+ * PNG layout: 8-byte signature, then the IHDR chunk (4 bytes length + 4 bytes
+ * type "IHDR" + 4 bytes width + 4 bytes height, both big-endian uint32).
+ * Returns `undefined` when the input is not a valid PNG header — JPEG and
+ * other formats fall through and the caller substitutes a default.
+ */
+function pngPixelHeight(b64: string): number | undefined {
+  try {
+    const bytes = decodeBase64(b64);
+    if (bytes.length < 24) return undefined;
+    if (
+      bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e ||
+      bytes[3] !== 0x47
+    ) {
+      return undefined;
+    }
+    const view = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    );
+    return view.getUint32(20, false);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Render an image cell output as a placeholder line, optionally returning
@@ -46,8 +83,25 @@ export function renderImage(
   const command = `:EuropaPreviewOutput ${meta.cellIdx} ${meta.outputIdx}`;
   const placeholderText = `[image: ${kind} ${w}x${h} - ${command}]`;
 
+  const lines = [placeholderText];
+
+  // For Sixel backend we must reserve buffer rows beneath the placeholder
+  // so the inline image does not visually overlay the next cell's content
+  // (terminal Sixel images are drawn as a graphics layer over the text
+  // grid and would otherwise hide whatever buffer text sits below them).
+  if (caps.image === "sixel") {
+    const pixelHeight = meta.height ?? pngPixelHeight(data);
+    // Default to 10 spacer rows when the height cannot be determined — JPEGs
+    // and tiny fixtures fall through here and a generous default is safer
+    // than zero (which always overlays subsequent cells).
+    const rows = pixelHeight
+      ? Math.ceil(pixelHeight / SIXEL_CELL_HEIGHT_PX)
+      : 10;
+    for (let i = 0; i < rows; i++) lines.push("");
+  }
+
   const fragment: RenderFragment = {
-    lines: [placeholderText],
+    lines,
     highlights: [
       {
         hlGroup: "EuropaImagePlaceholder",
