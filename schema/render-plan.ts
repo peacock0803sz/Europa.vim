@@ -70,6 +70,26 @@ export const RenderFragmentSchema = Type.Object({
 });
 export type RenderFragment = Static<typeof RenderFragmentSchema>;
 
+/** Metadata for a future Sixel image placement (wired in Phase 3/T103). */
+export const SixelPlacementSchema = Type.Object({
+  line: Type.Integer({ minimum: 0 }),
+  payload: Type.String(),
+  mime: Type.Union([Type.Literal("image/png"), Type.Literal("image/jpeg")]),
+  width: Type.Optional(Type.Integer({ minimum: 0 })),
+  height: Type.Optional(Type.Integer({ minimum: 0 })),
+  backend: Type.Literal("sixel"),
+  cellIdx: Type.Integer({ minimum: 0 }),
+  outputIdx: Type.Integer({ minimum: 0 }),
+});
+export type SixelPlacement = Static<typeof SixelPlacementSchema>;
+
+/** Return value of `renderImage`: a placeholder fragment plus optional Sixel metadata. */
+export const ImageRenderResultSchema = Type.Object({
+  fragment: RenderFragmentSchema,
+  placement: Type.Optional(SixelPlacementSchema),
+});
+export type ImageRenderResult = Static<typeof ImageRenderResultSchema>;
+
 export const RenderPlanSchema = Type.Object({
   lines: Type.Array(Type.String()),
   highlights: Type.Array(HighlightSchema),

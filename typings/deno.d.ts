@@ -12,4 +12,16 @@
 
 declare namespace Deno {
   function readTextFile(path: string | URL): Promise<string>;
+  function makeTempFile(options?: { suffix?: string }): Promise<string>;
+  function writeFile(path: string, data: Uint8Array): Promise<void>;
+
+  const build: { os: "darwin" | "linux" | "windows" };
+
+  class Command {
+    constructor(
+      cmd: string,
+      options?: { args?: string[]; stdout?: string; stderr?: string },
+    );
+    output(): Promise<{ code: number; stdout: Uint8Array; stderr: Uint8Array }>;
+  }
 }
