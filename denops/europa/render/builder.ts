@@ -37,7 +37,15 @@ function mergeStreams(outputs: readonly Output[]): Output[] {
   return merged;
 }
 
-/** Truncate a fragment to `maxLines` and append a summary line if needed (FR-051). */
+/**
+ * Truncate a fragment to `maxLines` and append a summary line if needed (FR-051).
+ *
+ * Only `lines` and `highlights` are filtered against the new line budget;
+ * `virtText`, `imagePlacements`, and `clickables` are pass-through because
+ * Phase 2 renderers always emit them as empty arrays. When Phase 3 starts
+ * producing real values, this function must be extended to filter them too,
+ * or stale entries will reference truncated-away lines.
+ */
 function truncateFragment(
   frag: RenderFragment,
   maxLines: number,
@@ -54,7 +62,16 @@ function truncateFragment(
   return { ...frag, lines: truncatedLines, highlights: truncatedHighlights };
 }
 
-/** Append all fields of a RenderFragment onto the given RenderPlan arrays. */
+/**
+ * Append `lines` and `highlights` from a RenderFragment onto the given
+ * RenderPlan arrays, applying the buffer-line offset so highlights line up
+ * with their absolute positions.
+ *
+ * Phase 2 only: `virtText`, `imagePlacements`, and `clickables` are not
+ * forwarded because every renderer produces them as empty arrays today.
+ * When Phase 3 (sixel images, popups, clickables) introduces real values,
+ * extend the `plan` parameter type and forward those fields here too.
+ */
 function appendFragment(
   plan: { lines: string[]; highlights: RenderPlan["highlights"] },
   frag: RenderFragment,

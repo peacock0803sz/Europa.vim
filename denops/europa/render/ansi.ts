@@ -2,7 +2,8 @@
  * ANSI escape code stripping utilities.
  *
  * Thin wrapper over `@lambdalisue/ansi-escape-code`; self-built regex is
- * intentionally avoided to delegate full CSI/OSC/DCS coverage to the library.
+ * intentionally avoided so ANSI sequence handling is delegated to the library,
+ * including CSI/OSC/DCS support where available, which may vary by version.
  *
  * @category Render
  * @module ansi
