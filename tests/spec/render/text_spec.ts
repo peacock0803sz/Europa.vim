@@ -104,4 +104,23 @@ describe("renderError", () => {
     assertEquals(frag.lines[0], "ValueError: bad input");
     assertEquals(frag.lines.every((l) => !l.includes("\x1b")), true);
   });
+
+  it("splits traceback entries on embedded newlines (IPython multi-line frame)", () => {
+    const frag = renderError("E", "v", [
+      "Cell In[3], line 1\n----> 1 raise ValueError",
+      "single",
+    ]);
+    assertEquals(frag.lines, [
+      "E: v",
+      "Cell In[3], line 1",
+      "----> 1 raise ValueError",
+      "single",
+    ]);
+    assertEquals(frag.highlights.length, 3);
+    assertEquals(
+      frag.highlights.every((h) => h.hlGroup === "EuropaError"),
+      true,
+    );
+    assertEquals(frag.highlights.map((h) => h.line), [1, 2, 3]);
+  });
 });

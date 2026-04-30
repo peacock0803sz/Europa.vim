@@ -85,10 +85,14 @@ export function renderError(
   traceback: readonly string[],
 ): RenderFragment {
   const header = stripAnsi(`${ename}: ${evalue}`);
-  const strippedTraceback = traceback.map((l) => stripAnsi(l));
-  const lines = [header, ...strippedTraceback];
+  // Jupyter traceback entries can contain embedded `\n` (e.g. IPython's
+  // "Cell In[N], line K\n----> K ..." frame). flatten on newline so each
+  // resulting buffer line is a real single line — otherwise highlight
+  // indices drift relative to what setbufline actually writes.
+  const tracebackLines = traceback.flatMap((l) => stripAnsi(l).split("\n"));
+  const lines = [header, ...tracebackLines];
 
-  const highlights: Highlight[] = strippedTraceback.map((_, i) => ({
+  const highlights: Highlight[] = tracebackLines.map((_, i) => ({
     hlGroup: "EuropaError",
     line: i + 1,
     col: 0,
