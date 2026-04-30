@@ -127,6 +127,18 @@ async function applySixelPlacements(
   await host.cmd("redraw");
 
   for (const sp of placements) {
+    // Check screen position first — skip off-screen images before spending
+    // time on base64 decode or an ImageMagick subprocess.
+    const pos = await host.call("screenpos", winid, sp.line + 1, 1) as
+      | { row?: number; col?: number }
+      | null;
+    const row = pos && typeof pos.row === "number" ? pos.row : 0;
+    const col = pos && typeof pos.col === "number" ? pos.col : 0;
+    // screenpos returns row 0 when the line is scrolled off-screen — skip
+    // because writing Sixel without a valid anchor would clobber unrelated
+    // rows (this is the bug the user hit when the image landed at home).
+    if (row === 0) continue;
+
     let imageBytes: Uint8Array;
     try {
       imageBytes = decodeBase64(sp.payload);
@@ -143,15 +155,6 @@ async function applySixelPlacements(
       );
       continue;
     }
-    const pos = await host.call("screenpos", winid, sp.line + 1, 1) as
-      | { row?: number; col?: number }
-      | null;
-    const row = pos && typeof pos.row === "number" ? pos.row : 0;
-    const col = pos && typeof pos.col === "number" ? pos.col : 0;
-    // screenpos returns row 0 when the line is scrolled off-screen — skip
-    // because writing Sixel without a valid anchor would clobber unrelated
-    // rows (this is the bug the user hit when the image landed at home).
-    if (row === 0) continue;
     // Anchor the image one row below the placeholder so the
     // `[image: ...]` text remains visible (and the clickable
     // :EuropaPreviewOutput command stays accessible) above the picture.
