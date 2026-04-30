@@ -40,7 +40,7 @@ function sixelPlan(): RenderPlan {
     ...emptyPlan(),
     sixelPlacements: [
       {
-        line: 0,
+        line: 7,
         payload: PNG_B64,
         mime: "image/png",
         backend: "sixel",
@@ -175,6 +175,32 @@ describe("applyRenderPlan — sixel-apply (Vim host)", () => {
     );
   });
 
+  it("wraps sixel data with cursor-position move based on screenpos", async () => {
+    // sixelPlan().sixelPlacements[0].line === 7 → screenpos returns row 8.
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: fakeConverter,
+    });
+    const ttyCall = host.callsTo("writefile").find((c) =>
+      c.args[2] === "/dev/tty"
+    );
+    const payload = (ttyCall!.args[1] as string[])[0];
+    // ESC 7 (DECSC) + ESC [ row;col H + sixel + ESC 8 (DECRC).
+    assertEquals(payload.startsWith("\x1b7\x1b[8;1H"), true);
+    assertEquals(payload.endsWith("\x1b8"), true);
+  });
+
+  it("calls redraw before reading screenpos so positions are current", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: fakeConverter,
+    });
+    const redrawCalls = host.cmdsMatching("redraw");
+    assertEquals(
+      redrawCalls.length > 0,
+      true,
+      "redraw must run before screenpos to flush pending screen state",
+    );
+  });
+
   it("does not call chansend on Vim host", async () => {
     await applyRenderPlan(host, 1, sixelPlan(), {
       _magickConverter: fakeConverter,
@@ -211,6 +237,16 @@ describe("applyRenderPlan — sixel-apply (Neovim host)", () => {
       2,
       "first chansend arg must be the v:stderr channel id",
     );
+  });
+
+  it("wraps sixel data with cursor-position move on Neovim too", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: fakeConverter,
+    });
+    const chansend = host.callsTo("chansend");
+    const payload = chansend[0].args[2] as string;
+    assertEquals(payload.startsWith("\x1b7\x1b[8;1H"), true);
+    assertEquals(payload.endsWith("\x1b8"), true);
   });
 
   it("does not call writefile to /dev/tty on Neovim host", async () => {

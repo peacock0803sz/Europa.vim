@@ -78,6 +78,13 @@ export class MockHost implements Denops {
     }
     if (fn === "bufnr") return Promise.resolve(1);
     if (fn === "bufwinid") return Promise.resolve(1000);
+    if (fn === "screenpos") {
+      // (winid, lnum, col) — return a 1-indexed screen position that maps the
+      // buffer line to itself plus a 1-col offset, so tests can verify the
+      // ANSI cursor-move escape carries the expected row/col.
+      const lnum = args[1] as number;
+      return Promise.resolve({ row: lnum, col: 1, endcol: 1, curscol: 1 });
+    }
     return Promise.resolve(null);
   }
 

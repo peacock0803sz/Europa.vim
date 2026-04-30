@@ -77,9 +77,32 @@ async function writeBytesToTty(host: Denops, bytes: Uint8Array): Promise<void> {
   }
 }
 
+/**
+ * Wrap raw Sixel bytes with DECSC + cursor-position move + DECRC so the image
+ * is anchored at (row, col) and the editor's cursor is restored afterward.
+ *
+ * Sequence emitted: ESC 7 (save cursor), ESC [ row ; col H (move), <sixel>,
+ * ESC 8 (restore cursor).  Coordinates are 1-indexed to match the ANSI spec
+ * and Vim's `screenpos()` return values.
+ */
+function wrapWithCursorMove(
+  sixel: Uint8Array,
+  row: number,
+  col: number,
+): Uint8Array {
+  const enc = new TextEncoder();
+  const prefix = enc.encode(`\x1b7\x1b[${row};${col}H`);
+  const suffix = enc.encode("\x1b8");
+  const out = new Uint8Array(prefix.length + sixel.length + suffix.length);
+  out.set(prefix, 0);
+  out.set(sixel, prefix.length);
+  out.set(suffix, prefix.length + sixel.length);
+  return out;
+}
+
 async function applySixelPlacements(
   host: Denops,
-  _bufnr: number,
+  bufnr: number,
   placements: SixelPlacement[],
   converter?: MagickConverter,
 ): Promise<void> {
@@ -95,6 +118,14 @@ async function applySixelPlacements(
     conv = makeMagickConverter(magickCmd);
   }
 
+  const winid = await host.call("bufwinid", bufnr);
+  if (typeof winid !== "number" || winid === -1) return;
+
+  // Force a screen update because applyRenderPlan runs inside an RPC call —
+  // the buffer text has been written via setbufline but the screen has not
+  // yet been redrawn, so screenpos() would otherwise report stale rows.
+  await host.cmd("redraw");
+
   for (const sp of placements) {
     const pngBytes = decodeBase64(sp.payload);
     const sixelBytes = await conv(pngBytes);
@@ -104,14 +135,22 @@ async function applySixelPlacements(
       );
       continue;
     }
-    await writeBytesToTty(host, sixelBytes);
+    const pos = await host.call("screenpos", winid, sp.line + 1, 1) as
+      | { row?: number; col?: number }
+      | null;
+    const row = pos && typeof pos.row === "number" ? pos.row : 0;
+    const col = pos && typeof pos.col === "number" ? pos.col : 0;
+    // screenpos returns row 0 when the line is scrolled off-screen — skip
+    // because writing Sixel without a valid anchor would clobber unrelated
+    // rows (this is the bug the user hit when the image landed at home).
+    if (row === 0) continue;
+    await writeBytesToTty(host, wrapWithCursorMove(sixelBytes, row, col));
   }
 
   // Repaint autocmds (FR-022) are deferred because they must call a
-  // `refreshSixel` dispatcher (not yet implemented) and cannot anchor images
-  // at the placeholder line without screen-cell cursor positioning.
-  // Registering the autocmd now would raise on every WinScrolled since the
-  // dispatcher is missing.  Re-add when both pieces are in place.
+  // `refreshSixel` dispatcher (not yet implemented).  Registering the
+  // autocmd now would raise on every WinScrolled since the dispatcher is
+  // missing.  Re-add once `refreshSixel` lands.
 }
 
 /**
