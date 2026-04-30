@@ -1,9 +1,33 @@
 ==============================================================================
 REQUIREMENTS						*europa-requirements*
 
-TODO(phase-2): List the runtime requirements: Vim 9.1.1646+ or Neovim 0.11.3+,
-Deno 2.3.0+, denops.vim plus `@denops/std`, and a user-supplied `jupyter`
-command (auto-detection via `.venv/`, `venv/`, `VIRTUAL_ENV`, `CONDA_PREFIX`).
-Cross-reference `DESIGN.md` chapter 6.5 (kernel connection / venv detection).
+EDITOR~
+							*europa-requirements-editor*
+- Vim 9.1.1646 or later
+- Neovim 0.11.3 or later
+
+Either host is fully supported. The plugin uses Vim text properties and
+Neovim extmarks respectively behind a common interface.
+
+RUNTIME~
+							*europa-requirements-runtime*
+- Deno 2.3.0 or later		https://deno.land/
+- denops.vim			https://github.com/vim-denops/denops.vim
+
+Deno is the TypeScript runtime that powers Europa.vim. denops.vim is the
+bridge between the editor and the Deno process.
+
+OPTIONAL~
+							*europa-requirements-optional*
+- ImageMagick (`magick` or `convert` on PATH)
+
+  Required only when |g:europa_image_backend| is set to `'sixel'`. Europa
+  uses ImageMagick to convert PNG/JPEG data to Sixel escape sequences.
+
+- A Sixel-capable terminal emulator
+
+  WezTerm is the only terminal verified to work with the Sixel opt-in as
+  of Phase 2. Ghostty 1.3.1 (standard build) and tmux 3.6a without the
+  `sixel` compile flag do not pass Sixel through.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

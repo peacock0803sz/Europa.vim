@@ -1,9 +1,34 @@
 ==============================================================================
 INTRODUCTION						*europa-introduction*
 
-TODO(phase-2): Describe Europa.vim as a denops-based plugin for viewing (and
-later editing) Jupyter `.ipynb` notebooks inside Vim/Neovim. Cover the
-positioning relative to upstream Jupyter and the cross-host parity goal. See
-`DESIGN.md` chapter 1.1 (Identity) for source material.
+Europa.vim is a Vim/Neovim plugin for viewing Jupyter `.ipynb` notebooks
+directly inside the editor. It is built on denops.vim and runs all TypeScript
+logic under Deno, giving identical behaviour on both hosts.
+
+Phase 2 (current) provides read-only viewing and round-trip saving. Opening
+a notebook renders each cell with Unicode border decoration and highlights
+rich outputs: plain text, streams, tracebacks, JSON, Markdown, and HTML.
+Images are shown as text placeholders by default; an experimental Sixel
+path is available for terminals that support it.
+
+Kernel connection, cell execution, and cell editing land in Phase 3.
+
+QUICK START~
+							*europa-quickstart*
+1. Open any `.ipynb` file: >
+	:edit path/to/notebook.ipynb
+<
+2. The buffer is read-only (`modifiable=false`). Each cell is framed by
+   `╭─ In [N] ─╮` / `╰─ Out [N] ─╯` decorations.
+
+3. To open an image output in the system image viewer: >
+	:EuropaPreviewOutput {cellIdx} {outputIdx}
+<
+   The cell and output indices appear inside the placeholder line shown in
+   the buffer.
+
+4. To save back to disk in canonical `.ipynb` format: >
+	:write
+<
 
 vim:tw=78:ts=8:noet:ft=help:norl:

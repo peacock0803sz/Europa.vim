@@ -1,10 +1,42 @@
 ==============================================================================
 EXAMPLES						*europa-examples*
 
-TODO(phase-2): Walk through canonical end-to-end flows: open a `.ipynb`,
-navigate cell boundaries, preview an output (image/png placeholder via
-`:EuropaPreviewOutput`), and (Phase 3+) execute a cell against an attached
-kernel. Each example should reference the relevant `@spec-id` once the BDD
-specs land.
+BASIC VIEWING~
+						*europa-examples-viewing*
+Open a notebook and browse its cells: >
+	:edit ~/projects/analysis.ipynb
+<
+The buffer renders each cell with Unicode borders. Code cells show their
+source and any captured outputs. Markdown cells show the source text with
+heading lines highlighted. Use standard Vim motion keys to navigate.
+
+PREVIEWING AN IMAGE OUTPUT~
+					*europa-examples-preview*
+When a cell contains an image output the buffer shows a placeholder line: >
+	[image: png 640x480 - :EuropaPreviewOutput 2 0]
+<
+The two numbers are the cell index and output index (both zero-based). Run
+the embedded command to open the image in the system viewer: >
+	:EuropaPreviewOutput 2 0
+<
+
+SAVING A NOTEBOOK~
+					*europa-examples-save*
+`:write` serialises the in-memory notebook back to disk in canonical
+`.ipynb` format (1-space indent, trailing newline): >
+	:write
+<
+The round-trip is semantic: `parse(serialize(parse(x)))` equals `parse(x)`
+for all well-formed notebooks.
+
+SIXEL INLINE IMAGES (EXPERIMENTAL)~
+					*europa-examples-sixel*
+On a Sixel-capable terminal (e.g. WezTerm) with ImageMagick installed,
+add to your vimrc: >
+	let g:europa_image_backend = 'sixel'
+<
+Then open a notebook that contains image outputs. If ImageMagick is not
+found, or if conversion fails, the plugin falls back to the text placeholder
+and prints a message in `:messages`.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

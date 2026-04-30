@@ -1,10 +1,33 @@
 ==============================================================================
 ABOUT							*europa-about*
 
-TODO(phase-2): Record the project metadata: name (`Europa.vim`), upstream URL
-(`github.com/peacock0803sz/Europa.vim`), license (see `LICENCE` at the
-repository root), and credits to denops.vim, panvimdoc, typedoc, and the
-Jupyter project. Keep this short; everything substantive belongs in the
-preceding chapters.
+Europa.vim is developed by Peacock (peacock0803sz).
+Repository: https://github.com/peacock0803sz/Europa.vim
+License: See `LICENCE` at the repository root.
+
+PHASE ROADMAP~
+						*europa-about-roadmap*
+Phase 2 (current): Read-only `.ipynb` viewer with rich output rendering
+		   and experimental Sixel inline images.
+Phase 3 (planned): Cell execution, kernel management, full inline image
+		   rendering via Kitty Unicode Placeholder.
+Phase 4 (planned): Direct ZMQ attach to an existing kernel connection file,
+		   advanced MIME types (Vega-Lite, PDF).
+Phase 5 (planned): ipywidgets comm support, cell editing.
+
+CREDITS~
+							*europa-about-credits*
+Europa.vim is built on the following projects:
+
+- denops.vim    The Vim/Neovim + Deno bridge.
+		https://github.com/vim-denops/denops.vim
+- TypeBox       Runtime type validation for all schemas.
+		https://github.com/sinclairzx81/typebox
+- typedoc       API documentation generation from TSDoc comments.
+		https://typedoc.org/
+- panvimdoc     Converts Markdown to Vim help format.
+		https://github.com/kdheepak/panvimdoc
+- Jupyter       The `.ipynb` format specification.
+		https://jupyter.org/
 
 vim:tw=78:ts=8:noet:ft=help:norl:
