@@ -30,7 +30,7 @@ import { loadConfig } from "./config.ts";
 import { detectCapabilities } from "./capabilities.ts";
 import { setupAutocmds } from "./session/events.ts";
 import { parseNotebook } from "./notebook/parse.ts";
-import { buildRenderPlan } from "./render/builder.ts";
+import { buildRenderPlan, mergeStreams } from "./render/builder.ts";
 import { applyRenderPlan } from "./view/viewer.ts";
 import { SessionStore } from "./session/state.ts";
 
@@ -176,7 +176,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
-      const outputs = cell.outputs ?? [];
+      // Use mergeStreams to align with the indices embedded in placeholders
+      // by buildRenderPlan, which also runs mergeStreams before dispatching.
+      const outputs = mergeStreams(cell.outputs ?? []);
       const output = outputs[outputIdxNum];
       if (!output) {
         await echomError(denops, `output index ${outputIdxNum} out of range`);

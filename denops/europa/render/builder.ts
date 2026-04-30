@@ -18,7 +18,7 @@ import { renderMarkdown } from "./markdown.ts";
 const DEFAULT_MAX_OUTPUT_LINES = 100;
 
 /** Merge consecutive stream outputs of the same name (FR-012). */
-function mergeStreams(outputs: readonly Output[]): Output[] {
+export function mergeStreams(outputs: readonly Output[]): Output[] {
   const merged: Output[] = [];
   for (const out of outputs) {
     const prev = merged[merged.length - 1];
