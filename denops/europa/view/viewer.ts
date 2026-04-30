@@ -127,7 +127,15 @@ async function applySixelPlacements(
   await host.cmd("redraw");
 
   for (const sp of placements) {
-    const imageBytes = decodeBase64(sp.payload);
+    let imageBytes: Uint8Array;
+    try {
+      imageBytes = decodeBase64(sp.payload);
+    } catch {
+      await host.cmd(
+        "echohl WarningMsg | echom 'Europa: Invalid image payload — keeping placeholder' | echohl None",
+      );
+      continue;
+    }
     const sixelBytes = await conv(imageBytes);
     if (!sixelBytes) {
       await host.cmd(
