@@ -22,13 +22,13 @@ export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd("augroup europa_ipynb");
   await host.cmd("autocmd!");
   await host.cmd(
-    "autocmd BufReadCmd *.ipynb call denops#notify('europa', 'open', [expand('<afile>')])",
+    "autocmd BufReadCmd *.ipynb call europa#open(expand('<afile>'))",
   );
   await host.cmd(
-    "autocmd BufWriteCmd *.ipynb call denops#notify('europa', 'save', [expand('<afile>')])",
+    "autocmd BufWriteCmd *.ipynb call europa#save()",
   );
   await host.cmd(
-    "autocmd BufUnload *.ipynb call denops#notify('europa', 'cleanup', [str2nr(expand('<abuf>'))])",
+    "autocmd BufUnload *.ipynb call europa#cleanup(str2nr(expand('<abuf>')))",
   );
   await host.cmd("augroup END");
 }
