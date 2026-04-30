@@ -162,18 +162,29 @@ describe("renderImage — sixel-metadata", () => {
   });
 
   it("reserves spacer rows beneath the placeholder for sixel backend", () => {
-    // 480px metadata height → ceil(480/20) = 24 spacer rows so subsequent
+    // 480px metadata height → ceil(480/16) = 30 spacer rows so subsequent
     // cells are not visually overlaid by the inline image.
     const result = renderImage(PNG_B64, "image/png", capsSixel, {
       cellIdx: 0,
       outputIdx: 0,
       height: 480,
     });
-    assertEquals(result.fragment.lines.length, 25);
+    assertEquals(result.fragment.lines.length, 31);
     assertEquals(result.fragment.lines[0].startsWith("[image:"), true);
     for (let i = 1; i < result.fragment.lines.length; i++) {
       assertEquals(result.fragment.lines[i], "");
     }
+  });
+
+  it("honors meta.cellHeightPx override when provided", () => {
+    // 480px height with explicit 24px cell height → ceil(480/24) = 20.
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+      height: 480,
+      cellHeightPx: 24,
+    });
+    assertEquals(result.fragment.lines.length, 21);
   });
 
   it("does not reserve spacer rows for placeholder backend", () => {

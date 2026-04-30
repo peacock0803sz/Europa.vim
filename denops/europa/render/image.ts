@@ -15,12 +15,16 @@ import type {
   RenderFragment,
 } from "../../../schema/render-plan.ts";
 
-// 20px is used because we cannot query the real cell height from a denops
-// plugin (no DA1 round-trip available) and it is a safe middle-of-the-road
-// estimate for WezTerm / Ghostty at typical font sizes (real cells range
-// from ~16px to ~32px).  This estimate must err slightly large so the
-// reserved spacer rows cover the image rather than under-shooting.
-const SIXEL_CELL_HEIGHT_PX = 20;
+// 16px is used because the spacer estimate must under-shoot real cell
+// height rather than over-shoot — a value too large produces too few
+// reserved rows and lets the Sixel image overlay subsequent cells, while
+// a too-small value only adds a few extra blank lines.  WezTerm /
+// Ghostty / iTerm2 with default fonts sit around 16-22px on Retina
+// displays, so 16 reserves enough rows for the common case.  The
+// constant is a module-private fallback; the per-render override comes
+// in via `meta.cellHeightPx` so callers can plumb a configured value
+// (e.g. `g:europa_sixel_cell_height_px`) when they have one.
+const SIXEL_CELL_HEIGHT_PX = 16;
 
 /**
  * Read pixel height from a base64-encoded PNG header.
@@ -75,7 +79,13 @@ export function renderImage(
   data: string,
   mime: "image/png" | "image/jpeg",
   caps: Capabilities,
-  meta: { cellIdx: number; outputIdx: number; width?: number; height?: number },
+  meta: {
+    cellIdx: number;
+    outputIdx: number;
+    width?: number;
+    height?: number;
+    cellHeightPx?: number;
+  },
 ): ImageRenderResult {
   const kind = mime === "image/png" ? "png" : "jpeg";
   const w = meta.width !== undefined ? String(meta.width) : "?";
@@ -91,12 +101,13 @@ export function renderImage(
   // grid and would otherwise hide whatever buffer text sits below them).
   if (caps.image === "sixel") {
     const pixelHeight = meta.height ?? pngPixelHeight(data);
-    // Default to 10 spacer rows when the height cannot be determined — JPEGs
-    // and tiny fixtures fall through here and a generous default is safer
-    // than zero (which always overlays subsequent cells).
-    const rows = pixelHeight
-      ? Math.ceil(pixelHeight / SIXEL_CELL_HEIGHT_PX)
-      : 10;
+    const cellHeight = meta.cellHeightPx && meta.cellHeightPx > 0
+      ? meta.cellHeightPx
+      : SIXEL_CELL_HEIGHT_PX;
+    // Default to 16 spacer rows when the pixel height cannot be determined
+    // because JPEG / unparsable inputs fall through here and a generous
+    // default must be used to avoid overlaying subsequent cells.
+    const rows = pixelHeight ? Math.ceil(pixelHeight / cellHeight) : 16;
     for (let i = 0; i < rows; i++) lines.push("");
   }
 
