@@ -66,6 +66,14 @@
               pass_filenames = false;
             };
 
+            deno-ci = {
+              enable = true;
+              name = "deno task ci";
+              entry = "${pkgs.deno}/bin/deno task ci";
+              files = "\\.(ts|js|tsx|jsx)$";
+              pass_filenames = false;
+            };
+
             gen-vimdoc-diff = {
               enable = true;
               name = "gen:vimdoc + git diff doc/europa.txt";
