@@ -194,7 +194,7 @@ export function lineToCellId(
 }
 
 /**
- * Restore the cursor after a structural mutation using a 4-stage priority:
+ * Restore the cursor after a structural mutation using a 5-stage priority:
  *
  * 1. `hint.preferCellId` — move to the hint cell (e.g. newly inserted cell).
  * 2. `preMutationCellId` still present in `newCellRanges` — move there.
