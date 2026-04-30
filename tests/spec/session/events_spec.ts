@@ -10,7 +10,7 @@ import { assertEquals } from "@std/assert";
 import { setupAutocmds } from "../../../denops/europa/session/events.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
 
-describe("setupAutocmds / @spec-id europa.session.events.bufreadcmd", () => {
+describe("setupAutocmds", () => {
   it("registers BufReadCmd for *.ipynb", async () => {
     const host = mockVim();
     await setupAutocmds(host);
@@ -30,7 +30,7 @@ describe("setupAutocmds / @spec-id europa.session.events.bufreadcmd", () => {
   });
 });
 
-describe("setupAutocmds / @spec-id europa.session.events.bufwritecmd", () => {
+describe("setupAutocmds", () => {
   it("registers BufWriteCmd for *.ipynb", async () => {
     const host = mockVim();
     await setupAutocmds(host);
@@ -43,7 +43,7 @@ describe("setupAutocmds / @spec-id europa.session.events.bufwritecmd", () => {
   });
 });
 
-describe("setupAutocmds / @spec-id europa.session.events.cleanup", () => {
+describe("setupAutocmds", () => {
   it("registers BufUnload for *.ipynb cleanup", async () => {
     const host = mockVim();
     await setupAutocmds(host);

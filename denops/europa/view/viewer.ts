@@ -2,18 +2,10 @@
  * Viewer: applies a RenderPlan to a Vim/Neovim buffer.
  *
  * @category View
- * @spec-id europa.view.viewer.modifiable
- * @spec-id europa.view.viewer.conceal-zero
- * @spec-id europa.view.viewer.lazy-render
  */
 
 import type { Denops } from "@denops/std";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
-
-export type ViewerOptions = {
-  /** Restrict rendering to lines visible in the given viewport. */
-  viewport?: { topLine: number; bottomLine: number };
-};
 
 /**
  * Apply a `RenderPlan` to a buffer.
@@ -34,7 +26,7 @@ export async function applyRenderPlan(
   host: Denops,
   _bufnr: number,
   plan: RenderPlan,
-  opts?: ViewerOptions,
+  opts?: { viewport?: { topLine: number; bottomLine: number } },
 ): Promise<void> {
   await host.cmd("setlocal modifiable=false");
   await host.cmd("setlocal conceallevel=0");

@@ -2,8 +2,6 @@
  * Cell-level helpers: id assignment and source joining.
  *
  * @category Notebook
- * @spec-id europa.notebook.cell.assign-id
- * @spec-id europa.notebook.cell.join-source
  */
 
 import { v7 } from "@std/uuid";

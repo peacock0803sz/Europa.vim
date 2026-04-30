@@ -11,7 +11,7 @@ import {
 } from "../../../denops/europa/view/popup.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
 
-describe("openViewerPopup / @spec-id europa.view.popup.basic", () => {
+describe("openViewerPopup", () => {
   it("returns a numeric popup id", async () => {
     const host = mockVim();
     const id = await openViewerPopup(host, { lines: ["hello"] });
@@ -26,7 +26,7 @@ describe("openViewerPopup / @spec-id europa.view.popup.basic", () => {
   });
 });
 
-describe("closePopup / @spec-id europa.view.popup.basic", () => {
+describe("closePopup", () => {
   it("issues a close command for the given popup id", async () => {
     const host = mockVim();
     const id = await openViewerPopup(host, { lines: ["msg"] });

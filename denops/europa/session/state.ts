@@ -5,7 +5,6 @@
  * are a Phase 3 concern.
  *
  * @category Session
- * @spec-id europa.session.state.store
  */
 
 import type { Session } from "../../../schema/session.ts";

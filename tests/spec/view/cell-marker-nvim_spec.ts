@@ -11,7 +11,7 @@ import { type MockHost, mockNvim } from "../../fixtures/mock-host.ts";
 let host: MockHost;
 let marker: NvimCellMarker;
 
-describe("NvimCellMarker / @spec-id europa.view.cell-marker.nvim", () => {
+describe("NvimCellMarker", () => {
   beforeEach(() => {
     host = mockNvim();
     marker = new NvimCellMarker();

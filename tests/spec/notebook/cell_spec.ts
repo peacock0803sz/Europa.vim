@@ -11,7 +11,7 @@ import {
   joinSource,
 } from "../../../denops/europa/notebook/cell.ts";
 
-describe("assignCellId / @spec-id europa.notebook.cell.assign-id", () => {
+describe("assignCellId", () => {
   it("returns a non-empty string", () => {
     const id = assignCellId();
     assertEquals(typeof id, "string");
@@ -31,7 +31,7 @@ describe("assignCellId / @spec-id europa.notebook.cell.assign-id", () => {
   });
 });
 
-describe("joinSource / @spec-id europa.notebook.cell.join-source", () => {
+describe("joinSource", () => {
   it("returns a string argument unchanged", () => {
     assertEquals(joinSource("hello"), "hello");
     assertEquals(joinSource(""), "");

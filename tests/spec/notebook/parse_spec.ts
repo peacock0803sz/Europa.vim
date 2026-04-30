@@ -21,7 +21,7 @@ function minimalNotebook(cells: unknown[], nbformatMinor = 5): string {
   });
 }
 
-describe("parseNotebook / @spec-id europa.notebook.parse.normalize", () => {
+describe("parseNotebook", () => {
   it("joins string[] source into a single string", async () => {
     const raw = minimalNotebook([{
       cell_type: "code",
@@ -63,7 +63,7 @@ describe("parseNotebook / @spec-id europa.notebook.parse.normalize", () => {
   });
 });
 
-describe("parseNotebook / @spec-id europa.notebook.parse.id-completion", () => {
+describe("parseNotebook", () => {
   it("assigns a non-empty string id when cell.id is absent", async () => {
     const raw = minimalNotebook([{
       cell_type: "code",
@@ -124,7 +124,7 @@ describe("parseNotebook / @spec-id europa.notebook.parse.id-completion", () => {
   });
 });
 
-describe("parseNotebook / @spec-id europa.notebook.parse.value-check", () => {
+describe("parseNotebook", () => {
   it("throws NotebookParseError when JSON is invalid", async () => {
     const err = await assertRejects(
       () => parseNotebook("{ not valid json"),

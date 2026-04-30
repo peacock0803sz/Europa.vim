@@ -24,7 +24,7 @@ function makeNotebook(cells: Notebook["cells"]): Notebook {
   };
 }
 
-describe("buildRenderPlan / @spec-id europa.render.builder.assemble", () => {
+describe("buildRenderPlan", () => {
   it("returns a RenderPlan with lines and cellMap arrays", () => {
     const nb = makeNotebook([{
       cell_type: "code",

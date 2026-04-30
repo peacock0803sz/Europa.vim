@@ -4,7 +4,6 @@
  * Selects the best MIME type from `mimePriority` and returns a RenderFragment.
  *
  * @category Render
- * @spec-id europa.render.dispatcher.mime-priority
  */
 
 import type { Capabilities } from "../../../schema/capabilities.ts";

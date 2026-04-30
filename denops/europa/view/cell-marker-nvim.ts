@@ -2,17 +2,10 @@
  * Neovim extmark-based cell marker.
  *
  * @category View
- * @spec-id europa.view.cell-marker.nvim
  */
 
 import type { Denops } from "@denops/std";
-import type { CellMarker } from "./cell-marker.ts";
-
-type ExtmarkRecord = {
-  lnum: number;
-  label: string;
-  kind: "head" | "output";
-};
+import type { CellMarker, MarkerId } from "../../../contracts/cell-marker.ts";
 
 /**
  * CellMarker implementation for Neovim using the `nvim_buf_set_extmark` API.
@@ -22,7 +15,10 @@ type ExtmarkRecord = {
 export class NvimCellMarker implements CellMarker {
   private _host?: Denops;
   private _nsId?: number;
-  private readonly _markers = new Map<number, ExtmarkRecord[]>();
+  private readonly _markers = new Map<
+    number,
+    Array<{ lnum: number; label: string; kind: "head" | "output" }>
+  >();
 
   async init(host: Denops): Promise<void> {
     this._host = host;
@@ -33,39 +29,45 @@ export class NvimCellMarker implements CellMarker {
     )) as number;
   }
 
-  async setHead(bufnr: number, lnum: number, label: string): Promise<void> {
+  async setHead(
+    bufnr: number,
+    lnum: number,
+    label: string,
+  ): Promise<MarkerId> {
     const recs = this._markers.get(bufnr) ?? [];
     recs.push({ lnum, label, kind: "head" });
     this._markers.set(bufnr, recs);
-    await this._host!.call(
+    const id = (await this._host!.call(
       "nvim_buf_set_extmark",
       bufnr,
       this._nsId!,
       lnum - 1,
       0,
       { virt_lines: [[[label, "EuropaCellHead"]]] },
-    );
+    )) as MarkerId | null;
+    return id ?? 0;
   }
 
   async setOutputBoundary(
     bufnr: number,
     lnum: number,
     label = "",
-  ): Promise<void> {
+  ): Promise<MarkerId> {
     const recs = this._markers.get(bufnr) ?? [];
     recs.push({ lnum, label, kind: "output" });
     this._markers.set(bufnr, recs);
-    await this._host!.call(
+    const id = (await this._host!.call(
       "nvim_buf_set_extmark",
       bufnr,
       this._nsId!,
       lnum - 1,
       0,
       { virt_lines: [[[label, "EuropaCellOut"]]] },
-    );
+    )) as MarkerId | null;
+    return id ?? 0;
   }
 
-  async clear(bufnr: number): Promise<void> {
+  async clear(bufnr: number, _ids?: MarkerId[]): Promise<void> {
     await this._host!.call(
       "nvim_buf_clear_namespace",
       bufnr,

@@ -25,7 +25,7 @@ function makeSession(bufnr: number): Session {
 
 let store: SessionStore;
 
-describe("SessionStore / @spec-id europa.session.state.store", () => {
+describe("SessionStore", () => {
   beforeEach(() => {
     store = new SessionStore();
   });

@@ -6,9 +6,6 @@
  * closing a notebook buffer notifies the Denops plugin.
  *
  * @category Session
- * @spec-id europa.session.events.bufreadcmd
- * @spec-id europa.session.events.bufwritecmd
- * @spec-id europa.session.events.cleanup
  */
 
 import type { Denops } from "@denops/std";

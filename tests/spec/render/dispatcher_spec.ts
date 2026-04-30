@@ -24,7 +24,7 @@ const defaultMimePriority = [
   "text/plain",
 ];
 
-describe("dispatchOutput / @spec-id europa.render.dispatcher.mime-priority", () => {
+describe("dispatchOutput", () => {
   it("routes stream outputs directly", () => {
     const out: Output = {
       output_type: "stream",

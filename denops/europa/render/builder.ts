@@ -2,7 +2,6 @@
  * RenderPlan builder: assembles a Notebook into a flat line buffer.
  *
  * @category Render
- * @spec-id europa.render.builder.assemble
  */
 
 import type { Capabilities } from "../../../schema/capabilities.ts";

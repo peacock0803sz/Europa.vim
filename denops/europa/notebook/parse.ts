@@ -9,9 +9,6 @@
  *   5. Throw NotebookParseError on failure
  *
  * @category Notebook
- * @spec-id europa.notebook.parse.normalize
- * @spec-id europa.notebook.parse.id-completion
- * @spec-id europa.notebook.parse.value-check
  */
 
 import { Value } from "@sinclair/typebox/value";
@@ -22,10 +19,7 @@ import {
 } from "../../../schema/notebook.ts";
 import { assignCellId } from "./cell.ts";
 
-/**
- * Thrown when a `.ipynb` file fails pre- or post-normalize validation.
- * @spec-id europa.notebook.parse.value-check
- */
+/** Thrown when a `.ipynb` file fails pre- or post-normalize validation. */
 export class NotebookParseError extends Error {
   constructor(
     message: string,
@@ -43,6 +37,7 @@ export class NotebookParseError extends Error {
  * @param content - Raw JSON string from a `.ipynb` file.
  * @returns Fully normalized `Notebook` satisfying `NotebookSchema`.
  * @throws {NotebookParseError} When validation fails at either stage.
+ * @spec-id europa.contract.notebook-alignment
  * @spec-id europa.notebook.parse.normalize
  * @spec-id europa.notebook.parse.id-completion
  * @spec-id europa.notebook.parse.value-check

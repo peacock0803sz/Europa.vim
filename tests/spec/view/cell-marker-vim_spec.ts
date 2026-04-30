@@ -11,7 +11,7 @@ import { type MockHost, mockVim } from "../../fixtures/mock-host.ts";
 let host: MockHost;
 let marker: VimCellMarker;
 
-describe("VimCellMarker / @spec-id europa.view.cell-marker.vim", () => {
+describe("VimCellMarker", () => {
   beforeEach(() => {
     host = mockVim();
     marker = new VimCellMarker();

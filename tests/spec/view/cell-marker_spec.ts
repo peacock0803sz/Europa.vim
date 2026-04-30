@@ -8,7 +8,7 @@ import { assertEquals } from "@std/assert";
 import { createCellMarker } from "../../../denops/europa/view/cell-marker.ts";
 import { mockNvim, mockVim } from "../../fixtures/mock-host.ts";
 
-describe("createCellMarker / @spec-id europa.view.cell-marker.factory", () => {
+describe("createCellMarker", () => {
   it("returns a CellMarker for Vim host", () => {
     const host = mockVim();
     const marker = createCellMarker(host);

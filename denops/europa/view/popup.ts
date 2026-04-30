@@ -2,17 +2,9 @@
  * Popup window helpers for Europa's floating viewer.
  *
  * @category View
- * @spec-id europa.view.popup.basic
  */
 
 import type { Denops } from "@denops/std";
-
-export type PopupOptions = {
-  lines: string[];
-  title?: string;
-  width?: number;
-  height?: number;
-};
 
 let _nextPopupId = 1;
 
@@ -29,7 +21,7 @@ let _nextPopupId = 1;
  */
 export async function openViewerPopup(
   host: Denops,
-  opts: PopupOptions,
+  opts: { lines: string[]; title?: string; width?: number; height?: number },
 ): Promise<number> {
   const id = (await host.call("popup_create", opts.lines, {
     title: opts.title ?? "",
@@ -44,7 +36,6 @@ export async function openViewerPopup(
  *
  * @param host - Active Denops instance.
  * @param popupId - The id returned by `openViewerPopup`.
- * @spec-id europa.view.popup.basic
  */
 export async function closePopup(
   host: Denops,

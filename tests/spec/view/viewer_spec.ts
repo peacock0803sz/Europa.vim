@@ -24,7 +24,7 @@ function emptyPlan(): RenderPlan {
 
 let host: MockHost;
 
-describe("applyRenderPlan / @spec-id europa.view.viewer.modifiable", () => {
+describe("applyRenderPlan", () => {
   beforeEach(() => {
     host = mockVim();
   });
@@ -35,14 +35,14 @@ describe("applyRenderPlan / @spec-id europa.view.viewer.modifiable", () => {
     assertEquals(cmds.length > 0, true);
   });
 
-  it("issues setlocal conceallevel=0 / @spec-id europa.view.viewer.conceal-zero", async () => {
+  it("issues setlocal conceallevel=0", async () => {
     await applyRenderPlan(host, 1, emptyPlan());
     const cmds = host.cmdsMatching("conceallevel=0");
     assertEquals(cmds.length > 0, true);
   });
 });
 
-describe("applyRenderPlan / @spec-id europa.view.viewer.lazy-render", () => {
+describe("applyRenderPlan", () => {
   beforeEach(() => {
     host = mockVim();
   });
