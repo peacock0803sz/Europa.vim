@@ -137,9 +137,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
      *
      * Reads the session's stored `Notebook`, serializes it with
      * {@link serializeNotebook} (1-space indent, trailing LF), and writes
-     * atomically to `session.notebookPath`. On success, clears the modified
-     * flag with `setlocal nomodified`. On failure, reports via `:messages`
-     * without overwriting the original file.
+     * it to `session.notebookPath`. On success, clears the modified flag.
+     * On failure, reports via `:messages`.
      *
      * @param bufnr - Buffer number of the open notebook.
      * @spec-id europa.dispatcher.save
