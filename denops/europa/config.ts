@@ -64,7 +64,6 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
     { key: "lazy_padding", gvar: "lazy_padding", def: 10 },
     { key: "auto_save", gvar: "auto_save", def: false },
     { key: "use_subprocess", gvar: "use_subprocess", def: true },
-    { key: "use_default_mappings", gvar: "use_default_mappings", def: false },
   ];
 
 /**
@@ -76,6 +75,7 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
  * @spec-id europa.config.load
  * @spec-id europa.config.default-values
  * @spec-id europa.config.invalid-rejected
+ * @spec-id europa.config.deprecated-use-default-mappings
  * @spec-id europa.contract.config-alignment
  */
 function vimLiteral(value: unknown): string {
@@ -103,6 +103,16 @@ export async function loadConfig(denops: Denops): Promise<EuropaConfig> {
       first?.message ?? "unknown",
       first?.path ?? "/",
       first?.value,
+    );
+  }
+
+  // Warn if the user still has the removed option in their vimrc.
+  const hasDeprecated = await denops.eval(
+    `exists('g:europa_use_default_mappings')`,
+  );
+  if (hasDeprecated) {
+    await denops.cmd(
+      "echohl WarningMsg | echom 'g:europa_use_default_mappings is deprecated and ignored. Use <Plug>(europa-*) directly.' | echohl None",
     );
   }
 

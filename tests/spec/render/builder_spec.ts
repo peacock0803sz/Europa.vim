@@ -2,6 +2,8 @@
  * BDD specs for buildRenderPlan.
  *
  * @spec-id europa.render.builder.assemble
+ * @spec-id europa.render.builder.cell-ranges
+ * @spec-id europa.render.builder.empty-notebook-guidance
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertExists } from "@std/assert";
@@ -121,6 +123,115 @@ describe("buildRenderPlan", () => {
 
   // FR-051 — output line cap is per-cell (not per-output) and includes the
   // `[... truncated, N more lines]` summary in the cap.
+  // --- Phase 3.1: cellRanges ---
+
+  describe("cellRanges (europa.render.builder.cell-ranges)", () => {
+    it("single code cell has startLine=0 and endLine covers all emitted lines", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "cell-a",
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.cellRanges.length, 1);
+      assertEquals(plan.cellRanges[0].cellId, "cell-a");
+      assertEquals(plan.cellRanges[0].startLine, 0);
+      assertEquals(plan.cellRanges[0].endLine, plan.lines.length - 1);
+    });
+
+    it("consecutive cell ranges are contiguous (endLine[i] + 1 === startLine[i+1])", () => {
+      const nb = makeNotebook([
+        {
+          cell_type: "code",
+          id: "cell-1",
+          source: "a = 1",
+          execution_count: null,
+          outputs: [],
+          metadata: {},
+        },
+        {
+          cell_type: "markdown",
+          id: "cell-2",
+          source: "# Hello",
+          metadata: {},
+        },
+        {
+          cell_type: "code",
+          id: "cell-3",
+          source: "b = 2",
+          execution_count: null,
+          outputs: [],
+          metadata: {},
+        },
+      ]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.cellRanges.length, 3);
+      assertEquals(
+        plan.cellRanges[0].endLine + 1,
+        plan.cellRanges[1].startLine,
+      );
+      assertEquals(
+        plan.cellRanges[1].endLine + 1,
+        plan.cellRanges[2].startLine,
+      );
+    });
+
+    it("startLine of a cell equals its header line index (boundary included)", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "cell-x",
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      // The header line is emitted first, so startLine should match it
+      assertEquals(plan.cellRanges[0].startLine, 0);
+      // plan.lines[0] is the header "## [code] cell-x"
+      assertEquals(plan.lines[0].includes("cell-x"), true);
+    });
+
+    it("empty notebook returns cellRanges=[] and 8 guidance lines", () => {
+      const nb = makeNotebook([]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.cellRanges.length, 0);
+      assertEquals(plan.lines.length, 8);
+      assertEquals(plan.lines[0], "[Empty notebook]");
+      assertEquals(plan.lines[2], "This notebook has no cells.");
+    });
+
+    it("boundary lines are within the cell range (startLine and endLine)", () => {
+      const nb = makeNotebook([
+        {
+          cell_type: "code",
+          id: "first",
+          source: "a",
+          execution_count: null,
+          outputs: [],
+          metadata: {},
+        },
+        {
+          cell_type: "code",
+          id: "second",
+          source: "b",
+          execution_count: null,
+          outputs: [],
+          metadata: {},
+        },
+      ]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      const r0 = plan.cellRanges[0];
+      const r1 = plan.cellRanges[1];
+      // startLine of each range points to the header line
+      assertEquals(plan.lines[r0.startLine].includes("first"), true);
+      assertEquals(plan.lines[r1.startLine].includes("second"), true);
+    });
+  });
+
   describe("max_output_lines cap (FR-051)", () => {
     function streamOf(lineCount: number): Notebook["cells"][number] {
       const text = Array.from({ length: lineCount }, (_, i) => `L${i}`).join(

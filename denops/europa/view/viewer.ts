@@ -12,6 +12,7 @@
 import type { Denops } from "@denops/std";
 import { decodeBase64 } from "@std/encoding/base64";
 import type {
+  CellRange,
   RenderPlan,
   SixelPlacement,
 } from "../../../schema/render-plan.ts";
@@ -165,6 +166,91 @@ async function applySixelPlacements(
   // `refreshSixel` dispatcher (not yet implemented).  Registering the
   // autocmd now would raise on every WinScrolled since the dispatcher is
   // missing.  Re-add once `refreshSixel` lands.
+}
+
+/**
+ * Resolve a 1-origin viewer buffer line number to the cell id that contains it.
+ *
+ * Performs a linear scan over `cellRanges` (sufficient for < 1000 cells).
+ * Converts the 1-origin Vim `line('.')` value to 0-origin before comparing.
+ *
+ * @param cellRanges - Ordered array from the most recent `RenderPlan`.
+ * @param line - 1-origin line number (as returned by Vim's `line('.')`).
+ * @returns The matching `cellId`, or `null` if the line is outside all ranges.
+ * @category View
+ * @spec-id europa.view.viewer.line-to-cellid
+ */
+export function lineToCellId(
+  cellRanges: readonly CellRange[],
+  line: number,
+): string | null {
+  const zero = line - 1;
+  for (const range of cellRanges) {
+    if (zero >= range.startLine && zero <= range.endLine) {
+      return range.cellId;
+    }
+  }
+  return null;
+}
+
+/**
+ * Restore the cursor after a structural mutation using a 4-stage priority:
+ *
+ * 1. `hint.preferCellId` — move to the hint cell (e.g. newly inserted cell).
+ * 2. `preMutationCellId` still present in `newCellRanges` — move there.
+ * 3. Same index in `newCellRanges` as the pre-mutation cell had — adjacent fallback.
+ * 4. Last cell in `newCellRanges` — end-of-notebook fallback.
+ * 5. Empty notebook (`newCellRanges` is empty) — move to line 1.
+ *
+ * @param denops - Denops instance for emitting cursor commands.
+ * @param bufnr - Viewer buffer number (used for future win_execute if needed).
+ * @param preMutationCellId - The cellId the cursor was in before the mutation.
+ * @param preMutationCellRanges - `cellRanges` before the mutation.
+ * @param newCellRanges - `cellRanges` after the mutation.
+ * @param hint - Optional preferred cellId (e.g. newly inserted cell).
+ * @category View
+ * @spec-id europa.view.viewer.restore-cursor
+ */
+export async function restoreCursor(
+  denops: Denops,
+  _bufnr: number,
+  preMutationCellId: string | null,
+  preMutationCellRanges: readonly CellRange[],
+  newCellRanges: readonly CellRange[],
+  hint?: { preferCellId?: string },
+): Promise<void> {
+  // (1) hint overrides everything
+  if (hint?.preferCellId) {
+    const r = newCellRanges.find((r) => r.cellId === hint.preferCellId);
+    if (r) {
+      await denops.cmd(`call cursor(${r.startLine + 1}, 1)`);
+      return;
+    }
+  }
+  // (2) pre-mutation cell still exists
+  if (preMutationCellId) {
+    const r = newCellRanges.find((r) => r.cellId === preMutationCellId);
+    if (r) {
+      await denops.cmd(`call cursor(${r.startLine + 1}, 1)`);
+      return;
+    }
+  }
+  // (3) same index in newCellRanges
+  const idx = preMutationCellRanges.findIndex(
+    (r) => r.cellId === preMutationCellId,
+  );
+  if (idx >= 0 && idx < newCellRanges.length) {
+    await denops.cmd(`call cursor(${newCellRanges[idx].startLine + 1}, 1)`);
+    return;
+  }
+  // (4) last cell
+  if (newCellRanges.length > 0) {
+    const last = newCellRanges[newCellRanges.length - 1];
+    await denops.cmd(`call cursor(${last.startLine + 1}, 1)`);
+    return;
+  }
+  // (5) empty notebook
+  await denops.cmd("call cursor(1, 1)");
 }
 
 /**

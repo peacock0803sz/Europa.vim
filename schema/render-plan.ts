@@ -90,6 +90,14 @@ export const ImageRenderResultSchema = Type.Object({
 });
 export type ImageRenderResult = Static<typeof ImageRenderResultSchema>;
 
+/** Line range covered by a single cell in the viewer buffer. */
+export const CellRangeSchema = Type.Object({
+  cellId: Type.String(),
+  startLine: Type.Integer({ minimum: 0 }),
+  endLine: Type.Integer({ minimum: 0 }),
+});
+export type CellRange = Static<typeof CellRangeSchema>;
+
 export const RenderPlanSchema = Type.Object({
   lines: Type.Array(Type.String()),
   highlights: Type.Array(HighlightSchema),
@@ -104,5 +112,6 @@ export const RenderPlanSchema = Type.Object({
       bufLineEnd: Type.Integer({ minimum: 0 }),
     }),
   ),
+  cellRanges: Type.Array(CellRangeSchema),
 });
 export type RenderPlan = Static<typeof RenderPlanSchema>;

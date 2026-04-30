@@ -1,19 +1,24 @@
 /**
  * BDD specs for applyRenderPlan — modifiable, conceal, lazy rendering,
- * Sixel apply, and Sixel fallback.
+ * Sixel apply, and Sixel fallback; and for lineToCellId / restoreCursor.
  *
  * @spec-id europa.view.viewer.modifiable
  * @spec-id europa.view.viewer.conceal-zero
  * @spec-id europa.view.viewer.lazy-render
  * @spec-id europa.view.viewer.sixel-apply
  * @spec-id europa.view.viewer.sixel-fallback
+ * @spec-id europa.view.viewer.line-to-cellid
+ * @spec-id europa.view.viewer.restore-cursor
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
 import {
   applyRenderPlan,
+  lineToCellId,
   type MagickConverter,
+  restoreCursor,
 } from "../../../denops/europa/view/viewer.ts";
+import type { CellRange } from "../../../schema/render-plan.ts";
 import { type MockHost, mockNvim, mockVim } from "../../fixtures/mock-host.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
 
@@ -32,6 +37,7 @@ function emptyPlan(): RenderPlan {
     imagePlacements: [],
     clickables: [],
     cellMap: [],
+    cellRanges: [],
   };
 }
 
@@ -105,6 +111,7 @@ describe("applyRenderPlan with viewport", () => {
       imagePlacements: [],
       clickables: [],
       cellMap: [{ cellIndex: 0, bufLineStart: 0, bufLineEnd: 99 }],
+      cellRanges: [],
     };
     await applyRenderPlan(host, 1, plan, {
       viewport: { topLine: 50, bottomLine: 60 },
@@ -126,6 +133,7 @@ describe("applyRenderPlan with viewport", () => {
       imagePlacements: [],
       clickables: [],
       cellMap: [{ cellIndex: 0, bufLineStart: 0, bufLineEnd: 4 }],
+      cellRanges: [],
     };
     await applyRenderPlan(host, 1, plan, {
       viewport: { topLine: 1, bottomLine: 3 },
@@ -143,6 +151,7 @@ describe("applyRenderPlan with viewport", () => {
       imagePlacements: [],
       clickables: [],
       cellMap: [],
+      cellRanges: [],
     };
     await applyRenderPlan(host, 1, plan);
     const trim = host.callsTo("deletebufline").find((c) =>
@@ -312,5 +321,119 @@ describe("applyRenderPlan — sixel-fallback", () => {
       0,
       "chansend must NOT be called when sixel conversion fails",
     );
+  });
+});
+
+// --- Phase 3.1: lineToCellId (europa.view.viewer.line-to-cellid) ---
+
+describe("lineToCellId", () => {
+  const ranges: CellRange[] = [
+    { cellId: "cell-a", startLine: 0, endLine: 3 },
+    { cellId: "cell-b", startLine: 4, endLine: 7 },
+    { cellId: "cell-c", startLine: 8, endLine: 10 },
+  ];
+
+  it("returns the cellId for a line inside a range (1-origin input)", () => {
+    // line 1 → 0-origin 0 → cell-a (startLine=0, endLine=3)
+    assertEquals(lineToCellId(ranges, 1), "cell-a");
+    // line 5 → 0-origin 4 → cell-b (startLine=4)
+    assertEquals(lineToCellId(ranges, 5), "cell-b");
+    // line 9 → 0-origin 8 → cell-c (startLine=8)
+    assertEquals(lineToCellId(ranges, 9), "cell-c");
+  });
+
+  it("returns the cellId for boundary lines", () => {
+    // startLine=0 (line 1) and endLine=3 (line 4) both belong to cell-a
+    assertEquals(lineToCellId(ranges, 1), "cell-a");
+    assertEquals(lineToCellId(ranges, 4), "cell-a");
+    // startLine=4 (line 5) belongs to cell-b
+    assertEquals(lineToCellId(ranges, 5), "cell-b");
+    assertEquals(lineToCellId(ranges, 8), "cell-b");
+  });
+
+  it("returns null for a line outside all ranges", () => {
+    assertEquals(lineToCellId(ranges, 12), null);
+    assertEquals(lineToCellId(ranges, 100), null);
+  });
+
+  it("returns null for an empty cellRanges array", () => {
+    assertEquals(lineToCellId([], 1), null);
+  });
+});
+
+// --- Phase 3.1: restoreCursor (europa.view.viewer.restore-cursor) ---
+
+describe("restoreCursor", () => {
+  const newRanges: CellRange[] = [
+    { cellId: "cell-a", startLine: 0, endLine: 2 },
+    { cellId: "cell-b", startLine: 3, endLine: 5 },
+  ];
+
+  it("moves to hint cell when hint.preferCellId is provided", async () => {
+    const h = mockVim();
+    await restoreCursor(
+      h,
+      1,
+      "cell-a",
+      newRanges,
+      newRanges,
+      { preferCellId: "cell-b" },
+    );
+    const cursorCmds = h.cmdsMatching("cursor(4,");
+    assertEquals(
+      cursorCmds.length > 0,
+      true,
+      "cursor should be set to cell-b startLine+1=4",
+    );
+  });
+
+  it("restores cursor to preMutationCellId when still present", async () => {
+    const h = mockVim();
+    await restoreCursor(h, 1, "cell-a", newRanges, newRanges);
+    const cursorCmds = h.cmdsMatching("cursor(1,");
+    assertEquals(
+      cursorCmds.length > 0,
+      true,
+      "cursor should be set to cell-a startLine+1=1",
+    );
+  });
+
+  it("falls back to index when preMutationCellId is gone", async () => {
+    const preMutationRanges: CellRange[] = [
+      { cellId: "deleted-cell", startLine: 0, endLine: 2 },
+      { cellId: "cell-b", startLine: 3, endLine: 5 },
+    ];
+    const h = mockVim();
+    await restoreCursor(h, 1, "deleted-cell", preMutationRanges, newRanges);
+    // deleted-cell was at index 0, so newRanges[0] = cell-a startLine+1=1
+    const cursorCmds = h.cmdsMatching("cursor(1,");
+    assertEquals(
+      cursorCmds.length > 0,
+      true,
+      "cursor should fall back to same index in newRanges",
+    );
+  });
+
+  it("falls back to last cell when index is out of range", async () => {
+    const preMutationRanges: CellRange[] = [
+      { cellId: "cell-a", startLine: 0, endLine: 2 },
+      { cellId: "deleted-cell", startLine: 3, endLine: 5 },
+    ];
+    const singleRange: CellRange[] = [
+      { cellId: "cell-a", startLine: 0, endLine: 2 },
+    ];
+    const h = mockVim();
+    // deleted-cell at index 1; newRanges only has index 0
+    await restoreCursor(h, 1, "deleted-cell", preMutationRanges, singleRange);
+    // index 1 >= singleRange.length → last cell = cell-a startLine+1=1
+    const cursorCmds = h.cmdsMatching("cursor(1,");
+    assertEquals(cursorCmds.length > 0, true);
+  });
+
+  it("moves to line 1 for empty notebook (no ranges)", async () => {
+    const h = mockVim();
+    await restoreCursor(h, 1, null, [], []);
+    const cursorCmds = h.cmdsMatching("cursor(1, 1)");
+    assertEquals(cursorCmds.length > 0, true);
   });
 });
