@@ -1,9 +1,9 @@
 /**
  * BDD specs for buildDispatcher.open (US1: `.ipynb` cell-structure viewer).
  *
- * Verifies that calling `open(path)` reads the notebook file from disk, builds
- * a render plan, and reflects it into the current Vim buffer by issuing
- * `setlocal nomodifiable` and `setline`.
+ * Verifies that calling `open(bufnr, path)` reads the notebook file from disk,
+ * builds a render plan, and reflects it into the specified Vim buffer by
+ * issuing `setbufvar` to set `&modifiable=0` and `setbufline`.
  *
  * @spec-id europa.main.open.render
  */
