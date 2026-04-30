@@ -1,14 +1,13 @@
 /**
- * BDD specs verifying TypeBox ↔ TypeScript interface alignment (FR-070).
- *
- * These specs ensure that the static types derived from TypeBox schemas are
- * structurally compatible with the function signatures of their implementations.
- * They serve as compile-time checks surfaced as runtime assertions.
+ * BDD specs verifying TypeBox ↔ TypeScript interface alignment (FR-070),
+ * and the `:EuropaPreviewOutput` command/dispatcher contract (FR-019).
  *
  * @spec-id europa.contract.notebook-alignment
  * @spec-id europa.contract.config-alignment
  * @spec-id europa.contract.capabilities-alignment
  * @spec-id europa.contract.dispatcher-alignment
+ * @spec-id europa.dispatcher.preview-output
+ * @spec-id europa.commands.preview-output
  */
 
 import { describe, it } from "@std/testing/bdd";
@@ -76,5 +75,82 @@ describe("TypeBox ↔ TS interface alignment — dispatcher", () => {
     assertEquals(typeof dispatcher.open, "function");
     assertEquals(typeof dispatcher.save, "function");
     assertEquals(typeof dispatcher.previewOutput, "function");
+  });
+});
+
+describe("previewOutput dispatcher contract", () => {
+  it("emits an echohl warning when no session is found for the bufnr", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const dispatcher = buildDispatcher(denops);
+    await dispatcher.previewOutput(9999, 0, 0);
+    const errCmds = denops.cmdsMatching("echohl");
+    assertEquals(
+      errCmds.length > 0,
+      true,
+      "previewOutput must emit echohl ErrorMsg when session not found",
+    );
+  });
+
+  it("emits an echom warning containing 'Europa' when session is not found", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const dispatcher = buildDispatcher(denops);
+    await dispatcher.previewOutput(9999, 0, 0);
+    const echomCmds = denops.cmdsMatching("echom");
+    const hasEuropaMsg = echomCmds.some((c) =>
+      String(c.args[0]).includes("Europa")
+    );
+    assertEquals(
+      hasEuropaMsg,
+      true,
+      "previewOutput error message must include 'Europa'",
+    );
+  });
+
+  it("returns without throwing even when session is missing", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const dispatcher = buildDispatcher(denops);
+    let threw = false;
+    try {
+      await dispatcher.previewOutput(9999, 0, 0);
+    } catch {
+      threw = true;
+    }
+    assertEquals(
+      threw,
+      false,
+      "previewOutput must not throw on missing session",
+    );
+  });
+});
+
+describe(":EuropaPreviewOutput command definition", () => {
+  it("plugin/commands.vim defines the EuropaPreviewOutput command", async () => {
+    const content = await Deno.readTextFile(
+      new URL("../../plugin/commands.vim", import.meta.url),
+    );
+    assertEquals(
+      content.includes("EuropaPreviewOutput"),
+      true,
+      "commands.vim must define EuropaPreviewOutput",
+    );
+  });
+
+  it("autoload/europa.vim defines europa#preview_output with denops#notify", async () => {
+    const content = await Deno.readTextFile(
+      new URL("../../autoload/europa.vim", import.meta.url),
+    );
+    assertEquals(
+      content.includes("europa#preview_output"),
+      true,
+      "autoload must define europa#preview_output",
+    );
+    assertEquals(
+      content.includes("previewOutput"),
+      true,
+      "autoload must notify 'previewOutput' to denops",
+    );
   });
 });

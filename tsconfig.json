@@ -12,6 +12,7 @@
     "paths": {
       "@denops/std": ["./typings/denops-std.d.ts"],
       "@std/uuid": ["./typings/std-uuid.d.ts"],
+      "@std/encoding/base64": ["./typings/std-encoding-base64.d.ts"],
       "@lambdalisue/ansi-escape-code": [
         "./typings/lambdalisue-ansi-escape-code.d.ts"
       ]

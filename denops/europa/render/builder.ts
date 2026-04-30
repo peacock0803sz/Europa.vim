@@ -73,6 +73,12 @@ function appendFragment(
  * Phase 2 only: `virtText`, `imagePlacements`, and `clickables` on truncated
  * fragments are pass-through because no Phase 2 renderer produces them.
  * Phase 3 must extend the slicing here once real values flow through.
+ *
+ * Note on `outputIdx`: after `mergeStreams`, consecutive same-name stream
+ * outputs are merged. The index `j` into the merged array is used as
+ * `outputIdx` in image placeholders. For image outputs (never merged),
+ * this matches the original index as long as no preceding streams are merged.
+ * Phase 3 can track original indices if tighter fidelity is needed.
  */
 function appendCellOutputs(
   plan: { lines: string[]; highlights: RenderPlan["highlights"] },
@@ -80,9 +86,12 @@ function appendCellOutputs(
   caps: Capabilities,
   mimePriority: string[],
   maxLines: number,
+  cellIdx: number,
 ): void {
   const merged = mergeStreams(outputs);
-  const frags = merged.map((out) => dispatchOutput(out, caps, mimePriority));
+  const frags = merged.map((out, j) =>
+    dispatchOutput(out, caps, mimePriority, { cellIdx, outputIdx: j })
+  );
   const totalLines = frags.reduce((n, f) => n + f.lines.length, 0);
 
   if (totalLines <= maxLines) {
@@ -169,6 +178,7 @@ export function buildRenderPlan(
         caps,
         mimePriority,
         maxOutputLines,
+        i,
       );
     } else if (cell.cell_type === "markdown") {
       // Markdown source is already included above as plain lines;
