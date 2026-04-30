@@ -94,4 +94,14 @@ describe("renderError", () => {
     const frag = renderError("E", "v", ["\x1b[31mtraceback\x1b[0m"]);
     assertEquals(frag.lines.every((l) => !l.includes("\x1b")), true);
   });
+
+  it("strips ANSI from ename/evalue header (IPython color-prefix case)", () => {
+    const frag = renderError(
+      "\x1b[0;31mValueError\x1b[0m",
+      "\x1b[1;33mbad input\x1b[0m",
+      [],
+    );
+    assertEquals(frag.lines[0], "ValueError: bad input");
+    assertEquals(frag.lines.every((l) => !l.includes("\x1b")), true);
+  });
 });

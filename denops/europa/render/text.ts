@@ -84,7 +84,7 @@ export function renderError(
   evalue: string,
   traceback: readonly string[],
 ): RenderFragment {
-  const header = `${ename}: ${evalue}`;
+  const header = stripAnsi(`${ename}: ${evalue}`);
   const strippedTraceback = traceback.map((l) => stripAnsi(l));
   const lines = [header, ...strippedTraceback];
 
