@@ -26,7 +26,7 @@ deno cache deno.json        # warms the Deno module cache (first run only)
 pre-commit install          # registers the git hook
 ```
 
-`deno task ci` should pass on a fresh clone after this.
+`deno task check` should pass on a fresh clone after this.
 
 ## 4. Development workflow
 
@@ -35,7 +35,7 @@ git switch -c <feature>
 nix develop
 ... edit ...
 pre-commit run --files <changed>     # or rely on the auto-installed hook
-deno task ci                          # full local CI pass before pushing
+deno task check                          # full local CI pass before pushing
 git push -u origin HEAD
 gh pr create ...                      # see section 8 for PR conventions
 ```
@@ -46,7 +46,7 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 
 | Task | Purpose | Phase |
 |------|---------|-------|
-| `deno task ci` | Full local CI: `deno fmt --check`, `deno task lint`, `deno task gen:vimdoc`, and `git diff --exit-code doc/europa.txt`. Must pass before opening a PR. | Phase 0+ |
+| `deno task check` | Full local CI: `deno fmt --check`, `deno task lint`, `deno task gen:vimdoc`, and `git diff --exit-code doc/europa.txt`. Must pass before opening a PR. | Phase 0+ |
 | `deno task lint` | Runs `deno lint` and `scripts/lint-no-handwritten-types.ts`. Phase 1 enforces only the `docs/` prohibition; Phase 2 adds the AST-based hand-written-type and comment-quality rules. | Phase 1+ |
 | `deno task gen:vimdoc` | Runs `scripts/concat-md.ts` (passthrough scaffold in Phase 1) and emits `doc/europa.txt`. Re-running yields a zero diff. | Phase 0+ |
 | `deno task smoke:ipynb` | Runs the Phase 0 nbformat-v4 smoke test against `tests/fixtures/hello.ipynb`. | Phase 0+ |
