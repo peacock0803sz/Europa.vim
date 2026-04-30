@@ -23,6 +23,23 @@ export async function openViewerPopup(
   host: Denops,
   opts: { lines: string[]; title?: string; width?: number; height?: number },
 ): Promise<number> {
+  if (host.meta.host === "nvim") {
+    const buf = (await host.call("nvim_create_buf", false, true)) as number;
+    await host.call("nvim_buf_set_lines", buf, 0, -1, false, opts.lines);
+    const width = opts.width ?? 60;
+    const height = opts.height ?? Math.max(1, Math.min(opts.lines.length, 20));
+    const win = (await host.call("nvim_open_win", buf, true, {
+      relative: "editor",
+      width,
+      height,
+      row: 1,
+      col: 1,
+      style: "minimal",
+      border: "single",
+      title: opts.title ?? "",
+    })) as number | null;
+    return typeof win === "number" ? win : _nextPopupId++;
+  }
   const id = (await host.call("popup_create", opts.lines, {
     title: opts.title ?? "",
     wrap: true,
@@ -41,5 +58,9 @@ export async function closePopup(
   host: Denops,
   popupId: number,
 ): Promise<void> {
+  if (host.meta.host === "nvim") {
+    await host.call("nvim_win_close", popupId, true);
+    return;
+  }
   await host.call("popup_close", popupId);
 }
