@@ -62,28 +62,12 @@ describe("applyRenderPlan", () => {
   });
 });
 
-describe("applyRenderPlan", () => {
+describe("applyRenderPlan with viewport", () => {
   beforeEach(() => {
     host = mockVim();
   });
 
-  it("accepts a viewport option without error", async () => {
-    const plan: RenderPlan = {
-      lines: ["line1", "line2", "line3"],
-      highlights: [],
-      virtText: [],
-      imagePlacements: [],
-      clickables: [],
-      cellMap: [{ cellIndex: 0, bufLineStart: 0, bufLineEnd: 2 }],
-    };
-    await applyRenderPlan(host, 1, plan, {
-      viewport: { topLine: 0, bottomLine: 10 },
-    });
-    // If no error thrown, lazy apply with viewport is accepted
-    assertEquals(true, true);
-  });
-
-  it("applies only fragments within viewport ± lazy_padding", async () => {
+  it("renders the viewport slice at topLine+1, not at line 1", async () => {
     const manyLines = Array.from({ length: 100 }, (_, i) => `line${i}`);
     const plan: RenderPlan = {
       lines: manyLines,
@@ -94,9 +78,49 @@ describe("applyRenderPlan", () => {
       cellMap: [{ cellIndex: 0, bufLineStart: 0, bufLineEnd: 99 }],
     };
     await applyRenderPlan(host, 1, plan, {
-      viewport: { topLine: 0, bottomLine: 10 },
+      viewport: { topLine: 50, bottomLine: 60 },
     });
-    // Should complete without error (lazy rendering accepted)
-    assertEquals(true, true);
+    const writeCall = host.callsTo("setbufline").find((c) => c.args[1] === 1);
+    assertEquals(writeCall !== undefined, true);
+    assertEquals(writeCall!.args[2], 51, "lnum must be topLine + 1");
+    const slice = writeCall!.args[3] as string[];
+    assertEquals(slice.length, 11, "slice length is bottomLine - topLine + 1");
+    assertEquals(slice[0], "line50");
+    assertEquals(slice[10], "line60");
+  });
+
+  it("limits the rendered slice to exactly the viewport range", async () => {
+    const plan: RenderPlan = {
+      lines: ["a", "b", "c", "d", "e"],
+      highlights: [],
+      virtText: [],
+      imagePlacements: [],
+      clickables: [],
+      cellMap: [{ cellIndex: 0, bufLineStart: 0, bufLineEnd: 4 }],
+    };
+    await applyRenderPlan(host, 1, plan, {
+      viewport: { topLine: 1, bottomLine: 3 },
+    });
+    const writeCall = host.callsTo("setbufline").find((c) => c.args[1] === 1);
+    assertEquals(writeCall!.args[2], 2);
+    assertEquals(writeCall!.args[3], ["b", "c", "d"]);
+  });
+
+  it("trims residue past plan.lines.length via deletebufline", async () => {
+    const plan: RenderPlan = {
+      lines: ["a", "b", "c"],
+      highlights: [],
+      virtText: [],
+      imagePlacements: [],
+      clickables: [],
+      cellMap: [],
+    };
+    await applyRenderPlan(host, 1, plan);
+    const trim = host.callsTo("deletebufline").find((c) =>
+      c.args[1] === 1 &&
+      c.args[2] === plan.lines.length + 1 &&
+      c.args[3] === "$"
+    );
+    assertEquals(trim !== undefined, true);
   });
 });
