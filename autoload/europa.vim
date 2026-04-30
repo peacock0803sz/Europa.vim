@@ -2,9 +2,9 @@
 " the plugin finishes registering. denops#plugin#wait_async defers the call
 " without blocking Vim — safe for autocmds that may fire during boot.
 
-function! europa#open(path) abort
+function! europa#open(bufnr, path) abort
   call denops#plugin#wait_async('europa',
-        \ { -> denops#notify('europa', 'open', [a:path]) })
+        \ { -> denops#notify('europa', 'open', [a:bufnr, a:path]) })
 endfunction
 
 function! europa#save() abort

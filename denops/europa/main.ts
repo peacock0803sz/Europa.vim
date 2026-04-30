@@ -68,19 +68,21 @@ export function buildDispatcher(
     },
 
     /**
-     * Open a `.ipynb` file, parse it, and render cells into the current buffer.
+     * Open a `.ipynb` file, parse it, and render cells into the target buffer.
      *
-     * Called by the `BufReadCmd *.ipynb` autocmd via `denops#notify`.
+     * Called by the `BufReadCmd *.ipynb` autocmd via `denops#notify`. The
+     * caller passes `expand('<abuf>')` so the render plan is applied to the
+     * buffer that triggered the autocmd, even if the user has switched
+     * buffers between `BufReadCmd` and the deferred notify.
      *
      * @spec-id europa.main.open.render
      */
-    async open(path: unknown): Promise<void> {
+    async open(bufnr: unknown, path: unknown): Promise<void> {
       const content = await Deno.readTextFile(String(path));
       const notebook = await parseNotebook(content);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(notebook, caps);
-      const bufnr = (await denops.call("bufnr", "%")) as number;
-      await applyRenderPlan(denops, bufnr, plan);
+      await applyRenderPlan(denops, Number(bufnr), plan);
     },
 
     // Phase 2: save — full implementation in US4 (T098)

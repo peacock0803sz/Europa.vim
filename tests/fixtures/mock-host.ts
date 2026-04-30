@@ -77,6 +77,7 @@ export class MockHost implements Denops {
       return Promise.resolve(this.namespaces.get(name)!);
     }
     if (fn === "bufnr") return Promise.resolve(1);
+    if (fn === "bufwinid") return Promise.resolve(1000);
     return Promise.resolve(null);
   }
 

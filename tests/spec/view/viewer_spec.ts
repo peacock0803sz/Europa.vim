@@ -29,28 +29,36 @@ describe("applyRenderPlan", () => {
     host = mockVim();
   });
 
-  it("issues setlocal nomodifiable", async () => {
+  it("locks the target buffer via setbufvar &modifiable=0", async () => {
     await applyRenderPlan(host, 1, emptyPlan());
-    const cmds = host.cmdsMatching("nomodifiable");
-    assertEquals(cmds.length > 0, true);
+    const lockCall = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === 1 && c.args[2] === "&modifiable" && c.args[3] === 0
+    );
+    assertEquals(lockCall !== undefined, true);
   });
 
-  it("issues setlocal conceallevel=0", async () => {
+  it("sets conceallevel=0 via win_execute on the buffer's window", async () => {
     await applyRenderPlan(host, 1, emptyPlan());
-    const cmds = host.cmdsMatching("conceallevel=0");
-    assertEquals(cmds.length > 0, true);
+    const concealCall = host.callsTo("win_execute").find((c) =>
+      String(c.args[2]).includes("conceallevel=0")
+    );
+    assertEquals(concealCall !== undefined, true);
   });
 
-  it("issues setlocal buftype=acwrite", async () => {
+  it("sets &buftype=acwrite on the target buffer", async () => {
     await applyRenderPlan(host, 1, emptyPlan());
-    const cmds = host.cmdsMatching("buftype=acwrite");
-    assertEquals(cmds.length > 0, true);
+    const buftypeCall = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === 1 && c.args[2] === "&buftype" && c.args[3] === "acwrite"
+    );
+    assertEquals(buftypeCall !== undefined, true);
   });
 
-  it("issues setlocal nomodified to clear the dirty flag from setline", async () => {
+  it("clears &modified on the target buffer to suppress the dirty flag", async () => {
     await applyRenderPlan(host, 1, emptyPlan());
-    const cmds = host.cmdsMatching("nomodified");
-    assertEquals(cmds.length > 0, true);
+    const modifiedCall = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === 1 && c.args[2] === "&modified" && c.args[3] === 0
+    );
+    assertEquals(modifiedCall !== undefined, true);
   });
 });
 

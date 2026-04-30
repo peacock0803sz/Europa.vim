@@ -10,12 +10,19 @@ import type { RenderPlan } from "../../../schema/render-plan.ts";
 /**
  * Apply a `RenderPlan` to a buffer.
  *
- * Writes the plan's lines while modifiable, then locks the buffer with
- * `nomodifiable`, marks it `nomodified` (so `:q` does not warn about
- * pending changes), sets `buftype=acwrite` (writes go through the
- * `BufWriteCmd` autocmd registered in `session/events.ts`), and
- * `conceallevel=0`. When a `viewport` is provided, only the visible
- * range is rendered (lazy rendering for large notebooks).
+ * Writes the plan's lines into the target buffer using `setbufline`, then
+ * locks the buffer (`&modifiable=0`), marks it `nomodified` (so `:q` does
+ * not warn about pending changes), sets `&buftype=acwrite` (writes go
+ * through the `BufWriteCmd` autocmd registered in `session/events.ts`),
+ * and `setlocal conceallevel=0` via `win_execute` on the buffer's window
+ * (conceallevel is window-local, so `setbufvar` cannot reach it). When a
+ * `viewport` is provided, only the visible range is rendered (lazy
+ * rendering for large notebooks).
+ *
+ * Uses buffer-targeted APIs (`setbufline`, `setbufvar`) so the render
+ * lands on the correct buffer even when this runs after the user has
+ * switched buffers — `denops#notify` is asynchronous relative to
+ * `BufReadCmd`.
  *
  * @param host - Active Denops instance.
  * @param bufnr - Target buffer number.
@@ -27,22 +34,26 @@ import type { RenderPlan } from "../../../schema/render-plan.ts";
  */
 export async function applyRenderPlan(
   host: Denops,
-  _bufnr: number,
+  bufnr: number,
   plan: RenderPlan,
   opts?: { viewport?: { topLine: number; bottomLine: number } },
 ): Promise<void> {
-  await host.cmd("setlocal modifiable");
+  await host.call("setbufvar", bufnr, "&modifiable", 1);
 
   const lines = opts?.viewport
     ? plan.lines.slice(opts.viewport.topLine, opts.viewport.bottomLine + 1)
     : plan.lines;
 
   if (lines.length > 0) {
-    await host.call("setline", 1, lines);
+    await host.call("setbufline", bufnr, 1, lines);
   }
 
-  await host.cmd("setlocal buftype=acwrite");
-  await host.cmd("setlocal nomodified");
-  await host.cmd("setlocal nomodifiable");
-  await host.cmd("setlocal conceallevel=0");
+  await host.call("setbufvar", bufnr, "&buftype", "acwrite");
+  await host.call("setbufvar", bufnr, "&modified", 0);
+  await host.call("setbufvar", bufnr, "&modifiable", 0);
+
+  const winid = await host.call("bufwinid", bufnr);
+  if (typeof winid === "number" && winid !== -1) {
+    await host.call("win_execute", winid, "setlocal conceallevel=0");
+  }
 }

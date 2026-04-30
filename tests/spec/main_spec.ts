@@ -9,7 +9,7 @@
  */
 
 import { describe, it } from "@std/testing/bdd";
-import { assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { mockVim } from "../fixtures/mock-host.ts";
 import { buildDispatcher } from "../../denops/europa/main.ts";
 
@@ -27,34 +27,39 @@ const MINIMAL_NB = JSON.stringify({
 });
 
 describe("buildDispatcher.open", () => {
-  it("issues setlocal nomodifiable after opening a notebook", async () => {
+  it("locks the target buffer via setbufvar &modifiable=0 after opening", async () => {
     const tmp = await Deno.makeTempFile({ suffix: ".ipynb" });
     try {
       await Deno.writeTextFile(tmp, MINIMAL_NB);
       const denops = mockVim();
       const dispatcher = buildDispatcher(denops);
-      await dispatcher.open(tmp);
-      const cmds = denops.cmdsMatching("nomodifiable").map((c) =>
-        String(c.args[0])
+      await dispatcher.open(7, tmp);
+      const lockCall = denops.callsTo("setbufvar").find((c) =>
+        c.args[1] === 7 && c.args[2] === "&modifiable" && c.args[3] === 0
       );
-      assertStringIncludes(cmds.join(" "), "nomodifiable");
+      assertEquals(lockCall !== undefined, true);
     } finally {
       await Deno.remove(tmp);
     }
   });
 
-  it("calls setline to write rendered notebook lines into the buffer", async () => {
+  it("calls setbufline targeting the bufnr argument, not the current buffer", async () => {
     const tmp = await Deno.makeTempFile({ suffix: ".ipynb" });
     try {
       await Deno.writeTextFile(tmp, MINIMAL_NB);
       const denops = mockVim();
       const dispatcher = buildDispatcher(denops);
-      await dispatcher.open(tmp);
-      const setlineCalls = denops.callsTo("setline");
+      await dispatcher.open(7, tmp);
+      const setbuflineCalls = denops.callsTo("setbufline");
       assertStringIncludes(
-        JSON.stringify(setlineCalls),
+        JSON.stringify(setbuflineCalls),
         "print('hello')",
         "rendered lines must include the cell source",
+      );
+      assertEquals(
+        setbuflineCalls.every((c) => c.args[1] === 7),
+        true,
+        "every setbufline call must target the passed bufnr",
       );
     } finally {
       await Deno.remove(tmp);

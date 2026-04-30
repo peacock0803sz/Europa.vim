@@ -19,7 +19,7 @@
 export type EuropaDispatcher = {
   // Phase 2: viewer methods
   init(): Promise<void>;
-  open(path: unknown): Promise<void>;
+  open(bufnr: unknown, path: unknown): Promise<void>;
   save(bufnr: unknown): Promise<void>;
   previewOutput(
     bufnr: unknown,

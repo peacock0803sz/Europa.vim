@@ -14,7 +14,7 @@ augroup END
 " entries inside the init handler — same group, autocmd! resets, no double-fire.
 augroup europa_ipynb
   autocmd!
-  autocmd BufReadCmd *.ipynb call europa#open(expand('<afile>'))
+  autocmd BufReadCmd *.ipynb call europa#open(str2nr(expand('<abuf>')), expand('<afile>'))
   autocmd BufWriteCmd *.ipynb call europa#save()
   autocmd BufUnload *.ipynb call europa#cleanup(str2nr(expand('<abuf>')))
 augroup END
