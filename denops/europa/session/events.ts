@@ -28,7 +28,7 @@ export async function setupAutocmds(host: Denops): Promise<void> {
     "autocmd BufWriteCmd *.ipynb call denops#notify('europa', 'save', [expand('<afile>')])",
   );
   await host.cmd(
-    "autocmd BufUnload *.ipynb call denops#notify('europa', 'close', [expand('<abuf>')])",
+    "autocmd BufUnload *.ipynb call denops#notify('europa', 'cleanup', [str2nr(expand('<abuf>'))])",
   );
   await host.cmd("augroup END");
 }
