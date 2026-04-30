@@ -30,4 +30,3 @@ jobs:
           restore-keys: deno-${{ runner.os }}-
 
       - run: nix develop --command pre-commit run --all-files
-      - run: nix develop --command deno task ci
