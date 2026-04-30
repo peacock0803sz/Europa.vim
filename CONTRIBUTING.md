@@ -82,6 +82,20 @@ Phase 1 establishes the operational rule only. The lint that enforces the biject
 - Once the bijection check lands in Phase 2, every PR lists the `@spec-id` values it covers. Phase 1 PRs are exempt and say so in the description, pointing to `plan.md` Complexity Tracking for the active feature.
 - The PR body is paragraph-per-line; do not hard-wrap inside a paragraph, since GitHub renders the wraps as line breaks.
 
-## 9. License and contact
+## 9. Debugging and reporting issues
+
+Reproduce bugs with `mini.vimrc` at the repository root before reporting them. It loads `denops.vim` and Europa.vim itself — plus `capture.vim` if installed — and enables `g:denops#debug` and `g:denops#trace`.
+
+`capture.vim` is optional. `mini.vimrc` skips it when the directory is missing. Install it when you want to dump `:messages` to a file and attach the log to an issue.
+
+Set `VIM_PLUGINS_DIR` to the directory containing the plugin checkouts, then launch:
+
+```sh
+VIM_PLUGINS_DIR=~/.local/share/nvim/lazy nvim -u mini.vimrc ./tests/fixtures/hello.ipynb
+```
+
+A GitHub issue should include the reproduction steps on `mini.vimrc`, the Vim or Neovim version from `:version`, the terminal emulator and its version, and the `:messages` output after the failure. Attach a `capture.vim` dump when the bug involves denops trace output.
+
+## 10. License and contact
 
 The project is distributed under the license described in `LICENCE` at the repository root. Open issues and pull requests on GitHub at `peacock0803sz/Europa.vim`. Security-sensitive reports go through the private security advisory mechanism on the same repository.
