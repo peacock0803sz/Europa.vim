@@ -19,6 +19,7 @@ import { renderImage } from "./image.ts";
 
 function renderMimeData(
   data: Record<string, unknown>,
+  outputMetadata: Record<string, unknown>,
   mimePriority: string[],
   caps: Capabilities,
   meta: { cellIdx: number; outputIdx: number },
@@ -41,11 +42,10 @@ function renderMimeData(
     if (mime === "image/png" || mime === "image/jpeg") {
       const imgMime = mime as "image/png" | "image/jpeg";
       const rawData = typeof value === "string" ? value : "";
-      const imgMeta = data[mime + ""] as Record<string, unknown> | undefined;
-      const imgMetaForMime =
-        (data["metadata"] as Record<string, unknown> | undefined)?.[mime] as
-          | Record<string, unknown>
-          | undefined ?? imgMeta;
+      // nbformat stores per-MIME dimensions in output.metadata[mime], not output.data
+      const imgMetaForMime = outputMetadata[mime] as
+        | Record<string, unknown>
+        | undefined;
       const width = typeof imgMetaForMime?.width === "number"
         ? imgMetaForMime.width
         : undefined;
@@ -100,8 +100,10 @@ export function dispatchOutput(
   }
 
   // execute_result and display_data both carry a data MIME bundle.
+  // output.metadata[mime] holds per-MIME dimension metadata (nbformat spec).
   const data = output.data as Record<string, unknown>;
-  return renderMimeData(data, mimePriority, caps, {
+  const outputMetadata = output.metadata as Record<string, unknown>;
+  return renderMimeData(data, outputMetadata, mimePriority, caps, {
     cellIdx: meta.cellIdx ?? 0,
     outputIdx: meta.outputIdx ?? 0,
   });

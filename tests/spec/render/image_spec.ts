@@ -157,7 +157,7 @@ describe("renderImage — unsupported-mime (via dispatchOutput)", () => {
     assertEquals(text.includes("unsupported"), true);
   });
 
-  it("dispatches image/png display_data to renderImage placeholder", () => {
+  it("dispatches image/png display_data to renderImage placeholder with dimensions from metadata", () => {
     const out: Output = {
       output_type: "display_data",
       data: { "image/png": PNG_B64, "text/plain": "fallback" },
@@ -165,7 +165,7 @@ describe("renderImage — unsupported-mime (via dispatchOutput)", () => {
     };
     const frag = dispatchOutput(out, capsPlaceholder, defaultPriority);
     assertExists(frag.lines[0]);
-    assertEquals(frag.lines[0].startsWith("[image: png"), true);
+    assertEquals(frag.lines[0].startsWith("[image: png 32x32"), true);
   });
 
   it("dispatches image/jpeg display_data to renderImage placeholder", () => {
