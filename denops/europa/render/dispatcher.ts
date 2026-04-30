@@ -10,7 +10,10 @@
 
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { Output } from "../../../schema/notebook.ts";
-import type { RenderFragment } from "../../../schema/render-plan.ts";
+import type {
+  RenderFragment,
+  SixelPlacement,
+} from "../../../schema/render-plan.ts";
 import { renderError, renderStream, renderText } from "./text.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { renderJson } from "./json.ts";
@@ -23,6 +26,7 @@ function renderMimeData(
   mimePriority: string[],
   caps: Capabilities,
   meta: { cellIdx: number; outputIdx: number },
+  sixelAcc?: SixelPlacement[],
 ): RenderFragment {
   for (const mime of mimePriority) {
     const value = data[mime];
@@ -52,11 +56,13 @@ function renderMimeData(
       const height = typeof imgMetaForMime?.height === "number"
         ? imgMetaForMime.height
         : undefined;
-      return renderImage(rawData, imgMime, caps, {
+      const imgResult = renderImage(rawData, imgMime, caps, {
         ...meta,
         width,
         height,
-      }).fragment;
+      });
+      if (imgResult.placement && sixelAcc) sixelAcc.push(imgResult.placement);
+      return imgResult.fragment;
     }
 
     // Unsupported MIME (FR-025)
@@ -90,6 +96,7 @@ export function dispatchOutput(
   caps: Capabilities,
   mimePriority: string[],
   meta: { cellIdx?: number; outputIdx?: number } = {},
+  sixelAcc?: SixelPlacement[],
 ): RenderFragment {
   if (output.output_type === "stream") {
     return renderStream(output.name, output.text);
@@ -106,5 +113,5 @@ export function dispatchOutput(
   return renderMimeData(data, outputMetadata, mimePriority, caps, {
     cellIdx: meta.cellIdx ?? 0,
     outputIdx: meta.outputIdx ?? 0,
-  });
+  }, sixelAcc);
 }

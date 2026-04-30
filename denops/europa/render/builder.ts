@@ -9,6 +9,7 @@ import type { Notebook, Output } from "../../../schema/notebook.ts";
 import type {
   RenderFragment,
   RenderPlan,
+  SixelPlacement,
 } from "../../../schema/render-plan.ts";
 import { dispatchOutput } from "./dispatcher.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -39,14 +40,8 @@ export function mergeStreams(outputs: readonly Output[]): Output[] {
 }
 
 /**
- * Append `lines` and `highlights` from a RenderFragment onto the given
- * RenderPlan arrays, applying the buffer-line offset so highlights line up
- * with their absolute positions.
- *
- * Phase 2 only: `virtText`, `imagePlacements`, and `clickables` are not
- * forwarded because every renderer produces them as empty arrays today.
- * When Phase 3 (sixel images, popups, clickables) introduces real values,
- * extend the `plan` parameter type and forward those fields here too.
+ * Append `lines` and `highlights` from a fragment onto the plan arrays,
+ * adjusting highlight line numbers by the current line offset.
  */
 function appendFragment(
   plan: { lines: string[]; highlights: RenderPlan["highlights"] },
@@ -61,27 +56,19 @@ function appendFragment(
 
 /**
  * Append a cell's outputs to the plan under a per-cell `maxLines` budget
- * (FR-051). The summary line counts toward the budget, so the total number
- * of lines added by this call is at most `maxLines`.
- *
- * If the merged outputs fit within `maxLines`, all fragments are appended
- * verbatim. Otherwise the budget is reduced by 1 to reserve space for a
- * `[... truncated, N more lines]` marker, and fragments are appended until
- * the reduced budget is exhausted (the boundary fragment is sliced and its
- * highlights are filtered to match).
- *
- * Phase 2 only: `virtText`, `imagePlacements`, and `clickables` on truncated
- * fragments are pass-through because no Phase 2 renderer produces them.
- * Phase 3 must extend the slicing here once real values flow through.
+ * (FR-051). Collects Sixel placements alongside fragments, adjusting their
+ * buffer-line offset so the viewer can locate each image.
  *
  * Note on `outputIdx`: after `mergeStreams`, consecutive same-name stream
  * outputs are merged. The index `j` into the merged array is used as
- * `outputIdx` in image placeholders. For image outputs (never merged),
- * this matches the original index as long as no preceding streams are merged.
- * Phase 3 can track original indices if tighter fidelity is needed.
+ * `outputIdx` in image placeholders.
  */
 function appendCellOutputs(
-  plan: { lines: string[]; highlights: RenderPlan["highlights"] },
+  plan: {
+    lines: string[];
+    highlights: RenderPlan["highlights"];
+    sixelPlacements: SixelPlacement[];
+  },
   outputs: readonly Output[],
   caps: Capabilities,
   mimePriority: string[],
@@ -89,23 +76,40 @@ function appendCellOutputs(
   cellIdx: number,
 ): void {
   const merged = mergeStreams(outputs);
-  const frags = merged.map((out, j) =>
-    dispatchOutput(out, caps, mimePriority, { cellIdx, outputIdx: j })
-  );
-  const totalLines = frags.reduce((n, f) => n + f.lines.length, 0);
+
+  const items = merged.map((out, j) => {
+    const sixel: SixelPlacement[] = [];
+    const frag = dispatchOutput(out, caps, mimePriority, {
+      cellIdx,
+      outputIdx: j,
+    }, sixel);
+    return { frag, sixel };
+  });
+
+  const totalLines = items.reduce((n, x) => n + x.frag.lines.length, 0);
 
   if (totalLines <= maxLines) {
-    for (const frag of frags) appendFragment(plan, frag);
+    for (const { frag, sixel } of items) {
+      const offset = plan.lines.length;
+      appendFragment(plan, frag);
+      for (const sp of sixel) {
+        plan.sixelPlacements.push({ ...sp, line: sp.line + offset });
+      }
+    }
     return;
   }
 
   const budget = maxLines - 1;
   let used = 0;
-  for (const frag of frags) {
+  for (const { frag, sixel } of items) {
     if (used >= budget) break;
     const room = budget - used;
+    const offset = plan.lines.length;
     if (frag.lines.length <= room) {
       appendFragment(plan, frag);
+      for (const sp of sixel) {
+        plan.sixelPlacements.push({ ...sp, line: sp.line + offset });
+      }
       used += frag.lines.length;
     } else {
       const truncated: RenderFragment = {
@@ -114,6 +118,11 @@ function appendCellOutputs(
         highlights: frag.highlights.filter((h) => h.line < room),
       };
       appendFragment(plan, truncated);
+      for (const sp of sixel) {
+        if (sp.line < room) {
+          plan.sixelPlacements.push({ ...sp, line: sp.line + offset });
+        }
+      }
       used = budget;
       break;
     }
@@ -160,6 +169,7 @@ export function buildRenderPlan(
 
   const lines: string[] = [];
   const highlights: RenderPlan["highlights"] = [];
+  const sixelPlacements: SixelPlacement[] = [];
   const cellMap: RenderPlan["cellMap"] = [];
 
   for (let i = 0; i < nb.cells.length; i++) {
@@ -173,7 +183,7 @@ export function buildRenderPlan(
 
     if (cell.cell_type === "code" && cell.outputs && cell.outputs.length > 0) {
       appendCellOutputs(
-        { lines, highlights },
+        { lines, highlights, sixelPlacements },
         cell.outputs,
         caps,
         mimePriority,
@@ -199,6 +209,7 @@ export function buildRenderPlan(
     highlights,
     virtText: [],
     imagePlacements: [],
+    sixelPlacements,
     clickables: [],
     cellMap,
   };

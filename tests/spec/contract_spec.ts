@@ -8,6 +8,7 @@
  * @spec-id europa.contract.dispatcher-alignment
  * @spec-id europa.dispatcher.preview-output
  * @spec-id europa.commands.preview-output
+ * @spec-id europa.dispatcher.save
  */
 
 import { describe, it } from "@std/testing/bdd";
@@ -123,6 +124,34 @@ describe("previewOutput dispatcher contract", () => {
       false,
       "previewOutput must not throw on missing session",
     );
+  });
+});
+
+describe("save dispatcher contract", () => {
+  it("emits an echohl warning when no session is found for the bufnr", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const dispatcher = buildDispatcher(denops);
+    await dispatcher.save(9999);
+    const errCmds = denops.cmdsMatching("echohl");
+    assertEquals(
+      errCmds.length > 0,
+      true,
+      "save must emit echohl ErrorMsg when session not found",
+    );
+  });
+
+  it("returns without throwing even when session is missing", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const dispatcher = buildDispatcher(denops);
+    let threw = false;
+    try {
+      await dispatcher.save(9999);
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, false, "save must not throw on missing session");
   });
 });
 

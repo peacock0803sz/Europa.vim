@@ -25,6 +25,8 @@ const WHITELIST = new Set([
   "contracts/cell-marker.ts",
   "contracts/dispatcher.ts",
   "contracts/session-runtime.ts",
+  // MagickConverter is a DI callback type for testability — not a domain type
+  "denops/europa/view/viewer.ts",
 ]);
 
 // Argument parsing: --target <path> runs rule 1+2 on that path instead of

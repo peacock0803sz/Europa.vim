@@ -3,78 +3,352 @@
 ==============================================================================
 INTRODUCTION						*europa-introduction*
 
-TODO(phase-2): Describe Europa.vim as a denops-based plugin for viewing (and
-later editing) Jupyter `.ipynb` notebooks inside Vim/Neovim. Cover the
-positioning relative to upstream Jupyter and the cross-host parity goal. See
-`DESIGN.md` chapter 1.1 (Identity) for source material.
+Europa.vim is a Vim/Neovim plugin for viewing Jupyter `.ipynb` notebooks
+directly inside the editor. It is built on denops.vim and runs all TypeScript
+logic under Deno, giving identical behaviour on both hosts.
+
+Phase 2 (current) provides read-only viewing and round-trip saving. Opening
+a notebook renders each cell with Unicode border decoration and highlights
+rich outputs: plain text, streams, tracebacks, JSON, Markdown, and HTML.
+Images are shown as text placeholders by default; an experimental Sixel
+path is available for terminals that support it.
+
+Kernel connection, cell execution, and cell editing land in Phase 3.
+
+QUICK START~
+							*europa-quickstart*
+1. Open any `.ipynb` file: >
+	:edit path/to/notebook.ipynb
+<
+2. The buffer is read-only (`modifiable=false`). Each cell is framed by
+   `╭─ In [N] ─╮` / `╰─ Out [N] ─╯` decorations.
+
+3. To open an image output in the system image viewer: >
+	:EuropaPreviewOutput {cellIdx} {outputIdx}
+<
+   The cell and output indices appear inside the placeholder line shown in
+   the buffer.
+
+4. To save back to disk in canonical `.ipynb` format: >
+	:write
+<
 
 ==============================================================================
 REQUIREMENTS						*europa-requirements*
 
-TODO(phase-2): List the runtime requirements: Vim 9.1.1646+ or Neovim 0.11.3+,
-Deno 2.3.0+, denops.vim plus `@denops/std`, and a user-supplied `jupyter`
-command (auto-detection via `.venv/`, `venv/`, `VIRTUAL_ENV`, `CONDA_PREFIX`).
-Cross-reference `DESIGN.md` chapter 6.5 (kernel connection / venv detection).
+EDITOR~
+							*europa-requirements-editor*
+- Vim 9.1.1646 or later
+- Neovim 0.11.3 or later
+
+Either host is fully supported. The plugin uses Vim text properties and
+Neovim extmarks respectively behind a common interface.
+
+RUNTIME~
+							*europa-requirements-runtime*
+- Deno 2.3.0 or later		https://deno.land/
+- denops.vim			https://github.com/vim-denops/denops.vim
+
+Deno is the TypeScript runtime that powers Europa.vim. denops.vim is the
+bridge between the editor and the Deno process.
+
+OPTIONAL~
+							*europa-requirements-optional*
+- ImageMagick (`magick` or `convert` on PATH)
+
+  Required only when |g:europa_image_backend| is set to `'sixel'`. Europa
+  uses ImageMagick to convert PNG/JPEG data to Sixel escape sequences.
+
+- A Sixel-capable terminal emulator
+
+  WezTerm is the only terminal verified to work with the Sixel opt-in as
+  of Phase 2. Ghostty 1.3.1 (standard build) and tmux 3.6a without the
+  `sixel` compile flag do not pass Sixel through.
 
 ==============================================================================
 SETUP							*europa-setup*
 
-TODO(phase-2): Document end-user installation: pin via plugin managers
-(vim-plug / lazy.nvim / packer / dein), the denops.vim dependency, and the
-optional ImageMagick / rsvg-convert / pdftoppm / vl-convert binaries used by
-later phases. Contributor setup belongs in `CONTRIBUTING.md` section 3 and is
-out of scope here.
+INSTALLATION~
+							*europa-setup-install*
+Europa.vim requires denops.vim. Install both with your plugin manager.
+
+lazy.nvim: >
+	{
+	  "vim-denops/denops.vim",
+	  {
+	    "peacock0803sz/Europa.vim",
+	    ft = "ipynb",
+	  },
+	}
+<
+vim-plug: >
+	Plug 'vim-denops/denops.vim'
+	Plug 'peacock0803sz/Europa.vim'
+<
+dein.vim: >
+	call dein#add('vim-denops/denops.vim')
+	call dein#add('peacock0803sz/Europa.vim')
+<
+
+DENO~
+							*europa-setup-deno*
+Install Deno from https://deno.land/ or via your system package manager.
+Verify the installation: >
+	deno --version
+<
+Europa.vim does not install Deno automatically.
+
+IMAGEMAGICK (OPTIONAL)~
+						*europa-setup-imagemagick*
+Needed only for the experimental Sixel backend. Install via your OS package
+manager, for example: >
+	brew install imagemagick        # macOS
+	apt install imagemagick         # Debian / Ubuntu
+<
+Check that `magick` (or `convert`) is on PATH: >
+	magick --version
+<
 
 ==============================================================================
 CONFIGURATION						*europa-configuration*
 
-TODO(phase-2): Document each `g:europa_*` option introduced by `schema/config.ts`
-once that module lands. At minimum cover `g:europa_image_backend`,
-`g:europa_jupyter_command`, and the venv detection overrides. Reference
-`DESIGN.md` chapter 9 (configuration / commands / mappings) for the option
-matrix.
+All options are global Vim variables of the form `g:europa_*`. Set them in
+your vimrc or init.lua before the plugin loads. Unset options fall back to
+the defaults shown below.
+
+RENDERING OPTIONS~
+					*europa-configuration-rendering*
+
+*g:europa_image_backend*
+	Controls how image outputs are displayed.
+	Type: string  Default: `'auto'`
+
+	`'auto'`	Resolves to `'placeholder'` in Phase 2. Terminal
+			auto-detection (DA1 query) is added in Phase 3.
+	`'placeholder'`	Shows a `[image: png WxH - :EuropaPreviewOutput N M]`
+			line. Works in every terminal.
+	`'sixel'`	Experimental. Renders images inline via ImageMagick.
+			Requires a Sixel-capable terminal and ImageMagick on
+			PATH. Falls back to placeholder when either is absent.
+	`'kitty_placeholder'`  Reserved for Phase 3.
+	`'iterm2_osc1337'`     Reserved for Phase 3.
+
+*g:europa_mime_priority*
+	MIME type preference order for outputs that carry multiple
+	representations (display_data / execute_result).
+	Type: list of strings
+	Default: `['image/png', 'image/jpeg', 'text/html', 'text/plain']`
+
+*g:europa_max_output_lines*
+	Maximum lines rendered per cell output. Outputs that exceed this
+	limit are truncated with a `[... truncated, N more lines]` note.
+	Type: integer  Default: `100`
+
+*g:europa_cell_border_chars*
+	Unicode characters used to draw cell borders.
+	Type: list of 5 strings  Default: `['╭', '─', '╮', '╰', '╯']`
+
+*g:europa_lazy_padding*
+	Lines above and below the visible viewport that are pre-rendered
+	on open. Larger values trade startup time for smoother scrolling.
+	Type: integer  Default: `10`
+
+BEHAVIOUR OPTIONS~
+					*europa-configuration-behaviour*
+
+*g:europa_auto_save*
+	When `v:true`, write the notebook back to disk automatically on
+	`BufLeave`. Not recommended until Phase 3 adds conflict detection.
+	Type: boolean  Default: `v:false`
+
+*g:europa_use_default_mappings*
+	Reserved for Phase 3. No default mappings are provided in Phase 2.
+	Type: boolean  Default: `v:false`
+
+CONNECTION OPTIONS (RESERVED FOR PHASE 3)~
+				*europa-configuration-connection*
+The following options are parsed by the schema but not acted upon in Phase 2.
+They are listed here so users can prepare their configuration in advance.
+
+	`g:europa_connection_mode`      `'auto'` | `'server'` | `'zmq'`
+	`g:europa_jupyter_url`          URL of the Jupyter server
+	`g:europa_jupyter_token`        Authentication token
+	`g:europa_default_kernel`       Default kernel name
+	`g:europa_auto_start_kernel`    Auto-start kernel on open
+	`g:europa_jupyter_executable`   Path to `jupyter` binary
+	`g:europa_python_env_detect`    `'auto'` | `'disabled'`
 
 ==============================================================================
 COMMANDS						*europa-commands*
 
-TODO(phase-2): Document the user-facing Ex commands as they land. The currently
-planned set is `:EuropaPreviewOutput`, `:EuropaEditCell`, and `:EuropaAttach`
-(P3+). Cross-reference `DESIGN.md` chapter 9 (configuration / commands /
-mappings) for the canonical command surface and phase mapping.
+							*:EuropaOpen*
+:EuropaOpen [path]
+	Open {path} as a Europa viewer buffer. When {path} is omitted the
+	current file (`%`) is used. The buffer is set to `modifiable=false`
+	and `conceallevel=0`.
+
+	This command is also triggered automatically by `BufReadCmd` when
+	you open any `*.ipynb` file with `:edit`.
+
+							*:EuropaPreviewOutput*
+:EuropaPreviewOutput {cellIdx} {outputIdx}
+	Write the image output at cell index {cellIdx} and output index
+	{outputIdx} to a temporary file and open it with the OS default
+	image viewer:
+	  macOS   `open`
+	  Linux   `xdg-open`
+	  Windows `cmd /c start`
+
+	Both arguments are zero-based integers. The placeholder line in the
+	buffer shows the exact command to run, for example: >
+	  [image: png 640x480 - :EuropaPreviewOutput 3 0]
+<
+	Only image MIME types (`image/png`, `image/jpeg`) are supported.
+	Calling this command on a non-image output prints a message and does
+	nothing.
+
+PHASE 3+ COMMANDS (NOT YET AVAILABLE)~
+					*europa-commands-future*
+The following commands are planned for Phase 3 and later.
+
+	`:EuropaRun`		Execute the current cell against the kernel.
+	`:EuropaRunAll`		Execute all cells in order.
+	`:EuropaStartKernel`	Start or connect to a Jupyter kernel.
+	`:EuropaRestartKernel`	Restart the running kernel.
+	`:EuropaInterruptKernel` Send an interrupt to the kernel.
+	`:EuropaAttach`		Attach to an existing connection file (Phase 4).
 
 ==============================================================================
 MAPPINGS						*europa-mappings*
 
-TODO(phase-2): Document the default key mappings supplied by the plugin and
-the `<Plug>` handles users can rebind. Reference `DESIGN.md` chapter 9
-(configuration / commands / mappings) for the canonical list and the
-no-default-overlap policy with vim/neovim core bindings.
+Europa.vim does not define any default key mappings in Phase 2.
+
+The viewer buffer is read-only (`modifiable=false`), so normal text-editing
+keys do nothing harmful. Navigation (`j`/`k`, `Ctrl-D`/`Ctrl-U`, etc.)
+works as in any other buffer.
+
+PLUG MAPPINGS (PHASE 3+)~
+						*europa-mappings-plug*
+`<Plug>(europa-*)` mapping handles will be introduced in Phase 3 alongside
+the editing and execution commands. Setting `g:europa_use_default_mappings`
+to `v:true` is a no-op in Phase 2 and is reserved for future use.
 
 ==============================================================================
 EXAMPLES						*europa-examples*
 
-TODO(phase-2): Walk through canonical end-to-end flows: open a `.ipynb`,
-navigate cell boundaries, preview an output (image/png placeholder via
-`:EuropaPreviewOutput`), and (Phase 3+) execute a cell against an attached
-kernel. Each example should reference the relevant `@spec-id` once the BDD
-specs land.
+BASIC VIEWING~
+						*europa-examples-viewing*
+Open a notebook and browse its cells: >
+	:edit ~/projects/analysis.ipynb
+<
+The buffer renders each cell with Unicode borders. Code cells show their
+source and any captured outputs. Markdown cells show the source text with
+heading lines highlighted. Use standard Vim motion keys to navigate.
+
+PREVIEWING AN IMAGE OUTPUT~
+					*europa-examples-preview*
+When a cell contains an image output the buffer shows a placeholder line: >
+	[image: png 640x480 - :EuropaPreviewOutput 2 0]
+<
+The two numbers are the cell index and output index (both zero-based). Run
+the embedded command to open the image in the system viewer: >
+	:EuropaPreviewOutput 2 0
+<
+
+SAVING A NOTEBOOK~
+					*europa-examples-save*
+`:write` serialises the in-memory notebook back to disk in canonical
+`.ipynb` format (1-space indent, trailing newline): >
+	:write
+<
+The round-trip is semantic: `parse(serialize(parse(x)))` equals `parse(x)`
+for all well-formed notebooks.
+
+SIXEL INLINE IMAGES (EXPERIMENTAL)~
+					*europa-examples-sixel*
+On a Sixel-capable terminal (e.g. WezTerm) with ImageMagick installed,
+add to your vimrc: >
+	let g:europa_image_backend = 'sixel'
+<
+Then open a notebook that contains image outputs. If ImageMagick is not
+found, or if conversion fails, the plugin falls back to the text placeholder
+and prints a message in `:messages`.
 
 ==============================================================================
 FREQUENTLY ASKED QUESTIONS				*europa-faq*
 
-TODO(phase-2): Seed the FAQ with capability-detection topics from `DESIGN.md`
-chapter 7 (rendering strategy): why DA1 query may time out, why Sixel falls
-back to the external preview, how `g:europa_image_backend` interacts with
-host/terminal capabilities, and how to diagnose missing kernels.
+WHY IS THE BUFFER READ-ONLY?~
+						*europa-faq-readonly*
+Phase 2 is a viewer. Europa intercepts `BufReadCmd` and sets
+`modifiable=false` so keystrokes do not corrupt the internal notebook state.
+Cell editing lands in Phase 3.
+
+WHY DOES SIXEL FALL BACK TO THE PLACEHOLDER?~
+					*europa-faq-sixel-fallback*
+Several conditions cause the Sixel path to skip and show the text placeholder:
+
+1. ImageMagick (`magick` or `convert`) is not found on PATH.
+2. The image payload could not be decoded (corrupt base64).
+3. The conversion subprocess returned a non-zero exit code.
+4. The placeholder line was scrolled off-screen when rendering ran
+   (`screenpos()` returned row 0).
+
+Run `:messages` to see which condition triggered. If ImageMagick is installed
+but not found, check that it is on the PATH Vim/Neovim uses (which may differ
+from your shell PATH).
+
+SIXEL DOES NOT WORK IN TMUX~
+					*europa-faq-tmux*
+The standard tmux 3.6a build does not forward Sixel graphics. You need a
+build compiled with `--enable-sixel`, or tmux 3.4+ with `allow_passthrough
+on` in `tmux.conf`. Ghostty 1.3.1 is also not confirmed to work in Phase 2.
+
+WHY ARE IMAGES OVERLAPPING TEXT AFTER SCROLLING?~
+					*europa-faq-sixel-overlap*
+Sixel graphics are drawn as a separate graphics layer over the text grid.
+Europa reserves spacer rows below each image placeholder to prevent overlap,
+and skips rendering when the anchor line is off-screen. If overlap still
+occurs, try reducing |g:europa_lazy_padding| or upgrading to a terminal that
+clips the Sixel graphics layer correctly.
+
+WHY DOES `:write` CHANGE THE FILE FORMAT?~
+					*europa-faq-write*
+`:write` normalises the notebook to 1-space indent JSON with a trailing
+newline — the canonical format used by `nbformat`. The content is
+semantically identical to the original; only whitespace and key ordering may
+change. Subsequent writes produce no further diff.
 
 ==============================================================================
 ABOUT							*europa-about*
 
-TODO(phase-2): Record the project metadata: name (`Europa.vim`), upstream URL
-(`github.com/peacock0803sz/Europa.vim`), license (see `LICENCE` at the
-repository root), and credits to denops.vim, panvimdoc, typedoc, and the
-Jupyter project. Keep this short; everything substantive belongs in the
-preceding chapters.
+Europa.vim is developed by Peacock (peacock0803sz).
+Repository: https://github.com/peacock0803sz/Europa.vim
+License: See `LICENCE` at the repository root.
+
+PHASE ROADMAP~
+						*europa-about-roadmap*
+Phase 2 (current): Read-only `.ipynb` viewer with rich output rendering
+		   and experimental Sixel inline images.
+Phase 3 (planned): Cell execution, kernel management, full inline image
+		   rendering via Kitty Unicode Placeholder.
+Phase 4 (planned): Direct ZMQ attach to an existing kernel connection file,
+		   advanced MIME types (Vega-Lite, PDF).
+Phase 5 (planned): ipywidgets comm support, cell editing.
+
+CREDITS~
+							*europa-about-credits*
+Europa.vim is built on the following projects:
+
+- denops.vim    The Vim/Neovim + Deno bridge.
+		https://github.com/vim-denops/denops.vim
+- TypeBox       Runtime type validation for all schemas.
+		https://github.com/sinclairzx81/typebox
+- typedoc       API documentation generation from TSDoc comments.
+		https://typedoc.org/
+- panvimdoc     Converts Markdown to Vim help format.
+		https://github.com/kdheepak/panvimdoc
+- Jupyter       The `.ipynb` format specification.
+		https://jupyter.org/
 
 ==============================================================================
 API REFERENCE							*europa-api*

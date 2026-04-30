@@ -1,9 +1,45 @@
 ==============================================================================
 FREQUENTLY ASKED QUESTIONS				*europa-faq*
 
-TODO(phase-2): Seed the FAQ with capability-detection topics from `DESIGN.md`
-chapter 7 (rendering strategy): why DA1 query may time out, why Sixel falls
-back to the external preview, how `g:europa_image_backend` interacts with
-host/terminal capabilities, and how to diagnose missing kernels.
+WHY IS THE BUFFER READ-ONLY?~
+						*europa-faq-readonly*
+Phase 2 is a viewer. Europa intercepts `BufReadCmd` and sets
+`modifiable=false` so keystrokes do not corrupt the internal notebook state.
+Cell editing lands in Phase 3.
+
+WHY DOES SIXEL FALL BACK TO THE PLACEHOLDER?~
+					*europa-faq-sixel-fallback*
+Several conditions cause the Sixel path to skip and show the text placeholder:
+
+1. ImageMagick (`magick` or `convert`) is not found on PATH.
+2. The image payload could not be decoded (corrupt base64).
+3. The conversion subprocess returned a non-zero exit code.
+4. The placeholder line was scrolled off-screen when rendering ran
+   (`screenpos()` returned row 0).
+
+Run `:messages` to see which condition triggered. If ImageMagick is installed
+but not found, check that it is on the PATH Vim/Neovim uses (which may differ
+from your shell PATH).
+
+SIXEL DOES NOT WORK IN TMUX~
+					*europa-faq-tmux*
+The standard tmux 3.6a build does not forward Sixel graphics. You need a
+build compiled with `--enable-sixel`, or tmux 3.4+ with `allow_passthrough
+on` in `tmux.conf`. Ghostty 1.3.1 is also not confirmed to work in Phase 2.
+
+WHY ARE IMAGES OVERLAPPING TEXT AFTER SCROLLING?~
+					*europa-faq-sixel-overlap*
+Sixel graphics are drawn as a separate graphics layer over the text grid.
+Europa reserves spacer rows below each image placeholder to prevent overlap,
+and skips rendering when the anchor line is off-screen. If overlap still
+occurs, try reducing |g:europa_lazy_padding| or upgrading to a terminal that
+clips the Sixel graphics layer correctly.
+
+WHY DOES `:write` CHANGE THE FILE FORMAT?~
+					*europa-faq-write*
+`:write` normalises the notebook to 1-space indent JSON with a trailing
+newline — the canonical format used by `nbformat`. The content is
+semantically identical to the original; only whitespace and key ordering may
+change. Subsequent writes produce no further diff.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

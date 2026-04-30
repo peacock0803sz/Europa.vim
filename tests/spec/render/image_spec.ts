@@ -1,5 +1,6 @@
 /**
- * BDD specs for renderImage — placeholder format, clickable, and MIME routing.
+ * BDD specs for renderImage — placeholder format, clickable, MIME routing,
+ * and Sixel metadata synchronous return.
  *
  * europa.render.image.unsupported-mime and europa.render.image.svg-source
  * are tested here via dispatchOutput to verify the full image-MIME routing
@@ -8,6 +9,7 @@
  * @spec-id europa.render.image.placeholder
  * @spec-id europa.render.image.unsupported-mime
  * @spec-id europa.render.image.svg-source
+ * @spec-id europa.render.image.sixel-metadata
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertExists } from "@std/assert";
@@ -111,13 +113,101 @@ describe("renderImage — placeholder format", () => {
     assertEquals(result.placement, undefined);
   });
 
-  it("falls back to placeholder for sixel backend in Phase 2 (T103 will wire this)", () => {
+  it("still returns a placeholder fragment for sixel backend", () => {
     const result = renderImage(PNG_B64, "image/png", capsSixel, {
       cellIdx: 0,
       outputIdx: 0,
     });
     assertExists(result.fragment.lines[0]);
     assertEquals(result.fragment.lines[0].startsWith("[image:"), true);
+  });
+});
+
+describe("renderImage — sixel-metadata", () => {
+  it("returns placement.backend === 'sixel' for sixel caps", () => {
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement?.backend, "sixel");
+  });
+
+  it("returns placement.payload equal to the raw base64 input", () => {
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement?.payload, PNG_B64);
+  });
+
+  it("returns placement synchronously without invoking Deno.Command", () => {
+    // renderImage is synchronous — if a subprocess were spawned the test
+    // would hang or throw; completing instantly confirms no I/O occurred.
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 2,
+      outputIdx: 1,
+    });
+    assertExists(result.placement);
+    assertEquals(result.placement.cellIdx, 2);
+    assertEquals(result.placement.outputIdx, 1);
+    assertEquals(result.placement.mime, "image/png");
+  });
+
+  it("returns no placement for placeholder backend", () => {
+    const result = renderImage(PNG_B64, "image/png", capsPlaceholder, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement, undefined);
+  });
+
+  it("reserves spacer rows beneath the placeholder for sixel backend", () => {
+    // 480px metadata height → ceil(480/16) = 30 spacer rows so subsequent
+    // cells are not visually overlaid by the inline image.
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+      height: 480,
+    });
+    assertEquals(result.fragment.lines.length, 31);
+    assertEquals(result.fragment.lines[0].startsWith("[image:"), true);
+    for (let i = 1; i < result.fragment.lines.length; i++) {
+      assertEquals(result.fragment.lines[i], "");
+    }
+  });
+
+  it("honors meta.cellHeightPx override when provided", () => {
+    // 480px height with explicit 24px cell height → ceil(480/24) = 20.
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+      height: 480,
+      cellHeightPx: 24,
+    });
+    assertEquals(result.fragment.lines.length, 21);
+  });
+
+  it("does not reserve spacer rows for placeholder backend", () => {
+    const result = renderImage(PNG_B64, "image/png", capsPlaceholder, {
+      cellIdx: 0,
+      outputIdx: 0,
+      height: 480,
+    });
+    assertEquals(
+      result.fragment.lines.length,
+      1,
+      "placeholder backend keeps the original single-line fragment",
+    );
+  });
+
+  it("decodes PNG header height when metadata height is missing", () => {
+    // The 1×1 PNG_B64 fixture has height=1 in its IHDR chunk → ceil(1/20)
+    // = 1 spacer row; total fragment length is 2 (placeholder + 1 spacer).
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.fragment.lines.length, 2);
   });
 });
 
