@@ -10,8 +10,11 @@ import type { RenderPlan } from "../../../schema/render-plan.ts";
 /**
  * Apply a `RenderPlan` to a buffer.
  *
- * Sets `modifiable=false` and `conceallevel=0` on the target buffer, then
- * writes the plan's lines. When a `viewport` is provided, only the visible
+ * Writes the plan's lines while modifiable, then locks the buffer with
+ * `nomodifiable`, marks it `nomodified` (so `:q` does not warn about
+ * pending changes), sets `buftype=acwrite` (writes go through the
+ * `BufWriteCmd` autocmd registered in `session/events.ts`), and
+ * `conceallevel=0`. When a `viewport` is provided, only the visible
  * range is rendered (lazy rendering for large notebooks).
  *
  * @param host - Active Denops instance.
@@ -38,6 +41,8 @@ export async function applyRenderPlan(
     await host.call("setline", 1, lines);
   }
 
+  await host.cmd("setlocal buftype=acwrite");
+  await host.cmd("setlocal nomodified");
   await host.cmd("setlocal nomodifiable");
   await host.cmd("setlocal conceallevel=0");
 }

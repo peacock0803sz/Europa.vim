@@ -40,6 +40,18 @@ describe("applyRenderPlan", () => {
     const cmds = host.cmdsMatching("conceallevel=0");
     assertEquals(cmds.length > 0, true);
   });
+
+  it("issues setlocal buftype=acwrite", async () => {
+    await applyRenderPlan(host, 1, emptyPlan());
+    const cmds = host.cmdsMatching("buftype=acwrite");
+    assertEquals(cmds.length > 0, true);
+  });
+
+  it("issues setlocal nomodified to clear the dirty flag from setline", async () => {
+    await applyRenderPlan(host, 1, emptyPlan());
+    const cmds = host.cmdsMatching("nomodified");
+    assertEquals(cmds.length > 0, true);
+  });
 });
 
 describe("applyRenderPlan", () => {
