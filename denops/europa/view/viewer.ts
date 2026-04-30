@@ -38,17 +38,17 @@ async function findMagick(): Promise<string | null> {
 }
 
 function makeMagickConverter(magickCmd: string): MagickConverter {
-  return async (pngData: Uint8Array) => {
+  return async (imageData: Uint8Array) => {
     try {
       const proc = new Deno.Command(magickCmd, {
-        args: ["png:-", "sixel:-"],
+        args: ["-", "sixel:-"],
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
       });
       const child = proc.spawn();
       const writer = child.stdin.getWriter();
-      await writer.write(pngData);
+      await writer.write(imageData);
       await writer.close();
       const { code, stdout } = await child.output();
       return code === 0 ? stdout : null;
@@ -127,8 +127,8 @@ async function applySixelPlacements(
   await host.cmd("redraw");
 
   for (const sp of placements) {
-    const pngBytes = decodeBase64(sp.payload);
-    const sixelBytes = await conv(pngBytes);
+    const imageBytes = decodeBase64(sp.payload);
+    const sixelBytes = await conv(imageBytes);
     if (!sixelBytes) {
       await host.cmd(
         "echohl WarningMsg | echom 'Europa: Sixel conversion failed — falling back to placeholder' | echohl None",
