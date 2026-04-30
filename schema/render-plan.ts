@@ -60,6 +60,16 @@ export const ClickableSchema = Type.Object({
 });
 export type Clickable = Static<typeof ClickableSchema>;
 
+/** A single renderable unit produced by `dispatchOutput` or a renderer. */
+export const RenderFragmentSchema = Type.Object({
+  lines: Type.Array(Type.String()),
+  highlights: Type.Array(HighlightSchema),
+  virtText: Type.Array(VirtTextSchema),
+  imagePlacements: Type.Array(ImagePlacementSchema),
+  clickables: Type.Array(ClickableSchema),
+});
+export type RenderFragment = Static<typeof RenderFragmentSchema>;
+
 export const RenderPlanSchema = Type.Object({
   lines: Type.Array(Type.String()),
   highlights: Type.Array(HighlightSchema),

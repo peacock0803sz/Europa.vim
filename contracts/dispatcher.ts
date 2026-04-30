@@ -5,7 +5,7 @@
  * because RPC arguments must be `unknown` for TypeBox runtime validation, which
  * cannot be expressed as a TypeBox schema. See DESIGN.md §3.7.1.
  *
- * Phase 2 implements: init / open / save / previewOutput.
+ * Phase 2 implements: init / open / save / previewOutput / cleanup.
  * Phase 3+ methods are declared here so the type is stable across phases.
  *
  * @module contracts/dispatcher
@@ -19,13 +19,14 @@
 export type EuropaDispatcher = {
   // Phase 2: viewer methods
   init(): Promise<void>;
-  open(path: unknown): Promise<void>;
+  open(bufnr: unknown, path: unknown): Promise<void>;
   save(bufnr: unknown): Promise<void>;
   previewOutput(
     bufnr: unknown,
     cellIdx: unknown,
     outputIdx: unknown,
   ): Promise<void>;
+  cleanup(bufnr: unknown): Promise<void>;
 
   // Phase 3: editing methods (declared; implementation throws UnimplementedError)
   insertCell(bufnr: unknown, type: unknown, position: unknown): Promise<void>;

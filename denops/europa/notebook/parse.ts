@@ -1,8 +1,6 @@
 /**
  * Notebook parser: JSON → normalized Notebook.
  *
- * Phase 2 Foundational stub — full implementation lands in US1 (T049).
- *
  * The parse pipeline:
  *   1. JSON.parse
  *   2. Value.Check(NotebookSchemaPreNormalize) — pre-normalize validation
@@ -19,6 +17,7 @@ import {
   NotebookSchema,
   NotebookSchemaPreNormalize,
 } from "../../../schema/notebook.ts";
+import { assignCellId } from "./cell.ts";
 
 /** Thrown when a `.ipynb` file fails pre- or post-normalize validation. */
 export class NotebookParseError extends Error {
@@ -39,6 +38,9 @@ export class NotebookParseError extends Error {
  * @returns Fully normalized `Notebook` satisfying `NotebookSchema`.
  * @throws {NotebookParseError} When validation fails at either stage.
  * @spec-id europa.contract.notebook-alignment
+ * @spec-id europa.notebook.parse.normalize
+ * @spec-id europa.notebook.parse.id-completion
+ * @spec-id europa.notebook.parse.value-check
  */
 // deno-lint-ignore require-await
 export async function parseNotebook(content: string): Promise<Notebook> {
@@ -86,7 +88,7 @@ function normalize(raw: Record<string, unknown>): unknown {
 
     // Ensure cell.id exists
     if (!c.id) {
-      c.id = crypto.randomUUID();
+      c.id = assignCellId();
       // Upgrade nbformat_minor to 5 when we assign an id (FR-003)
       if (typeof raw.nbformat_minor === "number" && raw.nbformat_minor < 5) {
         raw = { ...raw, nbformat_minor: 5 };
