@@ -7,14 +7,15 @@
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { Notebook, Output } from "../../../schema/notebook.ts";
 import type {
-  Highlight,
   RenderFragment,
   RenderPlan,
 } from "../../../schema/render-plan.ts";
 import { dispatchOutput } from "./dispatcher.ts";
 import { renderMarkdown } from "./markdown.ts";
 
-const DEFAULT_MAX_OUTPUT_LINES = 1000;
+// Matches schema/config.ts and denops/europa/config.ts — when no opts are
+// passed, the renderer behaves as if the user accepted Vim defaults.
+const DEFAULT_MAX_OUTPUT_LINES = 100;
 
 /** Merge consecutive stream outputs of the same name (FR-012). */
 function mergeStreams(outputs: readonly Output[]): Output[] {
@@ -35,31 +36,6 @@ function mergeStreams(outputs: readonly Output[]): Output[] {
     }
   }
   return merged;
-}
-
-/**
- * Truncate a fragment to `maxLines` and append a summary line if needed (FR-051).
- *
- * Only `lines` and `highlights` are filtered against the new line budget;
- * `virtText`, `imagePlacements`, and `clickables` are pass-through because
- * Phase 2 renderers always emit them as empty arrays. When Phase 3 starts
- * producing real values, this function must be extended to filter them too,
- * or stale entries will reference truncated-away lines.
- */
-function truncateFragment(
-  frag: RenderFragment,
-  maxLines: number,
-): RenderFragment {
-  if (frag.lines.length <= maxLines) return frag;
-  const overflow = frag.lines.length - maxLines;
-  const truncatedLines = [
-    ...frag.lines.slice(0, maxLines),
-    `[... truncated, ${overflow} more lines]`,
-  ];
-  const truncatedHighlights: Highlight[] = frag.highlights.filter(
-    (h) => h.line < maxLines,
-  );
-  return { ...frag, lines: truncatedLines, highlights: truncatedHighlights };
 }
 
 /**
@@ -84,13 +60,67 @@ function appendFragment(
 }
 
 /**
+ * Append a cell's outputs to the plan under a per-cell `maxLines` budget
+ * (FR-051). The summary line counts toward the budget, so the total number
+ * of lines added by this call is at most `maxLines`.
+ *
+ * If the merged outputs fit within `maxLines`, all fragments are appended
+ * verbatim. Otherwise the budget is reduced by 1 to reserve space for a
+ * `[... truncated, N more lines]` marker, and fragments are appended until
+ * the reduced budget is exhausted (the boundary fragment is sliced and its
+ * highlights are filtered to match).
+ *
+ * Phase 2 only: `virtText`, `imagePlacements`, and `clickables` on truncated
+ * fragments are pass-through because no Phase 2 renderer produces them.
+ * Phase 3 must extend the slicing here once real values flow through.
+ */
+function appendCellOutputs(
+  plan: { lines: string[]; highlights: RenderPlan["highlights"] },
+  outputs: readonly Output[],
+  caps: Capabilities,
+  mimePriority: string[],
+  maxLines: number,
+): void {
+  const merged = mergeStreams(outputs);
+  const frags = merged.map((out) => dispatchOutput(out, caps, mimePriority));
+  const totalLines = frags.reduce((n, f) => n + f.lines.length, 0);
+
+  if (totalLines <= maxLines) {
+    for (const frag of frags) appendFragment(plan, frag);
+    return;
+  }
+
+  const budget = maxLines - 1;
+  let used = 0;
+  for (const frag of frags) {
+    if (used >= budget) break;
+    const room = budget - used;
+    if (frag.lines.length <= room) {
+      appendFragment(plan, frag);
+      used += frag.lines.length;
+    } else {
+      const truncated: RenderFragment = {
+        ...frag,
+        lines: frag.lines.slice(0, room),
+        highlights: frag.highlights.filter((h) => h.line < room),
+      };
+      appendFragment(plan, truncated);
+      used = budget;
+      break;
+    }
+  }
+  plan.lines.push(`[... truncated, ${totalLines - used} more lines]`);
+}
+
+/**
  * Assemble a `RenderPlan` from a normalized `Notebook`.
  *
  * Each cell contributes:
  *   1. A header decoration line
  *   2. Source lines
  *   3. Output fragments (code cells only), with consecutive streams merged
- *      and each output truncated to `maxOutputLines`
+ *      and the *combined* outputs of the cell capped at `maxOutputLines`
+ *      lines (FR-051) — including the truncation summary, when present
  *
  * The `cellMap` records the buffer line range `[bufLineStart, bufLineEnd)`
  * for each cell.
@@ -133,12 +163,13 @@ export function buildRenderPlan(
     for (const line of sourceLines) lines.push(line);
 
     if (cell.cell_type === "code" && cell.outputs && cell.outputs.length > 0) {
-      const merged = mergeStreams(cell.outputs);
-      for (const out of merged) {
-        const raw = dispatchOutput(out, caps, mimePriority);
-        const frag = truncateFragment(raw, maxOutputLines);
-        appendFragment({ lines, highlights }, frag);
-      }
+      appendCellOutputs(
+        { lines, highlights },
+        cell.outputs,
+        caps,
+        mimePriority,
+        maxOutputLines,
+      );
     } else if (cell.cell_type === "markdown") {
       // Markdown source is already included above as plain lines;
       // highlights from renderMarkdown are added here.

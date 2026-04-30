@@ -118,4 +118,89 @@ describe("buildRenderPlan", () => {
       true,
     );
   });
+
+  // FR-051 — output line cap is per-cell (not per-output) and includes the
+  // `[... truncated, N more lines]` summary in the cap.
+  describe("max_output_lines cap (FR-051)", () => {
+    function streamOf(lineCount: number): Notebook["cells"][number] {
+      const text = Array.from({ length: lineCount }, (_, i) => `L${i}`).join(
+        "\n",
+      );
+      return {
+        cell_type: "code",
+        id: "cell1",
+        source: "",
+        execution_count: null,
+        outputs: [{ output_type: "stream", name: "stdout", text }],
+        metadata: {},
+      };
+    }
+
+    it("does not truncate when total output lines fit within the cap", () => {
+      const plan = buildRenderPlan(makeNotebook([streamOf(5)]), defaultCaps, {
+        maxOutputLines: 10,
+      });
+      assertEquals(
+        plan.lines.some((l) => l.startsWith("[... truncated")),
+        false,
+      );
+    });
+
+    it("caps total output lines at maxOutputLines including the summary", () => {
+      // 10-line stream output, cap = 4 → 3 content + 1 summary = 4 total
+      const plan = buildRenderPlan(makeNotebook([streamOf(10)]), defaultCaps, {
+        maxOutputLines: 4,
+      });
+      const cell = plan.cellMap[0];
+      // Cell layout for `source: ""`: header (1 line; source is falsy so no
+      // source lines are emitted) + output lines. Skip the header to inspect
+      // outputs.
+      const outputLines = plan.lines.slice(
+        cell.bufLineStart + 1,
+        cell.bufLineEnd,
+      );
+      assertEquals(outputLines.length, 4);
+      assertEquals(
+        outputLines[outputLines.length - 1].startsWith("[..."),
+        true,
+      );
+    });
+
+    it("applies the cap per-cell across multiple outputs (not per-output)", () => {
+      // Two outputs of 30 lines each = 60 total, cap = 20 → 19 content + 1 summary.
+      // Per-output (buggy) interpretation would have produced 30 + 30 = 60 lines unchanged
+      // or 20 + 20 = 40 — both clearly more than the per-cell budget of 20.
+      const cell: Notebook["cells"][number] = {
+        cell_type: "code",
+        id: "cell1",
+        source: "",
+        execution_count: null,
+        outputs: [
+          {
+            output_type: "stream",
+            name: "stdout",
+            text: Array.from({ length: 30 }, (_, i) => `A${i}`).join("\n"),
+          },
+          // Use a different stream name so mergeStreams keeps them separate.
+          {
+            output_type: "stream",
+            name: "stderr",
+            text: Array.from({ length: 30 }, (_, i) => `B${i}`).join("\n"),
+          },
+        ],
+        metadata: {},
+      };
+      const plan = buildRenderPlan(makeNotebook([cell]), defaultCaps, {
+        maxOutputLines: 20,
+      });
+      const cm = plan.cellMap[0];
+      const outputLines = plan.lines.slice(cm.bufLineStart + 1, cm.bufLineEnd);
+      assertEquals(outputLines.length, 20);
+      // Summary mentions 60 - 19 = 41 missing lines
+      assertEquals(
+        outputLines[outputLines.length - 1],
+        "[... truncated, 41 more lines]",
+      );
+    });
+  });
 });
