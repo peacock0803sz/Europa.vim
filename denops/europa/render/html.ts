@@ -5,6 +5,8 @@
  * - `<style>` / `<script>` blocks (including their content) are removed
  * - `<table>` blocks are converted to a column-aligned text table with a
  *   dashed rule between header and body
+ * - Block-level opening tags (`<p>`, `<div>`, `<br>`, `<tr>`, `<li>`) are
+ *   replaced with a newline so adjacent text doesn't collapse into one line
  * - Remaining tags are stripped (entity decoding deferred to Phase 4)
  *
  * @category Render
@@ -93,7 +95,11 @@ export function renderHtml(html: string): RenderFragment {
     /<table\b[^>]*>([\s\S]*?)<\/table>/gi,
     (_, body) => tableToText(body),
   );
-  const stripped = tablesReplaced.replace(/<[^>]+>/g, "");
+  const blocksToNewline = tablesReplaced.replace(
+    /<(?:p|div|br|tr|li)\b[^>]*>/gi,
+    "\n",
+  );
+  const stripped = blocksToNewline.replace(/<[^>]+>/g, "");
   const lines = stripped.split("\n");
   return {
     lines,

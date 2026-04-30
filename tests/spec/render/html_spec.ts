@@ -186,4 +186,14 @@ describe("renderHtml", () => {
     const text = frag.lines.join("\n");
     assertEquals(text.includes("<b>"), false);
   });
+
+  it("breaks lines on block-level opening tags so adjacent text stays separated", () => {
+    const frag = renderHtml("<p>first</p><p>second</p><div>third</div>");
+    const firstIdx = frag.lines.findIndex((l) => l.includes("first"));
+    const secondIdx = frag.lines.findIndex((l) => l.includes("second"));
+    const thirdIdx = frag.lines.findIndex((l) => l.includes("third"));
+    assertEquals(firstIdx >= 0, true);
+    assertEquals(secondIdx > firstIdx, true, "second must be on a later line");
+    assertEquals(thirdIdx > secondIdx, true, "third must be on a later line");
+  });
 });
