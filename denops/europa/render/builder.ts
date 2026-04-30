@@ -118,6 +118,11 @@ function appendCellOutputs(
         highlights: frag.highlights.filter((h) => h.line < room),
       };
       appendFragment(plan, truncated);
+      for (const sp of sixel) {
+        if (sp.line < room) {
+          plan.sixelPlacements.push({ ...sp, line: sp.line + offset });
+        }
+      }
       used = budget;
       break;
     }
