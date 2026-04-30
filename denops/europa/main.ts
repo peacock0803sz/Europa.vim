@@ -52,12 +52,24 @@ const MIME_SUFFIX: Record<ImageMime, string> = {
   "image/jpeg": ".jpg",
 };
 
+/** Wrap a string as a Vimscript single-quoted literal, escaping ' by doubling. */
+function vimSingleQuote(s: string): string {
+  return "'" + s.replace(/\r\n?/g, "\n").replace(/\n/g, "\\n").replace(
+    /'/g,
+    "''",
+  ) + "'";
+}
+
 /**
  * Emit an error message to Vim's `:messages` without throwing.
  * Uses `echohl ErrorMsg` so the message appears in red.
  */
 async function echomError(denops: Denops, reason: string): Promise<void> {
-  await denops.cmd(`echohl ErrorMsg | echom "Europa: ${reason}" | echohl None`);
+  await denops.cmd(
+    `echohl ErrorMsg | echom ${
+      vimSingleQuote(`Europa: ${reason}`)
+    } | echohl None`,
+  );
 }
 
 /**
