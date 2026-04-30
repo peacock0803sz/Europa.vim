@@ -7,3 +7,14 @@ augroup europa_plugin
   autocmd!
   autocmd User DenopsPluginPost:europa call denops#notify('europa', 'init', [])
 augroup END
+
+" Static fallback so the first `:edit foo.ipynb` is captured even when denops
+" is still booting (denops#notify queues until the plugin registers).
+" setupAutocmds() in denops/europa/session/events.ts re-registers identical
+" entries inside the init handler — same group, autocmd! resets, no double-fire.
+augroup europa_ipynb
+  autocmd!
+  autocmd BufReadCmd *.ipynb call denops#notify('europa', 'open', [expand('<afile>')])
+  autocmd BufWriteCmd *.ipynb call denops#notify('europa', 'save', [expand('<afile>')])
+  autocmd BufUnload *.ipynb call denops#notify('europa', 'cleanup', [str2nr(expand('<abuf>'))])
+augroup END
