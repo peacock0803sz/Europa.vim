@@ -9,52 +9,40 @@
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { Output } from "../../../schema/notebook.ts";
 import type { RenderFragment } from "../../../schema/render-plan.ts";
-
-function emptyFragment(): RenderFragment {
-  return {
-    lines: [],
-    highlights: [],
-    virtText: [],
-    imagePlacements: [],
-    clickables: [],
-  };
-}
-
-function linesFragment(lines: string[]): RenderFragment {
-  return { ...emptyFragment(), lines };
-}
+import { renderError, renderStream, renderText } from "./text.ts";
+import { renderMarkdown } from "./markdown.ts";
+import { renderJson } from "./json.ts";
+import { renderHtml } from "./html.ts";
 
 function renderMimeData(
   data: Record<string, unknown>,
   mimePriority: string[],
+  _caps: Capabilities,
 ): RenderFragment {
   for (const mime of mimePriority) {
     const value = data[mime];
     if (value === undefined) continue;
 
-    if (mime === "text/plain" || mime === "text/markdown") {
-      const text = Array.isArray(value) ? value.join("") : String(value);
-      return linesFragment(text.split("\n"));
-    }
+    const text = Array.isArray(value) ? value.join("") : String(value);
 
-    if (mime === "text/html") {
-      const text = Array.isArray(value) ? value.join("") : String(value);
-      return linesFragment(text.split("\n"));
-    }
+    if (mime === "text/plain") return renderText(text);
+    if (mime === "text/markdown") return renderMarkdown(text);
+    if (mime === "text/html") return renderHtml(text);
+    if (mime === "application/json") return renderJson(value);
 
-    if (mime === "application/json") {
-      return linesFragment(JSON.stringify(value, null, 2).split("\n"));
-    }
+    // SVG source: display as plain text (FR-024)
+    if (mime === "image/svg+xml") return renderText(text);
 
+    // Image MIMEs: placeholder until US3 (T087)
     if (mime.startsWith("image/")) {
-      // Image rendering delegated to a later phase; emit placeholder.
-      return linesFragment([`[image: ${mime}]`]);
+      return renderText(`[image: ${mime}]`);
     }
 
-    return linesFragment([`[unsupported: ${mime}]`]);
+    // Unsupported MIME (FR-025)
+    return renderText(`[unsupported MIME: ${mime}]`);
   }
 
-  return linesFragment(["[unsupported: no matching MIME]"]);
+  return renderText("[unsupported: no matching MIME]");
 }
 
 /**
@@ -65,28 +53,25 @@ function renderMimeData(
  * the output's `data` bundle is selected.
  *
  * @param output - The cell output to render.
- * @param _caps - Host capabilities (reserved for image protocol selection).
+ * @param caps - Host capabilities (reserved for image protocol selection).
  * @param mimePriority - Ordered list of preferred MIME types.
  * @returns A `RenderFragment` suitable for inclusion in a `RenderPlan`.
  * @spec-id europa.render.dispatcher.mime-priority
  */
 export function dispatchOutput(
   output: Output,
-  _caps: Capabilities,
+  caps: Capabilities,
   mimePriority: string[],
 ): RenderFragment {
   if (output.output_type === "stream") {
-    return linesFragment(output.text.split("\n"));
+    return renderStream(output.name, output.text);
   }
 
   if (output.output_type === "error") {
-    return linesFragment([
-      `${output.ename}: ${output.evalue}`,
-      ...output.traceback,
-    ]);
+    return renderError(output.ename, output.evalue, output.traceback);
   }
 
   // execute_result and display_data both carry a data MIME bundle.
   const data = output.data as Record<string, unknown>;
-  return renderMimeData(data, mimePriority);
+  return renderMimeData(data, mimePriority, caps);
 }
