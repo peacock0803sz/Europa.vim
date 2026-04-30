@@ -22,7 +22,7 @@ export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd("augroup europa_ipynb");
   await host.cmd("autocmd!");
   await host.cmd(
-    "autocmd BufReadCmd *.ipynb call europa#open(str2nr(expand('<abuf>')), expand('<afile>'))",
+    "autocmd BufReadCmd *.ipynb setfiletype europa | call europa#open(str2nr(expand('<abuf>')), expand('<afile>'))",
   );
   await host.cmd(
     "autocmd BufWriteCmd *.ipynb call europa#save()",

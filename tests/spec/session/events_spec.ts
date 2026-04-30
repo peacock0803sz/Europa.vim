@@ -28,6 +28,15 @@ describe("setupAutocmds", () => {
     const groupCmds = host.cmdsMatching("europa_ipynb");
     assertEquals(groupCmds.length > 0, true);
   });
+
+  it("sets filetype=europa inside BufReadCmd so syntax is applied", async () => {
+    const host = mockVim();
+    await setupAutocmds(host);
+    const hasSetFiletype = host.cmdsMatching("BufReadCmd").some((c) =>
+      String(c.args[0]).includes("setfiletype europa")
+    );
+    assertEquals(hasSetFiletype, true);
+  });
 });
 
 describe("setupAutocmds", () => {
