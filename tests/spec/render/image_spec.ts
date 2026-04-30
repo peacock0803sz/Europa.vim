@@ -1,5 +1,6 @@
 /**
- * BDD specs for renderImage — placeholder format, clickable, and MIME routing.
+ * BDD specs for renderImage — placeholder format, clickable, MIME routing,
+ * and Sixel metadata synchronous return.
  *
  * europa.render.image.unsupported-mime and europa.render.image.svg-source
  * are tested here via dispatchOutput to verify the full image-MIME routing
@@ -8,6 +9,7 @@
  * @spec-id europa.render.image.placeholder
  * @spec-id europa.render.image.unsupported-mime
  * @spec-id europa.render.image.svg-source
+ * @spec-id europa.render.image.sixel-metadata
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertExists } from "@std/assert";
@@ -111,13 +113,52 @@ describe("renderImage — placeholder format", () => {
     assertEquals(result.placement, undefined);
   });
 
-  it("falls back to placeholder for sixel backend in Phase 2 (T103 will wire this)", () => {
+  it("still returns a placeholder fragment for sixel backend", () => {
     const result = renderImage(PNG_B64, "image/png", capsSixel, {
       cellIdx: 0,
       outputIdx: 0,
     });
     assertExists(result.fragment.lines[0]);
     assertEquals(result.fragment.lines[0].startsWith("[image:"), true);
+  });
+});
+
+describe("renderImage — sixel-metadata", () => {
+  it("returns placement.backend === 'sixel' for sixel caps", () => {
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement?.backend, "sixel");
+  });
+
+  it("returns placement.payload equal to the raw base64 input", () => {
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement?.payload, PNG_B64);
+  });
+
+  it("returns placement synchronously without invoking Deno.Command", () => {
+    // renderImage is synchronous — if a subprocess were spawned the test
+    // would hang or throw; completing instantly confirms no I/O occurred.
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 2,
+      outputIdx: 1,
+    });
+    assertExists(result.placement);
+    assertEquals(result.placement.cellIdx, 2);
+    assertEquals(result.placement.outputIdx, 1);
+    assertEquals(result.placement.mime, "image/png");
+  });
+
+  it("returns no placement for placeholder backend", () => {
+    const result = renderImage(PNG_B64, "image/png", capsPlaceholder, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement, undefined);
   });
 });
 

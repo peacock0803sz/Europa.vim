@@ -95,6 +95,7 @@ export const RenderPlanSchema = Type.Object({
   highlights: Type.Array(HighlightSchema),
   virtText: Type.Array(VirtTextSchema),
   imagePlacements: Type.Array(ImagePlacementSchema),
+  sixelPlacements: Type.Optional(Type.Array(SixelPlacementSchema)),
   clickables: Type.Array(ClickableSchema),
   cellMap: Type.Array(
     Type.Object({

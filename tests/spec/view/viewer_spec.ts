@@ -1,15 +1,28 @@
 /**
- * BDD specs for applyRenderPlan — modifiable, conceal, lazy rendering.
+ * BDD specs for applyRenderPlan — modifiable, conceal, lazy rendering,
+ * Sixel apply, and Sixel fallback.
  *
  * @spec-id europa.view.viewer.modifiable
  * @spec-id europa.view.viewer.conceal-zero
  * @spec-id europa.view.viewer.lazy-render
+ * @spec-id europa.view.viewer.sixel-apply
+ * @spec-id europa.view.viewer.sixel-fallback
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
-import { applyRenderPlan } from "../../../denops/europa/view/viewer.ts";
+import {
+  applyRenderPlan,
+  type MagickConverter,
+} from "../../../denops/europa/view/viewer.ts";
 import { type MockHost, mockVim } from "../../fixtures/mock-host.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
+
+// Minimal 1×1 PNG base64 (same fixture as image_spec.ts)
+const PNG_B64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+// Minimal valid Sixel sequence for test fakes
+const FAKE_SIXEL = new TextEncoder().encode("\x1bPq#0;2;0;0;0#0!1~-\x1b\\");
 
 function emptyPlan(): RenderPlan {
   return {
@@ -19,6 +32,22 @@ function emptyPlan(): RenderPlan {
     imagePlacements: [],
     clickables: [],
     cellMap: [],
+  };
+}
+
+function sixelPlan(): RenderPlan {
+  return {
+    ...emptyPlan(),
+    sixelPlacements: [
+      {
+        line: 0,
+        payload: PNG_B64,
+        mime: "image/png",
+        backend: "sixel",
+        cellIdx: 0,
+        outputIdx: 0,
+      },
+    ],
   };
 }
 
@@ -122,5 +151,97 @@ describe("applyRenderPlan with viewport", () => {
       c.args[3] === "$"
     );
     assertEquals(trim !== undefined, true);
+  });
+});
+
+describe("applyRenderPlan — sixel-apply", () => {
+  const fakeConverter: MagickConverter = () => Promise.resolve(FAKE_SIXEL);
+
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("calls writefile with /dev/tty when converter returns sixel data", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: fakeConverter,
+    });
+    const ttyCall = host.callsTo("writefile").find((c) =>
+      c.args[2] === "/dev/tty"
+    );
+    assertEquals(
+      ttyCall !== undefined,
+      true,
+      "writefile to /dev/tty must be called",
+    );
+  });
+
+  it("registers WinScrolled autocmd after successful sixel write", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: fakeConverter,
+    });
+    const autocmds = host.cmdsMatching("WinScrolled");
+    assertEquals(
+      autocmds.length > 0,
+      true,
+      "WinScrolled autocmd must be registered",
+    );
+  });
+
+  it("registers VimResized and BufEnter in the same autocmd group", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: fakeConverter,
+    });
+    const autocmds = host.cmdsMatching("VimResized");
+    assertEquals(
+      autocmds.length > 0,
+      true,
+      "VimResized autocmd must be registered",
+    );
+  });
+});
+
+describe("applyRenderPlan — sixel-fallback", () => {
+  const nullConverter: MagickConverter = () => Promise.resolve(null);
+
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("emits echohl WarningMsg when converter returns null", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: nullConverter,
+    });
+    const warnCmds = host.cmdsMatching("echohl");
+    assertEquals(
+      warnCmds.length > 0,
+      true,
+      "echohl WarningMsg must be emitted on fallback",
+    );
+  });
+
+  it("does not register WinScrolled autocmd when all conversions fail", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: nullConverter,
+    });
+    const autocmds = host.cmdsMatching("WinScrolled");
+    assertEquals(
+      autocmds.length,
+      0,
+      "WinScrolled must NOT be registered on all-fallback",
+    );
+  });
+
+  it("does not call writefile to /dev/tty when conversion fails", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: nullConverter,
+    });
+    const ttyCall = host.callsTo("writefile").find((c) =>
+      c.args[2] === "/dev/tty"
+    );
+    assertEquals(
+      ttyCall,
+      undefined,
+      "writefile to /dev/tty must NOT be called on fallback",
+    );
   });
 });

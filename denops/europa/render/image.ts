@@ -6,7 +6,6 @@
  * transform with no side-effects (DESIGN.md §3.7.5).
  *
  * @category Render
- * @spec-id europa.render.image.placeholder
  */
 
 import type { Capabilities } from "../../../schema/capabilities.ts";
@@ -16,25 +15,29 @@ import type {
 } from "../../../schema/render-plan.ts";
 
 /**
- * Render an image cell output as a placeholder line.
+ * Render an image cell output as a placeholder line, optionally returning
+ * Sixel placement metadata for the viewer to apply.
  *
- * Produces `[image: <kind> <w>x<h> - :EuropaPreviewOutput <cellIdx>
- * <outputIdx>]` with `EuropaImagePlaceholder` highlight and a clickable
- * whose payload carries the `:EuropaPreviewOutput` command.
+ * Always produces a `[image: <kind> <w>x<h> - :EuropaPreviewOutput ...]`
+ * placeholder with `EuropaImagePlaceholder` highlight and a clickable.
  *
- * For `caps.image === "sixel"` in Phase 2, the function falls back to a
- * plain placeholder (T103 in US5 will wire the actual Sixel metadata path).
+ * When `caps.image === "sixel"`, additionally returns a `placement` carrying
+ * the raw base64 payload so `view/viewer.ts` can convert and write to the
+ * terminal asynchronously. No subprocess is invoked here.
  *
  * @param data - Base64-encoded image bytes (PNG or JPEG).
  * @param mime - MIME type: `"image/png"` or `"image/jpeg"`.
- * @param caps - Host capabilities; used for backend selection.
+ * @param caps - Host capabilities; `caps.image === "sixel"` activates the
+ *   Sixel metadata path.
  * @param meta - Cell/output index and optional pixel dimensions.
  * @returns An `ImageRenderResult` with fragment and optional Sixel placement.
+ * @spec-id europa.render.image.placeholder
+ * @spec-id europa.render.image.sixel-metadata
  */
 export function renderImage(
-  _data: string,
+  data: string,
   mime: "image/png" | "image/jpeg",
-  _caps: Capabilities,
+  caps: Capabilities,
   meta: { cellIdx: number; outputIdx: number; width?: number; height?: number },
 ): ImageRenderResult {
   const kind = mime === "image/png" ? "png" : "jpeg";
@@ -65,7 +68,23 @@ export function renderImage(
     ],
   };
 
-  // Phase 2: all image backends produce placeholder-only output.
-  // US5 (T103) will populate SixelPlacement for caps.image === "sixel".
+  // Sixel opt-in (FR-020): return placement metadata for the viewer layer.
+  // No subprocess or I/O happens here — the render layer is synchronous.
+  if (caps.image === "sixel") {
+    return {
+      fragment,
+      placement: {
+        line: 0,
+        payload: data,
+        mime,
+        width: meta.width,
+        height: meta.height,
+        backend: "sixel",
+        cellIdx: meta.cellIdx,
+        outputIdx: meta.outputIdx,
+      },
+    };
+  }
+
   return { fragment };
 }

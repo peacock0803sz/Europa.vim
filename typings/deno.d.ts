@@ -21,8 +21,24 @@ declare namespace Deno {
   class Command {
     constructor(
       cmd: string,
-      options?: { args?: string[]; stdout?: string; stderr?: string },
+      options?: {
+        args?: string[];
+        stdin?: string;
+        stdout?: string;
+        stderr?: string;
+      },
     );
     output(): Promise<{ code: number; stdout: Uint8Array; stderr: Uint8Array }>;
+    spawn(): {
+      stdin: {
+        getWriter(): {
+          write(data: Uint8Array): Promise<void>;
+          close(): Promise<void>;
+        };
+      };
+      output(): Promise<
+        { code: number; stdout: Uint8Array; stderr: Uint8Array }
+      >;
+    };
   }
 }
