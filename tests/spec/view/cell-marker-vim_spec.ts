@@ -29,7 +29,7 @@ describe("VimCellMarker", () => {
     const countAfterFirst = host.callsTo("prop_type_add").length;
     // Simulate prop_type_list returning the registered types
     host.calls = [];
-    host.setEval("prop_type_list()", ["EuropaCellHead", "EuropaCellOut"]);
+    host.setEval("prop_type_list()", ["EuropaCellHeader", "EuropaCellFooter"]);
     // Mock prop_type_list function return
     await marker.init(host);
     // With existing types registered, no new adds for those types

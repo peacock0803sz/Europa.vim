@@ -7,7 +7,7 @@
 import type { Denops } from "@denops/std";
 import type { CellMarker, MarkerId } from "../../../contracts/cell-marker.ts";
 
-const PROP_TYPES = ["EuropaCellHead", "EuropaCellOut"] as const;
+const PROP_TYPES = ["EuropaCellHeader", "EuropaCellFooter"] as const;
 
 /**
  * CellMarker implementation for Vim using the `prop_*` text-property API.
@@ -41,10 +41,10 @@ export class VimCellMarker implements CellMarker {
     label: string,
   ): Promise<MarkerId> {
     const recs = this._markers.get(bufnr) ?? [];
-    recs.push({ lnum, label, propType: "EuropaCellHead" });
+    recs.push({ lnum, label, propType: "EuropaCellHeader" });
     this._markers.set(bufnr, recs);
     const id = (await this._host!.call("prop_add", lnum, 0, {
-      type: "EuropaCellHead",
+      type: "EuropaCellHeader",
       bufnr,
       text: label,
     })) as MarkerId | null;
@@ -57,10 +57,10 @@ export class VimCellMarker implements CellMarker {
     label = "",
   ): Promise<MarkerId> {
     const recs = this._markers.get(bufnr) ?? [];
-    recs.push({ lnum, label, propType: "EuropaCellOut" });
+    recs.push({ lnum, label, propType: "EuropaCellFooter" });
     this._markers.set(bufnr, recs);
     const id = (await this._host!.call("prop_add", lnum, 0, {
-      type: "EuropaCellOut",
+      type: "EuropaCellFooter",
       bufnr,
       text: label,
     })) as MarkerId | null;

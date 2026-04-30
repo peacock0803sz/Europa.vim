@@ -43,7 +43,7 @@ export class NvimCellMarker implements CellMarker {
       this._nsId!,
       lnum - 1,
       0,
-      { virt_lines: [[[label, "EuropaCellHead"]]] },
+      { virt_lines: [[[label, "EuropaCellHeader"]]] },
     )) as MarkerId | null;
     return id ?? 0;
   }
@@ -62,7 +62,7 @@ export class NvimCellMarker implements CellMarker {
       this._nsId!,
       lnum - 1,
       0,
-      { virt_lines: [[[label, "EuropaCellOut"]]] },
+      { virt_lines: [[[label, "EuropaCellFooter"]]] },
     )) as MarkerId | null;
     return id ?? 0;
   }

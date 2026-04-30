@@ -3,9 +3,9 @@ if exists('b:current_syntax')
 endif
 
 syntax match EuropaCellBoundary /^━\+$/
-syntax match EuropaCellHead     /^## \[[^]]\+\] [A-Za-z0-9_-]\+$/
+syntax match EuropaCellHeader   /^## \[[^]]\+\] [A-Za-z0-9_-]\+$/
 
 highlight default link EuropaCellBoundary Comment
-highlight default link EuropaCellHead     Statement
+highlight default link EuropaCellHeader   Comment
 
 let b:current_syntax = 'europa'
