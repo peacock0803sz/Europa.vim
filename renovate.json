@@ -5,7 +5,8 @@
     ":dependencyDashboard"
   ],
   "enabledManagers": [
-    "npm"
+    "npm",
+    "deno"
   ],
   "packageRules": [
     {
