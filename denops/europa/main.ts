@@ -51,9 +51,7 @@ export class UnimplementedError extends Error {
  * @returns Dispatcher record registered as `denops.dispatcher`.
  * @spec-id europa.contract.dispatcher-alignment
  */
-export function buildDispatcher(
-  denops: Denops,
-): EuropaDispatcher & { cleanup(bufnr: unknown): Promise<void> } {
+export function buildDispatcher(denops: Denops): EuropaDispatcher {
   return {
     // Phase 2: init — wires highlights, config, capabilities, autocmds
     async init(): Promise<void> {
