@@ -36,7 +36,7 @@ const SIXEL_CELL_HEIGHT_PX = 16;
  */
 function pngPixelHeight(b64: string): number | undefined {
   try {
-    const bytes = decodeBase64(b64);
+    const bytes = decodeBase64(b64.slice(0, 64));
     if (bytes.length < 24) return undefined;
     if (
       bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e ||
