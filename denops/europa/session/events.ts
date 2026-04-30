@@ -1,11 +1,14 @@
 /**
  * Autocmd registration for Europa session lifecycle.
  *
- * Phase 2 stub — wires `BufReadCmd *.ipynb` and `BufUnload *.ipynb`
- * into the `europa_ipynb` autocmd group. Full implementation lands
- * in US1 (T058) when the dispatcher's `open` method is wired.
+ * Wires `BufReadCmd`, `BufWriteCmd`, and `BufUnload` for `*.ipynb` files
+ * into the `europa_ipynb` autocmd group so that opening, saving, and
+ * closing a notebook buffer notifies the Denops plugin.
  *
  * @category Session
+ * @spec-id europa.session.events.bufreadcmd
+ * @spec-id europa.session.events.bufwritecmd
+ * @spec-id europa.session.events.cleanup
  */
 
 import type { Denops } from "@denops/std";
@@ -13,11 +16,22 @@ import type { Denops } from "@denops/std";
 /**
  * Register Europa autocmds into the `europa_ipynb` group.
  *
- * Phase 2 skeleton: group creation only. `BufReadCmd` and `BufUnload`
- * handlers are added in US1 (T058) once the dispatcher is fully wired.
- *
- * @param denops - Denops instance for issuing Vim commands.
+ * @param host - Denops instance for issuing Vim commands.
+ * @spec-id europa.session.events.bufreadcmd
+ * @spec-id europa.session.events.bufwritecmd
+ * @spec-id europa.session.events.cleanup
  */
-export async function setupAutocmds(denops: Denops): Promise<void> {
-  await denops.cmd("augroup europa_ipynb | augroup END");
+export async function setupAutocmds(host: Denops): Promise<void> {
+  await host.cmd("augroup europa_ipynb");
+  await host.cmd("autocmd!");
+  await host.cmd(
+    "autocmd BufReadCmd *.ipynb call denops#notify('europa', 'open', [expand('<afile>')])",
+  );
+  await host.cmd(
+    "autocmd BufWriteCmd *.ipynb call denops#notify('europa', 'save', [expand('<afile>')])",
+  );
+  await host.cmd(
+    "autocmd BufUnload *.ipynb call denops#notify('europa', 'close', [expand('<abuf>')])",
+  );
+  await host.cmd("augroup END");
 }
