@@ -185,7 +185,9 @@ describe("applyRenderPlan — sixel-apply (Vim host)", () => {
     );
     const payload = (ttyCall!.args[1] as string[])[0];
     // ESC 7 (DECSC) + ESC [ row;col H + sixel + ESC 8 (DECRC).
-    assertEquals(payload.startsWith("\x1b7\x1b[8;1H"), true);
+    // sp.line=7 → screenpos returns row 8 → image anchored at row 9 (one
+    // row below the placeholder so the `[image: ...]` text stays visible).
+    assertEquals(payload.startsWith("\x1b7\x1b[9;1H"), true);
     assertEquals(payload.endsWith("\x1b8"), true);
   });
 
@@ -245,7 +247,9 @@ describe("applyRenderPlan — sixel-apply (Neovim host)", () => {
     });
     const chansend = host.callsTo("chansend");
     const payload = chansend[0].args[2] as string;
-    assertEquals(payload.startsWith("\x1b7\x1b[8;1H"), true);
+    // sp.line=7 → screenpos returns row 8 → image anchored at row 9 (one
+    // row below the placeholder so the `[image: ...]` text stays visible).
+    assertEquals(payload.startsWith("\x1b7\x1b[9;1H"), true);
     assertEquals(payload.endsWith("\x1b8"), true);
   });
 

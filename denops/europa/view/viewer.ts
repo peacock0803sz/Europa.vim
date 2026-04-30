@@ -144,7 +144,10 @@ async function applySixelPlacements(
     // because writing Sixel without a valid anchor would clobber unrelated
     // rows (this is the bug the user hit when the image landed at home).
     if (row === 0) continue;
-    await writeBytesToTty(host, wrapWithCursorMove(sixelBytes, row, col));
+    // Anchor the image one row below the placeholder so the
+    // `[image: ...]` text remains visible (and the clickable
+    // :EuropaPreviewOutput command stays accessible) above the picture.
+    await writeBytesToTty(host, wrapWithCursorMove(sixelBytes, row + 1, col));
   }
 
   // Repaint autocmds (FR-022) are deferred because they must call a
