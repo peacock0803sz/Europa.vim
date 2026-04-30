@@ -6,10 +6,10 @@
  *   2. concat-md.ts → tmp/api-reference.md  (Modules → Classes → Functions → Types)
  *   3. doc/sources/*.txt + api-reference.md → doc/europa.txt
  *
- * typedoc invocation is graceful: if the binary is unavailable or fails (e.g.
- * JSR import resolution not yet configured), the pipeline continues without an
- * API reference section and logs a warning. This keeps `git diff --exit-code
- * doc/europa.txt` stable when typedoc cannot run in a given environment.
+ * typedoc errors are fatal. The pipeline still writes `doc/europa.txt` from
+ * the source chapters that were read so the file stays in sync with
+ * `doc/sources/`, but the task exits non-zero so CI surfaces missing or broken
+ * API reference output.
  *
  * panvimdoc (Lua/pandoc filter) is deferred to Phase 3 when it will be
  * available in the nix dev shell.
@@ -96,38 +96,35 @@ async function readApiReference(): Promise<string> {
 }
 
 /**
- * Attempt to run typedoc to populate `tmp/typedoc/` for the API reference.
+ * Run typedoc to populate `tmp/typedoc/` for the API reference.
  *
- * Fails silently with a console warning when typedoc is unavailable or errors
- * (e.g. when JSR imports are unresolvable without additional tsconfig paths).
+ * Returns `true` on success and `false` when typedoc exits non-zero. The
+ * caller is responsible for translating a `false` result into a non-zero task
+ * exit so CI catches the regression.
  */
-async function runTypedoc(): Promise<void> {
+async function runTypedoc(): Promise<boolean> {
   await Deno.remove("tmp/typedoc", { recursive: true }).catch(() => {});
-  try {
-    const cmd = new Deno.Command(Deno.execPath(), {
-      args: [
-        "run",
-        "-A",
-        "npm:typedoc",
-        "--options",
-        "typedoc.json",
-        "--out",
-        "tmp/typedoc",
-      ],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const { code } = await cmd.output();
-    if (code !== 0) {
-      console.warn(
-        "[gen-vimdoc] typedoc exited with non-zero status — API reference section will be empty.",
-      );
-    }
-  } catch {
-    console.warn(
-      "[gen-vimdoc] typedoc not available — API reference section will be empty.",
+  const cmd = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "-A",
+      "npm:typedoc",
+      "--options",
+      "typedoc.json",
+      "--out",
+      "tmp/typedoc",
+    ],
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const { code } = await cmd.output();
+  if (code !== 0) {
+    console.error(
+      `[gen-vimdoc] typedoc exited with status ${code} — see errors above.`,
     );
+    return false;
   }
+  return true;
 }
 
 /**
@@ -139,12 +136,15 @@ async function runTypedoc(): Promise<void> {
  * ```
  */
 export async function generate(): Promise<void> {
-  await runTypedoc();
+  const typedocOk = await runTypedoc();
   await runConcatMd();
   const sourcesBody = await readSources();
   const apiBody = await readApiReference();
   const body = buildVimdoc(sourcesBody, apiBody);
   await Deno.writeTextFile(OUTPUT_PATH, body);
+  if (!typedocOk) {
+    throw new Error("typedoc failed — API reference is empty");
+  }
 }
 
 if (import.meta.main) {
