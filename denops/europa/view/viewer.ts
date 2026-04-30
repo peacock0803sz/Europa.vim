@@ -40,23 +40,26 @@ export async function applyRenderPlan(
 ): Promise<void> {
   await host.call("setbufvar", bufnr, "&modifiable", 1);
 
-  const topOffset = opts?.viewport ? opts.viewport.topLine : 0;
-  const lines = opts?.viewport
-    ? plan.lines.slice(opts.viewport.topLine, opts.viewport.bottomLine + 1)
-    : plan.lines;
+  try {
+    const topOffset = opts?.viewport ? opts.viewport.topLine : 0;
+    const lines = opts?.viewport
+      ? plan.lines.slice(opts.viewport.topLine, opts.viewport.bottomLine + 1)
+      : plan.lines;
 
-  if (lines.length > 0) {
-    await host.call("setbufline", bufnr, topOffset + 1, lines);
-  }
+    if (lines.length > 0) {
+      await host.call("setbufline", bufnr, topOffset + 1, lines);
+    }
 
-  await host.call("deletebufline", bufnr, plan.lines.length + 1, "$");
+    await host.call("deletebufline", bufnr, plan.lines.length + 1, "$");
 
-  await host.call("setbufvar", bufnr, "&buftype", "acwrite");
-  await host.call("setbufvar", bufnr, "&modified", 0);
-  await host.call("setbufvar", bufnr, "&modifiable", 0);
+    await host.call("setbufvar", bufnr, "&buftype", "acwrite");
 
-  const winid = await host.call("bufwinid", bufnr);
-  if (typeof winid === "number" && winid !== -1) {
-    await host.call("win_execute", winid, "setlocal conceallevel=0");
+    const winid = await host.call("bufwinid", bufnr);
+    if (typeof winid === "number" && winid !== -1) {
+      await host.call("win_execute", winid, "setlocal conceallevel=0");
+    }
+  } finally {
+    await host.call("setbufvar", bufnr, "&modified", 0);
+    await host.call("setbufvar", bufnr, "&modifiable", 0);
   }
 }
