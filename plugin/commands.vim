@@ -6,5 +6,5 @@ let g:loaded_europa_commands = 1
 command! -nargs=? -complete=file EuropaOpen
       \ call europa#open(empty(<q-args>) ? expand('%:p') : <q-args>)
 
-command! -nargs=2 EuropaPreviewOutput
+command! -nargs=+ EuropaPreviewOutput
       \ call europa#preview_output(<f-args>)
