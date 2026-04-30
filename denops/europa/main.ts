@@ -154,7 +154,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const serialized = serializeNotebook(session.notebook);
       try {
         await Deno.writeTextFile(session.notebookPath, serialized);
-        await denops.cmd("setlocal nomodified");
+        await denops.call("setbufvar", bufnrNum, "&modified", 0);
       } catch (e) {
         await echomError(
           denops,
