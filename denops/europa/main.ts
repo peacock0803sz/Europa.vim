@@ -30,6 +30,7 @@ import { loadConfig } from "./config.ts";
 import { detectCapabilities } from "./capabilities.ts";
 import { setupAutocmds } from "./session/events.ts";
 import { parseNotebook } from "./notebook/parse.ts";
+import { serializeNotebook } from "./notebook/serialize.ts";
 import { buildRenderPlan, mergeStreams } from "./render/builder.ts";
 import { applyRenderPlan } from "./view/viewer.ts";
 import { SessionStore } from "./session/state.ts";
@@ -131,9 +132,37 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       await applyRenderPlan(denops, bufnrNum, plan);
     },
 
-    // Phase 2: save — full implementation in US4 (T098)
-    save(_bufnr: unknown): Promise<void> {
-      return Promise.resolve();
+    /**
+     * Save the open notebook back to disk as canonical JSON.
+     *
+     * Reads the session's stored `Notebook`, serializes it with
+     * {@link serializeNotebook} (1-space indent, trailing LF), and writes
+     * atomically to `session.notebookPath`. On success, clears the modified
+     * flag with `setlocal nomodified`. On failure, reports via `:messages`
+     * without overwriting the original file.
+     *
+     * @param bufnr - Buffer number of the open notebook.
+     * @spec-id europa.dispatcher.save
+     */
+    async save(bufnr: unknown): Promise<void> {
+      const bufnrNum = Number(bufnr);
+      const session = sessionStore.get(bufnrNum);
+      if (!session) {
+        await echomError(denops, `no open session for buffer ${bufnrNum}`);
+        return;
+      }
+      const serialized = serializeNotebook(session.notebook);
+      try {
+        await Deno.writeTextFile(session.notebookPath, serialized);
+        await denops.cmd("setlocal nomodified");
+      } catch (e) {
+        await echomError(
+          denops,
+          `failed to save notebook: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      }
     },
 
     /**

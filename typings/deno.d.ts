@@ -14,6 +14,7 @@ declare namespace Deno {
   function readTextFile(path: string | URL): Promise<string>;
   function makeTempFile(options?: { suffix?: string }): Promise<string>;
   function writeFile(path: string, data: Uint8Array): Promise<void>;
+  function writeTextFile(path: string, data: string): Promise<void>;
 
   const build: { os: "darwin" | "linux" | "windows" };
 
