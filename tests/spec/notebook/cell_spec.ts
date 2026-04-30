@@ -8,6 +8,7 @@ import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   assignCellId,
+  isValidCellId,
   joinSource,
 } from "../../../denops/europa/notebook/cell.ts";
 
@@ -18,10 +19,9 @@ describe("assignCellId", () => {
     assertEquals(id.length > 0, true);
   });
 
-  it("matches the uuid v4 character set (alphanumeric + hyphen)", () => {
+  it("returns a well-formed uuid v7 (version + variant bits)", () => {
     const id = assignCellId();
-    // uuid v4: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-    assertEquals(/^[0-9a-f-]+$/.test(id), true);
+    assertEquals(isValidCellId(id), true);
   });
 
   it("returns a different id on each call", () => {
