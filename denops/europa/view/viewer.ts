@@ -58,9 +58,28 @@ function makeMagickConverter(magickCmd: string): MagickConverter {
   };
 }
 
+async function writeBytesToTty(host: Denops, bytes: Uint8Array): Promise<void> {
+  // Latin-1 decode gives a 1:1 byte↔char mapping, preserving all 256 code
+  // points so binary Sixel escapes survive the JS→msgpack-rpc→host hop.
+  const latin1 = new TextDecoder("latin1").decode(bytes);
+  if (host.meta.host === "nvim") {
+    // Neovim launched via lazy.nvim cannot writefile to /dev/tty since the
+    // editor process has no controlling terminal — writefile raises E482.
+    // v:stderr must be used instead because it is the documented channel
+    // for emitting raw escape sequences from a denops plugin to the
+    // terminal in Neovim.
+    const stderrChan = await host.eval("v:stderr");
+    await host.call("chansend", stderrChan, latin1);
+  } else {
+    // Vim: writefile to /dev/tty in binary mode.  A single-element list
+    // avoids the inter-element separator that 'b' mode would otherwise add.
+    await host.call("writefile", [latin1], "/dev/tty", "b");
+  }
+}
+
 async function applySixelPlacements(
   host: Denops,
-  bufnr: number,
+  _bufnr: number,
   placements: SixelPlacement[],
   converter?: MagickConverter,
 ): Promise<void> {
@@ -76,7 +95,6 @@ async function applySixelPlacements(
     conv = makeMagickConverter(magickCmd);
   }
 
-  let anyWritten = false;
   for (const sp of placements) {
     const pngBytes = decodeBase64(sp.payload);
     const sixelBytes = await conv(pngBytes);
@@ -86,22 +104,14 @@ async function applySixelPlacements(
       );
       continue;
     }
-    // Write sixel bytes to /dev/tty via Vim writefile in binary mode.
-    // Latin-1 gives a 1:1 byte↔char mapping, preserving all 256 code points.
-    const latin1 = new TextDecoder("latin1").decode(sixelBytes);
-    await host.call("writefile", [latin1], "/dev/tty", "b");
-    anyWritten = true;
+    await writeBytesToTty(host, sixelBytes);
   }
 
-  if (anyWritten) {
-    // Register repaint autocmds so Sixel images re-draw on scroll/resize (FR-022).
-    await host.cmd(
-      `augroup EuropaSixel_${bufnr} | autocmd! | ` +
-        `autocmd WinScrolled,VimResized,BufEnter <buffer=${bufnr}> ` +
-        `call denops#notify('europa', 'refreshSixel', [${bufnr}]) | ` +
-        `augroup END`,
-    );
-  }
+  // Repaint autocmds (FR-022) are deferred because they must call a
+  // `refreshSixel` dispatcher (not yet implemented) and cannot anchor images
+  // at the placeholder line without screen-cell cursor positioning.
+  // Registering the autocmd now would raise on every WinScrolled since the
+  // dispatcher is missing.  Re-add when both pieces are in place.
 }
 
 /**
@@ -117,10 +127,12 @@ async function applySixelPlacements(
  * rendering for large notebooks).
  *
  * When `plan.sixelPlacements` is non-empty, each placement is converted from
- * PNG to Sixel via ImageMagick and written to `/dev/tty`. `WinScrolled`,
- * `VimResized`, and `BufEnter` autocmds are registered for repaint (FR-022).
- * If ImageMagick is absent or conversion fails the viewer falls back to the
- * placeholder line already in the buffer and emits a WarningMsg (FR-021).
+ * PNG to Sixel via ImageMagick and emitted to the terminal: Vim uses
+ * `writefile('/dev/tty', 'b')`, Neovim uses `chansend(v:stderr, ...)` since
+ * a denops-launched Neovim has no controlling tty.  If ImageMagick is absent
+ * or conversion fails the viewer falls back to the placeholder line already
+ * in the buffer and emits a WarningMsg (FR-021).  Repaint on scroll/resize
+ * (FR-022) is deferred — see `applySixelPlacements` for details.
  *
  * Uses buffer-targeted APIs (`setbufline`, `setbufvar`) so the render
  * lands on the correct buffer even when this runs after the user has

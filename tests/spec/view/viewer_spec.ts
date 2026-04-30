@@ -14,7 +14,7 @@ import {
   applyRenderPlan,
   type MagickConverter,
 } from "../../../denops/europa/view/viewer.ts";
-import { type MockHost, mockVim } from "../../fixtures/mock-host.ts";
+import { type MockHost, mockNvim, mockVim } from "../../fixtures/mock-host.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
 
 // Minimal 1×1 PNG base64 (same fixture as image_spec.ts)
@@ -154,7 +154,7 @@ describe("applyRenderPlan with viewport", () => {
   });
 });
 
-describe("applyRenderPlan — sixel-apply", () => {
+describe("applyRenderPlan — sixel-apply (Vim host)", () => {
   const fakeConverter: MagickConverter = () => Promise.resolve(FAKE_SIXEL);
 
   beforeEach(() => {
@@ -175,27 +175,55 @@ describe("applyRenderPlan — sixel-apply", () => {
     );
   });
 
-  it("registers WinScrolled autocmd after successful sixel write", async () => {
+  it("does not call chansend on Vim host", async () => {
     await applyRenderPlan(host, 1, sixelPlan(), {
       _magickConverter: fakeConverter,
     });
-    const autocmds = host.cmdsMatching("WinScrolled");
     assertEquals(
-      autocmds.length > 0,
+      host.callsTo("chansend").length,
+      0,
+      "chansend is the Neovim path and must not run on Vim",
+    );
+  });
+});
+
+describe("applyRenderPlan — sixel-apply (Neovim host)", () => {
+  const fakeConverter: MagickConverter = () => Promise.resolve(FAKE_SIXEL);
+
+  beforeEach(() => {
+    host = mockNvim();
+    // Neovim's v:stderr channel id used by chansend.
+    host.setEval("v:stderr", 2);
+  });
+
+  it("uses chansend(v:stderr, ...) instead of writefile to /dev/tty", async () => {
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: fakeConverter,
+    });
+    const chansend = host.callsTo("chansend");
+    assertEquals(
+      chansend.length > 0,
       true,
-      "WinScrolled autocmd must be registered",
+      "chansend must be called for Neovim Sixel write",
+    );
+    assertEquals(
+      chansend[0].args[1],
+      2,
+      "first chansend arg must be the v:stderr channel id",
     );
   });
 
-  it("registers VimResized and BufEnter in the same autocmd group", async () => {
+  it("does not call writefile to /dev/tty on Neovim host", async () => {
     await applyRenderPlan(host, 1, sixelPlan(), {
       _magickConverter: fakeConverter,
     });
-    const autocmds = host.cmdsMatching("VimResized");
+    const ttyCall = host.callsTo("writefile").find((c) =>
+      c.args[2] === "/dev/tty"
+    );
     assertEquals(
-      autocmds.length > 0,
-      true,
-      "VimResized autocmd must be registered",
+      ttyCall,
+      undefined,
+      "Neovim path must avoid writefile('/dev/tty') (E482).",
     );
   });
 });
@@ -219,18 +247,6 @@ describe("applyRenderPlan — sixel-fallback", () => {
     );
   });
 
-  it("does not register WinScrolled autocmd when all conversions fail", async () => {
-    await applyRenderPlan(host, 1, sixelPlan(), {
-      _magickConverter: nullConverter,
-    });
-    const autocmds = host.cmdsMatching("WinScrolled");
-    assertEquals(
-      autocmds.length,
-      0,
-      "WinScrolled must NOT be registered on all-fallback",
-    );
-  });
-
   it("does not call writefile to /dev/tty when conversion fails", async () => {
     await applyRenderPlan(host, 1, sixelPlan(), {
       _magickConverter: nullConverter,
@@ -242,6 +258,19 @@ describe("applyRenderPlan — sixel-fallback", () => {
       ttyCall,
       undefined,
       "writefile to /dev/tty must NOT be called on fallback",
+    );
+  });
+
+  it("does not call chansend when conversion fails", async () => {
+    host = mockNvim();
+    host.setEval("v:stderr", 2);
+    await applyRenderPlan(host, 1, sixelPlan(), {
+      _magickConverter: nullConverter,
+    });
+    assertEquals(
+      host.callsTo("chansend").length,
+      0,
+      "chansend must NOT be called when sixel conversion fails",
     );
   });
 });
