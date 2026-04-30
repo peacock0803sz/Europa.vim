@@ -22,6 +22,6 @@ declare namespace Deno {
       cmd: string,
       options?: { args?: string[]; stdout?: string; stderr?: string },
     );
-    output(): Promise<{ code: number }>;
+    output(): Promise<{ code: number; stdout: Uint8Array; stderr: Uint8Array }>;
   }
 }
