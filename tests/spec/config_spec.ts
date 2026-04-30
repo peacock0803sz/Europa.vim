@@ -62,13 +62,15 @@ describe("loadConfig — deprecated g:europa_use_default_mappings", () => {
   /**
    * @spec-id europa.config.deprecated-use-default-mappings
    *
-   * When g:europa_use_default_mappings is defined in the session, loadConfig
-   * must emit a WarningMsg via :echom so users know the option is ignored.
+   * When g:europa_use_default_mappings is defined and the per-session flag is
+   * not yet set, loadConfig must emit a WarningMsg via :echom. Once
+   * g:europa_warned_deprecated_mappings is set, subsequent calls are silent.
    */
-  it("emits a deprecation warning when g:europa_use_default_mappings is defined", async () => {
+  it("emits a deprecation warning on first load when g:europa_use_default_mappings is defined", async () => {
     const denops = mockVim();
-    // Simulate the variable existing in the session
-    denops.setEval(`exists('g:europa_use_default_mappings')`, 1);
+    const warnExpr =
+      `exists('g:europa_use_default_mappings') && !exists('g:europa_warned_deprecated_mappings')`;
+    denops.setEval(warnExpr, 1);
     await loadConfig(denops);
     const warnCall = denops.calls.find(
       (c) =>
@@ -84,9 +86,26 @@ describe("loadConfig — deprecated g:europa_use_default_mappings", () => {
     );
   });
 
+  it("does not emit a warning when the per-session flag is already set", async () => {
+    const denops = mockVim();
+    const warnExpr =
+      `exists('g:europa_use_default_mappings') && !exists('g:europa_warned_deprecated_mappings')`;
+    denops.setEval(warnExpr, 0);
+    await loadConfig(denops);
+    const warnCall = denops.calls.find(
+      (c) =>
+        c.method === "cmd" &&
+        typeof c.args[0] === "string" &&
+        c.args[0].includes("use_default_mappings"),
+    );
+    assertEquals(warnCall, undefined);
+  });
+
   it("does not emit a warning when g:europa_use_default_mappings is absent", async () => {
     const denops = mockVim();
-    denops.setEval(`exists('g:europa_use_default_mappings')`, 0);
+    const warnExpr =
+      `exists('g:europa_use_default_mappings') && !exists('g:europa_warned_deprecated_mappings')`;
+    denops.setEval(warnExpr, 0);
     await loadConfig(denops);
     const warnCall = denops.calls.find(
       (c) =>

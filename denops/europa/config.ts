@@ -107,10 +107,11 @@ export async function loadConfig(denops: Denops): Promise<EuropaConfig> {
   }
 
   // Warn if the user still has the removed option in their vimrc.
-  const hasDeprecated = await denops.eval(
-    `exists('g:europa_use_default_mappings')`,
+  const shouldWarn = await denops.eval(
+    `exists('g:europa_use_default_mappings') && !exists('g:europa_warned_deprecated_mappings')`,
   );
-  if (hasDeprecated) {
+  if (shouldWarn) {
+    await denops.cmd("let g:europa_warned_deprecated_mappings = 1");
     await denops.cmd(
       "echohl WarningMsg | echom 'g:europa_use_default_mappings is deprecated and ignored. Use <Plug>(europa-*) directly.' | echohl None",
     );
