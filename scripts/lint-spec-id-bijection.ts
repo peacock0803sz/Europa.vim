@@ -28,6 +28,7 @@ const AREA_ALLOWLIST = new Set([
   "dispatcher",
   "commands",
   "lint",
+  "main",
 ]);
 
 type Occurrence = { id: string; file: string; line: number };

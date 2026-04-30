@@ -15,7 +15,8 @@
  *
  * ## Phase Coverage
  *
- * - Phase 2 (this release): `init`, `open` (stub), `save` (stub), `previewOutput` (stub)
+ * - Phase 2: `init`, `save` (stub), `previewOutput` (stub)
+ * - Phase 3 (this release): `open` — reads `.ipynb`, builds a RenderPlan, reflects it to buffer
  * - Phase 3+: cell editing, kernel attach — methods declared but throw `UnimplementedError`
  *
  * @module denops/europa/main
@@ -27,6 +28,9 @@ import { defineHighlights } from "./view/highlight.ts";
 import { loadConfig } from "./config.ts";
 import { detectCapabilities } from "./capabilities.ts";
 import { setupAutocmds } from "./session/events.ts";
+import { parseNotebook } from "./notebook/parse.ts";
+import { buildRenderPlan } from "./render/builder.ts";
+import { applyRenderPlan } from "./view/viewer.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
 export class UnimplementedError extends Error {
@@ -57,9 +61,20 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       await setupAutocmds(denops);
     },
 
-    // Phase 2: open — full implementation in US1 (T059)
-    open(_path: unknown): Promise<void> {
-      return Promise.resolve();
+    /**
+     * Open a `.ipynb` file, parse it, and render cells into the current buffer.
+     *
+     * Called by the `BufReadCmd *.ipynb` autocmd via `denops#notify`.
+     *
+     * @spec-id europa.main.open.render
+     */
+    async open(path: unknown): Promise<void> {
+      const content = await Deno.readTextFile(String(path));
+      const notebook = await parseNotebook(content);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(notebook, caps);
+      const bufnr = (await denops.call("bufnr", "%")) as number;
+      await applyRenderPlan(denops, bufnr, plan);
     },
 
     // Phase 2: save — full implementation in US4 (T098)
