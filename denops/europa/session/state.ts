@@ -1,16 +1,18 @@
 /**
  * In-memory session store for open `.ipynb` buffers.
  *
- * Phase 2 stub — `byKernel` always returns an empty array because kernel
- * connections are a Phase 3 concern.
+ * `byKernel` always returns an empty array because kernel connections
+ * are a Phase 3 concern.
  *
  * @category Session
+ * @spec-id europa.session.state.store
  */
 
 import type { Session } from "../../../schema/session.ts";
 
 /**
  * In-memory registry mapping buffer numbers to open notebook sessions.
+ * @spec-id europa.session.state.store
  */
 export class SessionStore {
   private readonly store = new Map<number, Session>();
