@@ -40,7 +40,9 @@ export const SessionSchema = Type.Object({
   notebook: NotebookSchema,
   kernel: Type.Optional(KernelInfoSchema),
   cellMap: Type.Array(CellMapEntrySchema),
-  cellEditBuffers: Type.Optional(Type.Record(Type.String(), Type.Integer())),
+  cellEditBuffers: Type.Optional(
+    Type.Record(Type.String(), Type.Integer({ minimum: 0 })),
+  ),
 });
 export type Session = Static<typeof SessionSchema>;
 
