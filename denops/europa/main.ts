@@ -78,8 +78,11 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     async open(bufnr: unknown, path: unknown): Promise<void> {
       const content = await Deno.readTextFile(String(path));
       const notebook = await parseNotebook(content);
+      const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(notebook, caps);
+      const plan = buildRenderPlan(notebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
       await applyRenderPlan(denops, Number(bufnr), plan);
     },
 

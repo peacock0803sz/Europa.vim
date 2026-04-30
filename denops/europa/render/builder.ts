@@ -5,29 +5,153 @@
  */
 
 import type { Capabilities } from "../../../schema/capabilities.ts";
-import type { Notebook } from "../../../schema/notebook.ts";
-import type { RenderPlan } from "../../../schema/render-plan.ts";
+import type { Notebook, Output } from "../../../schema/notebook.ts";
+import type {
+  RenderFragment,
+  RenderPlan,
+} from "../../../schema/render-plan.ts";
+import { dispatchOutput } from "./dispatcher.ts";
+import { renderMarkdown } from "./markdown.ts";
+
+// Matches schema/config.ts and denops/europa/config.ts — when no opts are
+// passed, the renderer behaves as if the user accepted Vim defaults.
+const DEFAULT_MAX_OUTPUT_LINES = 100;
+
+/** Merge consecutive stream outputs of the same name (FR-012). */
+function mergeStreams(outputs: readonly Output[]): Output[] {
+  const merged: Output[] = [];
+  for (const out of outputs) {
+    const prev = merged[merged.length - 1];
+    if (
+      out.output_type === "stream" &&
+      prev?.output_type === "stream" &&
+      prev.name === out.name
+    ) {
+      merged[merged.length - 1] = {
+        ...prev,
+        text: prev.text + out.text,
+      };
+    } else {
+      merged.push(out);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Append `lines` and `highlights` from a RenderFragment onto the given
+ * RenderPlan arrays, applying the buffer-line offset so highlights line up
+ * with their absolute positions.
+ *
+ * Phase 2 only: `virtText`, `imagePlacements`, and `clickables` are not
+ * forwarded because every renderer produces them as empty arrays today.
+ * When Phase 3 (sixel images, popups, clickables) introduces real values,
+ * extend the `plan` parameter type and forward those fields here too.
+ */
+function appendFragment(
+  plan: { lines: string[]; highlights: RenderPlan["highlights"] },
+  frag: RenderFragment,
+): void {
+  const offset = plan.lines.length;
+  for (const line of frag.lines) plan.lines.push(line);
+  for (const hl of frag.highlights) {
+    plan.highlights.push({ ...hl, line: hl.line + offset });
+  }
+}
+
+/**
+ * Append a cell's outputs to the plan under a per-cell `maxLines` budget
+ * (FR-051). The summary line counts toward the budget, so the total number
+ * of lines added by this call is at most `maxLines`.
+ *
+ * If the merged outputs fit within `maxLines`, all fragments are appended
+ * verbatim. Otherwise the budget is reduced by 1 to reserve space for a
+ * `[... truncated, N more lines]` marker, and fragments are appended until
+ * the reduced budget is exhausted (the boundary fragment is sliced and its
+ * highlights are filtered to match).
+ *
+ * Phase 2 only: `virtText`, `imagePlacements`, and `clickables` on truncated
+ * fragments are pass-through because no Phase 2 renderer produces them.
+ * Phase 3 must extend the slicing here once real values flow through.
+ */
+function appendCellOutputs(
+  plan: { lines: string[]; highlights: RenderPlan["highlights"] },
+  outputs: readonly Output[],
+  caps: Capabilities,
+  mimePriority: string[],
+  maxLines: number,
+): void {
+  const merged = mergeStreams(outputs);
+  const frags = merged.map((out) => dispatchOutput(out, caps, mimePriority));
+  const totalLines = frags.reduce((n, f) => n + f.lines.length, 0);
+
+  if (totalLines <= maxLines) {
+    for (const frag of frags) appendFragment(plan, frag);
+    return;
+  }
+
+  const budget = maxLines - 1;
+  let used = 0;
+  for (const frag of frags) {
+    if (used >= budget) break;
+    const room = budget - used;
+    if (frag.lines.length <= room) {
+      appendFragment(plan, frag);
+      used += frag.lines.length;
+    } else {
+      const truncated: RenderFragment = {
+        ...frag,
+        lines: frag.lines.slice(0, room),
+        highlights: frag.highlights.filter((h) => h.line < room),
+      };
+      appendFragment(plan, truncated);
+      used = budget;
+      break;
+    }
+  }
+  plan.lines.push(`[... truncated, ${totalLines - used} more lines]`);
+}
 
 /**
  * Assemble a `RenderPlan` from a normalized `Notebook`.
  *
  * Each cell contributes:
- *   1. A header decoration line (`## [cell_type] id`)
- *   2. One line per source line (split on `\n`)
+ *   1. A header decoration line
+ *   2. Source lines
+ *   3. Output fragments (code cells only), with consecutive streams merged
+ *      and the *combined* outputs of the cell capped at `maxOutputLines`
+ *      lines (FR-051) — including the truncation summary, when present
  *
- * The `cellMap` records the half-open buffer line range `[bufLineStart,
- * bufLineEnd)` for each cell so that the viewer can place markers and
- * handle navigation without re-parsing the rendered buffer.
+ * The `cellMap` records the buffer line range `[bufLineStart, bufLineEnd)`
+ * for each cell.
  *
  * @param nb - Normalized notebook (all source fields are plain strings).
- * @param _caps - Host capabilities (reserved for output dispatch in later phases).
+ * @param caps - Host capabilities used by `dispatchOutput`.
+ * @param opts - Options including `maxOutputLines` and `mimePriority`.
  * @returns A `RenderPlan` ready for `applyRenderPlan`.
  * @spec-id europa.render.builder.assemble
  */
-export function buildRenderPlan(nb: Notebook, _caps: Capabilities): RenderPlan {
+export function buildRenderPlan(
+  nb: Notebook,
+  caps: Capabilities,
+  opts?: {
+    maxOutputLines?: number;
+    mimePriority?: string[];
+  },
+): RenderPlan {
+  const maxOutputLines = opts?.maxOutputLines ?? DEFAULT_MAX_OUTPUT_LINES;
+  const mimePriority = opts?.mimePriority ?? [
+    "image/png",
+    "image/jpeg",
+    "application/json",
+    "text/markdown",
+    "text/html",
+    "text/plain",
+  ];
+
   const lines: string[] = [];
-  const cellMap: RenderPlan["cellMap"] = [];
   const highlights: RenderPlan["highlights"] = [];
+  const cellMap: RenderPlan["cellMap"] = [];
 
   for (let i = 0; i < nb.cells.length; i++) {
     const cell = nb.cells[i];
@@ -36,8 +160,24 @@ export function buildRenderPlan(nb: Notebook, _caps: Capabilities): RenderPlan {
     lines.push(`## [${cell.cell_type}] ${cell.id}`);
 
     const sourceLines = cell.source ? cell.source.split("\n") : [];
-    for (const line of sourceLines) {
-      lines.push(line);
+    for (const line of sourceLines) lines.push(line);
+
+    if (cell.cell_type === "code" && cell.outputs && cell.outputs.length > 0) {
+      appendCellOutputs(
+        { lines, highlights },
+        cell.outputs,
+        caps,
+        mimePriority,
+        maxOutputLines,
+      );
+    } else if (cell.cell_type === "markdown") {
+      // Markdown source is already included above as plain lines;
+      // highlights from renderMarkdown are added here.
+      const frag = renderMarkdown(cell.source ?? "");
+      const offset = bufLineStart + 1; // +1 for the header line
+      for (const hl of frag.highlights) {
+        highlights.push({ ...hl, line: hl.line + offset });
+      }
     }
 
     const bufLineEnd = lines.length;

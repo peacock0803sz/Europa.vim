@@ -10,7 +10,11 @@
     "skipLibCheck": true,
     "allowJs": false,
     "paths": {
-      "@denops/std": ["./typings/denops-std.d.ts"]
+      "@denops/std": ["./typings/denops-std.d.ts"],
+      "@std/uuid": ["./typings/std-uuid.d.ts"],
+      "@lambdalisue/ansi-escape-code": [
+        "./typings/lambdalisue-ansi-escape-code.d.ts"
+      ]
     }
   },
   "include": [
