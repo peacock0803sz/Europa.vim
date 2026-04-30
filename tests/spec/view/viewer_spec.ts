@@ -29,9 +29,9 @@ describe("applyRenderPlan", () => {
     host = mockVim();
   });
 
-  it("issues setlocal modifiable=false", async () => {
+  it("issues setlocal nomodifiable", async () => {
     await applyRenderPlan(host, 1, emptyPlan());
-    const cmds = host.cmdsMatching("modifiable=false");
+    const cmds = host.cmdsMatching("nomodifiable");
     assertEquals(cmds.length > 0, true);
   });
 

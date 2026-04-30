@@ -3,7 +3,7 @@
  *
  * Verifies that calling `open(path)` reads the notebook file from disk, builds
  * a render plan, and reflects it into the current Vim buffer by issuing
- * `setlocal modifiable=false` and `setline`.
+ * `setlocal nomodifiable` and `setline`.
  *
  * @spec-id europa.main.open.render
  */
@@ -27,17 +27,17 @@ const MINIMAL_NB = JSON.stringify({
 });
 
 describe("buildDispatcher.open", () => {
-  it("issues setlocal modifiable=false after opening a notebook", async () => {
+  it("issues setlocal nomodifiable after opening a notebook", async () => {
     const tmp = await Deno.makeTempFile({ suffix: ".ipynb" });
     try {
       await Deno.writeTextFile(tmp, MINIMAL_NB);
       const denops = mockVim();
       const dispatcher = buildDispatcher(denops);
       await dispatcher.open(tmp);
-      const cmds = denops.cmdsMatching("modifiable=false").map((c) =>
+      const cmds = denops.cmdsMatching("nomodifiable").map((c) =>
         String(c.args[0])
       );
-      assertStringIncludes(cmds.join(" "), "modifiable=false");
+      assertStringIncludes(cmds.join(" "), "nomodifiable");
     } finally {
       await Deno.remove(tmp);
     }

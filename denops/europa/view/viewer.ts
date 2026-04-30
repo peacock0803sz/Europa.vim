@@ -28,8 +28,7 @@ export async function applyRenderPlan(
   plan: RenderPlan,
   opts?: { viewport?: { topLine: number; bottomLine: number } },
 ): Promise<void> {
-  await host.cmd("setlocal modifiable=false");
-  await host.cmd("setlocal conceallevel=0");
+  await host.cmd("setlocal modifiable");
 
   const lines = opts?.viewport
     ? plan.lines.slice(opts.viewport.topLine, opts.viewport.bottomLine + 1)
@@ -38,4 +37,7 @@ export async function applyRenderPlan(
   if (lines.length > 0) {
     await host.call("setline", 1, lines);
   }
+
+  await host.cmd("setlocal nomodifiable");
+  await host.cmd("setlocal conceallevel=0");
 }
