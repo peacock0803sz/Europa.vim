@@ -6,9 +6,11 @@
  * saving, and closing a notebook buffer notifies the Denops plugin.
  *
  * `BufUnload` fires on `:bdelete` and covers the common close path.
- * `BufWipeout` fires on `:bwipeout` and the autoclose path (e.g. when
- * scratch edit buffers are wiped), ensuring scratch buffer cleanup runs
- * even when the buffer is force-wiped rather than just unloaded.
+ * `BufWipeout` (also `*.ipynb`) catches the viewer buffer being
+ * force-wiped via `:bwipeout`, which `BufUnload` does not fire for.
+ * Both autocmds dispatch `cleanup`, which then wipes any scratch edit
+ * buffers attached to the viewer; scratch buffers themselves do not
+ * match `*.ipynb` and therefore do not trigger this autocmd directly.
  *
  * @category Session
  */
