@@ -17,3 +17,9 @@ command! -nargs=0 EuropaDeleteCell
 
 command! -nargs=0 EuropaEditCell
       \ call europa#edit_cell()
+
+command! -nargs=0 EuropaMoveCellUp
+      \ call europa#move_cell('up')
+
+command! -nargs=0 EuropaMoveCellDown
+      \ call europa#move_cell('down')
