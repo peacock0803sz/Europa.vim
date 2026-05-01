@@ -35,6 +35,7 @@ import { buildRenderPlan, mergeStreams } from "./render/builder.ts";
 import {
   applyRenderPlan,
   closeCellEditAutocmds,
+  freezeCellEditBuffer,
   lineToCellId,
   openCellEditBuffer,
   resolveScratchFiletype,
@@ -43,7 +44,9 @@ import {
 import {
   deleteCell,
   insertCell,
+  joinCell,
   moveCell,
+  splitCell,
   updateCellSource,
 } from "./notebook/cell.ts";
 import { SessionStore } from "./session/state.ts";
@@ -580,15 +583,261 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         { preferCellId: cid },
       );
     },
-    splitCell(
-      _bufnr: unknown,
-      _cellId: unknown,
-      _line: unknown,
+    /**
+     * Split the cell at the given line into two consecutive cells.
+     *
+     * `bufnr` may be either the viewer or one of its scratch edit buffers.
+     * `findViewerByScratchBufnr` decides which path: scratch callers pass
+     * `line` as a direct 1-origin source row (line - 1 = splitLine), while
+     * viewer callers go through cellRange geometry — the cursor snaps to
+     * splitLine 0 if it lands on the boundary header, and to
+     * `sourceLineCount` if it lands on an output line past the source. The
+     * branching lives here (not in autoload) so `:EuropaSplitCell` works
+     * uniformly from both contexts (Codex review H2-r2).
+     *
+     * After commit, the upper cell keeps the original cellId and outputs;
+     * if a scratch edit buffer is open for that cellId, its contents are
+     * trimmed to the upper-half source so the user's editing context
+     * stays consistent with the notebook.
+     *
+     * @spec-id europa.dispatcher.split-cell
+     */
+    async splitCell(
+      bufnr: unknown,
+      cellId: unknown,
+      line: unknown,
     ): Promise<void> {
-      return Promise.reject(new UnimplementedError("splitCell"));
+      const bn = Number(bufnr);
+      const cid = String(cellId);
+      const ln = Number(line);
+      if (!Number.isInteger(ln) || ln < 1) {
+        await echomError(denops, `splitCell: invalid line '${line}'`);
+        return;
+      }
+
+      // bufnr が scratch なら viewer を逆引きし、line を source-relative に変換。
+      // viewer なら cellRanges 経由で source 行に正規化する (R10)。
+      const reverseLookup = sessionStore.findViewerByScratchBufnr(bn);
+      let viewerBufnr: number;
+      let splitLine: number;
+      if (reverseLookup) {
+        viewerBufnr = reverseLookup.viewerBufnr;
+        if (reverseLookup.cellId !== cid) {
+          await echomError(
+            denops,
+            `splitCell: scratch buffer ${bn} does not own cell '${cid}'`,
+          );
+          return;
+        }
+        splitLine = ln - 1;
+      } else {
+        viewerBufnr = bn;
+        const session = sessionStore.get(viewerBufnr);
+        if (!session) {
+          await echomError(denops, `splitCell: no session for buffer ${bn}`);
+          return;
+        }
+        const cell = session.notebook.cells.find((c) => c.id === cid);
+        if (!cell) {
+          await echomError(denops, `splitCell: cell '${cid}' not found`);
+          return;
+        }
+        const plan = sessionStore.getRenderPlan(viewerBufnr);
+        const range = plan?.cellRanges.find((r) => r.cellId === cid);
+        if (!range) {
+          await echomError(
+            denops,
+            `splitCell: no render plan range for cell '${cid}'`,
+          );
+          return;
+        }
+        const userLine0 = ln - 1;
+        const sourceStart = range.startLine + 1;
+        const sourceLineCount = cell.source.split("\n").length;
+        const sourceEnd = sourceStart + sourceLineCount - 1;
+        if (userLine0 < sourceStart) {
+          splitLine = 0;
+        } else if (userLine0 > sourceEnd) {
+          splitLine = sourceLineCount;
+        } else {
+          splitLine = userLine0 - sourceStart;
+        }
+      }
+
+      const session = sessionStore.get(viewerBufnr);
+      if (!session) {
+        await echomError(
+          denops,
+          `splitCell: no session for viewer buffer ${viewerBufnr}`,
+        );
+        return;
+      }
+      const prePlan = sessionStore.getRenderPlan(viewerBufnr);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const winid = await denops.call("bufwinid", viewerBufnr) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+
+      let newNotebook: typeof session.notebook;
+      try {
+        newNotebook = splitCell(session.notebook, cid, splitLine);
+      } catch (e) {
+        await echomError(
+          denops,
+          `splitCell: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        return;
+      }
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(viewerBufnr, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(viewerBufnr, plan);
+      try {
+        await applyRenderPlan(denops, viewerBufnr, plan);
+        await denops.call("setbufvar", viewerBufnr, "&modified", 1);
+      } catch {
+        await echomError(denops, "splitCell: applyRenderPlan failed");
+      }
+
+      // 上 cell の scratch buffer が開いていれば短縮された source を書き戻す。
+      const scratchBufnr = sessionStore.getScratchBufnr(viewerBufnr, cid);
+      if (scratchBufnr !== undefined) {
+        const upperCell = newNotebook.cells.find((c) => c.id === cid);
+        if (upperCell) {
+          const upperLines = upperCell.source.split("\n");
+          await denops.call("deletebufline", scratchBufnr, 1, "$");
+          await denops.call("setbufline", scratchBufnr, 1, upperLines);
+          await denops.call("setbufvar", scratchBufnr, "&modified", 0);
+        }
+      }
+
+      await restoreCursor(
+        denops,
+        winid,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+        { preferCellId: cid },
+      );
     },
-    joinCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("joinCell"));
+    /**
+     * Merge the target cell into the cell immediately above it.
+     *
+     * The previous cell's identity (`id` / `cell_type` / outputs /
+     * `execution_count` / `metadata`) wins; the target cell is removed.
+     * If the target was the first cell or unknown, the pure helper
+     * returns the same notebook reference and the dispatcher surfaces
+     * a `:messages` guidance instead of committing.
+     *
+     * Two scratch buffers may need touch-ups: the absorbed (target)
+     * scratch is frozen and its session entry removed, while the
+     * surviving (previous) scratch — if open — gets its contents
+     * rewritten to the joined source so the user keeps editing the
+     * combined cell without confusion.
+     *
+     * @spec-id europa.dispatcher.join-cell
+     */
+    async joinCell(bufnr: unknown, cellId: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `joinCell: no session for buffer ${bn}`);
+        return;
+      }
+      const cid = String(cellId);
+      const idx = session.notebook.cells.findIndex((c) => c.id === cid);
+      if (idx === -1) {
+        await echomError(denops, `joinCell: cell '${cid}' not found`);
+        return;
+      }
+      if (idx === 0) {
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote("Europa: No cell above to join")
+          } | echohl None`,
+        );
+        return;
+      }
+      const prevCellId = session.notebook.cells[idx - 1].id;
+      const prePlan = sessionStore.getRenderPlan(bn);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const winid = await denops.call("bufwinid", bn) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const newNotebook = joinCell(session.notebook, cid);
+      if (Object.is(newNotebook, session.notebook)) {
+        // 既に上の guard で検知済だが防御として no-op。
+        return;
+      }
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(bn, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(bn, plan);
+      try {
+        await applyRenderPlan(denops, bn, plan);
+        await denops.call("setbufvar", bn, "&modified", 1);
+      } catch {
+        await echomError(denops, "joinCell: applyRenderPlan failed");
+      }
+
+      // target cell の scratch を frozen 化し、session map から削除。
+      const targetScratchBufnr = sessionStore.getScratchBufnr(bn, cid);
+      if (targetScratchBufnr !== undefined) {
+        const exists = await denops.call("bufexists", targetScratchBufnr);
+        if (exists) {
+          await freezeCellEditBuffer(denops, targetScratchBufnr, cid);
+        }
+        sessionStore.removeCellEditBuffer(bn, cid);
+      }
+      // 前 cell の scratch が開いていれば結合後 source を書き戻す。
+      const survivingScratchBufnr = sessionStore.getScratchBufnr(
+        bn,
+        prevCellId,
+      );
+      if (survivingScratchBufnr !== undefined) {
+        const merged = newNotebook.cells.find((c) => c.id === prevCellId);
+        if (merged) {
+          const mergedLines = merged.source.split("\n");
+          await denops.call("deletebufline", survivingScratchBufnr, 1, "$");
+          await denops.call(
+            "setbufline",
+            survivingScratchBufnr,
+            1,
+            mergedLines,
+          );
+          await denops.call(
+            "setbufvar",
+            survivingScratchBufnr,
+            "&modified",
+            0,
+          );
+        }
+      }
+
+      await restoreCursor(
+        denops,
+        winid,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+        { preferCellId: prevCellId },
+      );
     },
     /**
      * Open (or focus) a scratch buffer to edit a single cell's source.

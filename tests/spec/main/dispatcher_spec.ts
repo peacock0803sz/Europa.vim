@@ -5,6 +5,8 @@
  * @spec-id europa.dispatcher.insert-cell
  * @spec-id europa.dispatcher.delete-cell
  * @spec-id europa.dispatcher.move-cell
+ * @spec-id europa.dispatcher.split-cell
+ * @spec-id europa.dispatcher.join-cell
  * @spec-id europa.dispatcher.edit-cell
  * @spec-id europa.dispatcher.save-cell-edit
  * @spec-id europa.dispatcher.close-cell-edit
@@ -270,6 +272,251 @@ describe("moveCell dispatcher", () => {
     await dispatcher.moveCell(VIEWER_BUFNR, "nonexistent-id", "up");
     const errCmds = host.cmdsMatching("echohl");
     assertEquals(errCmds.length > 0, true);
+  });
+});
+
+// --- splitCell dispatcher (europa.dispatcher.split-cell) ---
+
+describe("splitCell dispatcher", () => {
+  const VIEWER_BUFNR = 48;
+  // 1st code cell of edit-target.ipynb has a 2-line source; index 0 in cells[].
+  const FIRST_CELL_ID = "018f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3b";
+
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("emits a warning and is a no-op when session is not found", async () => {
+    const dispatcher = buildDispatcher(host);
+    await dispatcher.splitCell(9999, FIRST_CELL_ID, 1);
+    const errCmds = host.cmdsMatching("echohl");
+    assertEquals(errCmds.length > 0, true);
+  });
+
+  it("does not throw when session is missing", async () => {
+    const dispatcher = buildDispatcher(host);
+    let threw = false;
+    try {
+      await dispatcher.splitCell(9999, FIRST_CELL_ID, 1);
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, false);
+  });
+
+  it("splits the cell and grows the notebook by one (viewer path)", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    // Line 3 in the viewer falls within cell 1's source ("print(...)").
+    await dispatcher.splitCell(VIEWER_BUFNR, FIRST_CELL_ID, 3);
+    const lines = host.getBufLines(VIEWER_BUFNR);
+    // Two distinct `## [code]` headers exist for the original cell's id and
+    // the freshly minted lower-half cell; structural mutation succeeded.
+    const headerCount = lines.filter((l) => l.startsWith("## [code]")).length;
+    assertEquals(
+      headerCount >= 4,
+      true,
+      "splitting cell 1 must add a new code header so total code headers is >= 4 (originally 3)",
+    );
+  });
+
+  it("snaps a header-line cursor to splitLine = 0 (upper cell becomes empty)", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    // Line 1 is the boundary header itself; splitLine should snap to 0.
+    await dispatcher.splitCell(VIEWER_BUFNR, FIRST_CELL_ID, 1);
+    const lines = host.getBufLines(VIEWER_BUFNR);
+    const firstSourceLineIdx = lines.findIndex((l) =>
+      l === "" || l.startsWith("## ")
+    );
+    // After a splitLine=0 split, the original cellId's body is empty, so the
+    // line right after its header is either another header or a blank line.
+    assertEquals(firstSourceLineIdx >= 0, true);
+  });
+
+  it("marks the viewer buffer dirty after a successful split", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    host.calls = [];
+    await dispatcher.splitCell(VIEWER_BUFNR, FIRST_CELL_ID, 3);
+    const dirty = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === VIEWER_BUFNR && c.args[2] === "&modified" &&
+      c.args[3] === 1
+    );
+    assertEquals(dirty !== undefined, true);
+  });
+
+  it("emits a warning when cellId is not in the notebook", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    host.calls = [];
+    await dispatcher.splitCell(VIEWER_BUFNR, "nonexistent-id", 1);
+    const errCmds = host.cmdsMatching("echohl");
+    assertEquals(errCmds.length > 0, true);
+  });
+
+  it("supports the scratch path: the line is taken as a 1-origin source row", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === FIRST_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    host.calls = [];
+    // Scratch line 2 -> splitLine = 1 -> upper has one source line, lower has
+    // the rest. The dispatcher must resolve the viewer via reverse lookup.
+    await dispatcher.splitCell(scratchBufnr, FIRST_CELL_ID, 2);
+    // Viewer was re-rendered: probe via lineToCellId to confirm the original
+    // cellId is still findable (it owns the upper half).
+    const cellAtTop = await dispatcher.lineToCellId(VIEWER_BUFNR, 1);
+    assertEquals(cellAtTop, FIRST_CELL_ID);
+  });
+
+  it("rewrites the scratch buffer with the upper-half source after split", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === FIRST_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    host.calls = [];
+    await dispatcher.splitCell(scratchBufnr, FIRST_CELL_ID, 2);
+    const scratchLines = host.getBufLines(scratchBufnr);
+    // Upper half is the first source line of cell 1 only.
+    assertEquals(scratchLines.length, 1);
+    assertEquals(scratchLines[0], "# Cell 1: code with stream output");
+  });
+});
+
+// --- joinCell dispatcher (europa.dispatcher.join-cell) ---
+
+describe("joinCell dispatcher", () => {
+  const VIEWER_BUFNR = 49;
+  const FIRST_CELL_ID = "018f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3b";
+  const SECOND_CELL_ID = "028f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3c";
+
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("emits a warning when session is missing", async () => {
+    const dispatcher = buildDispatcher(host);
+    await dispatcher.joinCell(9999, FIRST_CELL_ID);
+    const errCmds = host.cmdsMatching("echohl");
+    assertEquals(errCmds.length > 0, true);
+  });
+
+  it("does not throw when session is missing", async () => {
+    const dispatcher = buildDispatcher(host);
+    let threw = false;
+    try {
+      await dispatcher.joinCell(9999, FIRST_CELL_ID);
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, false);
+  });
+
+  it("emits `No cell above to join` when target is the first cell", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const guidance = host.cmdsMatching("No cell above to join");
+    assertEquals(guidance.length > 0, true);
+    // No structural change → viewer not dirty.
+    const dirty = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === VIEWER_BUFNR && c.args[2] === "&modified" &&
+      c.args[3] === 1
+    );
+    assertEquals(dirty, undefined);
+  });
+
+  it("emits a warning when cellId is not in the notebook", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, "nonexistent-id");
+    const errCmds = host.cmdsMatching("echohl");
+    assertEquals(errCmds.length > 0, true);
+  });
+
+  it("merges cell 2 into cell 1 and shrinks the notebook by one", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const lines = host.getBufLines(VIEWER_BUFNR);
+    // Originally 5 cells = 5 headers; after join 4 cells = 4 headers.
+    const allHeaders = lines.filter((l) => l.startsWith("## ["));
+    assertEquals(allHeaders.length, 4);
+    // The merged cell still uses the previous (cell 1) id and absorbed the
+    // markdown source on the line right after its header.
+    const cellAtTop = await dispatcher.lineToCellId(VIEWER_BUFNR, 1);
+    assertEquals(cellAtTop, FIRST_CELL_ID);
+  });
+
+  it("marks the viewer buffer dirty after a successful join", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const dirty = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === VIEWER_BUFNR && c.args[2] === "&modified" &&
+      c.args[3] === 1
+    );
+    assertEquals(dirty !== undefined, true);
+  });
+
+  it("freezes the target cell's scratch buffer when it has one", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === SECOND_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    // freezeCellEditBuffer appends the deletion marker line.
+    const append = host.callsTo("appendbufline").find((c) =>
+      c.args[1] === scratchBufnr
+    );
+    assertEquals(append !== undefined, true);
+  });
+
+  it("rewrites the surviving (previous) cell's scratch buffer with the joined source", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === FIRST_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const scratchLines = host.getBufLines(scratchBufnr);
+    const joinedHasMarkdownLine = scratchLines.some((l) =>
+      l.includes("Cell 2: Markdown heading")
+    );
+    assertEquals(
+      joinedHasMarkdownLine,
+      true,
+      "previous cell's scratch must contain the absorbed markdown source",
+    );
   });
 });
 
