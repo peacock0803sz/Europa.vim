@@ -250,31 +250,41 @@ describe("saveCellEdit dispatcher", () => {
     host.currentBufnr = VIEWER_BUFNR;
     await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
     await dispatcher.editCell(VIEWER_BUFNR, TARGET_CELL_ID);
-    // Find scratch bufnr from the bufadd call
-    const bufaddCall = host.callsTo("bufadd").find((c) =>
-      String(c.args[1]).includes(`__europa_cell_${TARGET_CELL_ID}__`)
-    )!;
-    // Find scratchBufnr by inspecting setbufvar of europa_cell_id
     const idCall = host.callsTo("setbufvar").find((c) =>
       c.args[2] === "europa_cell_id" && c.args[3] === TARGET_CELL_ID
     )!;
     const scratchBufnr = idCall.args[1] as number;
-    // User edits the scratch buffer
     await host.call("setbufline", scratchBufnr, 1, [
       "print('edited')",
       "x = 42",
     ]);
     host.calls = [];
     await dispatcher.saveCellEdit(scratchBufnr);
-    // After save, lineToCellId still resolves the same cellId
-    // and scratch &modified is cleared
+
+    // The viewer was re-rendered with the new source — verify by
+    // inspecting the lines applyRenderPlan wrote into the viewer buffer.
+    const viewerLines = host.getBufLines(VIEWER_BUFNR);
+    const editedLineFound = viewerLines.some((l) =>
+      l.includes("print('edited')")
+    );
+    assertEquals(
+      editedLineFound,
+      true,
+      "viewer must contain the edited source line after saveCellEdit",
+    );
+    const secondLineFound = viewerLines.some((l) => l.includes("x = 42"));
+    assertEquals(
+      secondLineFound,
+      true,
+      "viewer must contain every edited source line",
+    );
+
+    // Scratch's &modified flag is cleared so :write reports success.
     const modifiedClear = host.callsTo("setbufvar").find((c) =>
       c.args[1] === scratchBufnr && c.args[2] === "&modified" &&
       c.args[3] === 0
     );
     assertEquals(modifiedClear !== undefined, true);
-    // Verify bufaddCall existed (used as guard above)
-    assertEquals(bufaddCall !== undefined, true);
   });
 
   it("marks the viewer buffer dirty after saveCellEdit", async () => {
