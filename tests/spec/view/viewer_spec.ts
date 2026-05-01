@@ -689,7 +689,7 @@ describe("openCellEditBuffer", () => {
     assertEquals(scratchBufnr > 0, true);
   });
 
-  it("reuses an existing scratch buffer rather than creating a new split", async () => {
+  it("focuses an existing scratch via win_gotoid when it is already in a window", async () => {
     const first = await openCellEditBuffer(host, {
       bufname: SCRATCH_BUFNAME,
       cellId: CODE_CELL_ID,
@@ -697,6 +697,7 @@ describe("openCellEditBuffer", () => {
       sourceLines: ["x = 1"],
       filetype: "python",
     });
+    host.windowsHavingBuf.set(first, [1234]);
     host.calls = [];
     const reused = await openCellEditBuffer(host, {
       bufname: SCRATCH_BUFNAME,
@@ -709,10 +710,53 @@ describe("openCellEditBuffer", () => {
     assertEquals(reused, first);
     const bufaddCalls = host.callsTo("bufadd");
     assertEquals(bufaddCalls.length, 0, "bufadd must not be called on reuse");
+    const gotoid = host.callsTo("win_gotoid").find((c) => c.args[1] === 1234);
+    assertEquals(
+      gotoid !== undefined,
+      true,
+      "win_gotoid must target the scratch's existing window",
+    );
     const bufferCmd = host.cmdsMatching(`buffer ${first}`);
-    assertEquals(bufferCmd.length > 0, true);
+    assertEquals(
+      bufferCmd.length,
+      0,
+      ":buffer N would replace the current (viewer) window",
+    );
     const splitCmd = host.cmdsMatching(`split #${first}`);
-    assertEquals(splitCmd.length, 0, "no fresh :split when reusing");
+    assertEquals(
+      splitCmd.length,
+      0,
+      "no fresh :split when an existing window already shows the scratch",
+    );
+  });
+
+  it("opens a fresh split for an existing scratch that is not visible", async () => {
+    const first = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    // No entry in windowsHavingBuf — scratch is loaded but hidden.
+    host.calls = [];
+    const reused = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+      existingScratchBufnr: first,
+    });
+    assertEquals(reused, first);
+    const splitCmd = host.cmdsMatching(`split #${first}`);
+    assertEquals(splitCmd.length > 0, true);
+    const gotoidCalls = host.callsTo("win_gotoid");
+    assertEquals(
+      gotoidCalls.length,
+      0,
+      "win_gotoid must not be called when no window shows the scratch",
+    );
   });
 });
 

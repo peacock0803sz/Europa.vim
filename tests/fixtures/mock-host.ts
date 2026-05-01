@@ -73,6 +73,8 @@ export class MockHost implements Denops {
   currentBufnr = 1;
   /** cursor position [lnum, col] (1-origin). */
   cursorPos: [number, number] = [1, 1];
+  /** bufnr → list of winids displaying that buffer (for win_findbuf mock). */
+  windowsHavingBuf: Map<number, number[]> = new Map();
 
   /** Autocmd helpers accessible from tests. */
   readonly autocmd = {
@@ -283,6 +285,14 @@ export class MockHost implements Denops {
       // win_execute(winid, cmd) — just record, return empty
       return Promise.resolve("");
     }
+    if (fn === "win_findbuf") {
+      const bufnr = args[0] as number;
+      return Promise.resolve(this.windowsHavingBuf.get(bufnr) ?? []);
+    }
+    if (fn === "win_gotoid") {
+      // Recorded by the generic call log; no state change needed.
+      return Promise.resolve(1);
+    }
     if (fn === "writefile") return Promise.resolve(0);
     if (fn === "chansend") return Promise.resolve(1);
 
@@ -366,6 +376,7 @@ export class MockHost implements Denops {
     this._nextBufnr = 100;
     this.currentBufnr = 1;
     this.cursorPos = [1, 1];
+    this.windowsHavingBuf.clear();
   }
 
   /** Find all calls to a given function name. */

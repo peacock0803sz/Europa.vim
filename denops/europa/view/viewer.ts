@@ -403,7 +403,18 @@ export async function openCellEditBuffer(
   if (opts.existingScratchBufnr !== undefined) {
     const exists = await denops.call("bufexists", opts.existingScratchBufnr);
     if (exists) {
-      await denops.cmd(`buffer ${opts.existingScratchBufnr}`);
+      // Reuse the scratch's existing window when one is already showing it.
+      // A bare `:buffer N` would overwrite the current window, which is
+      // typically the viewer when this is reached, hiding the notebook.
+      const winids = await denops.call(
+        "win_findbuf",
+        opts.existingScratchBufnr,
+      ) as number[];
+      if (winids.length > 0) {
+        await denops.call("win_gotoid", winids[0]);
+      } else {
+        await denops.cmd(`split #${opts.existingScratchBufnr}`);
+      }
       return opts.existingScratchBufnr;
     }
   }

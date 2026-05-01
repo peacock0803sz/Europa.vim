@@ -204,8 +204,12 @@ describe("editCell dispatcher", () => {
     await dispatcher.editCell(VIEWER_BUFNR, TARGET_CELL_ID);
     const bufaddCalls = host.callsTo("bufadd");
     assertEquals(bufaddCalls.length, 0, "no second bufadd for reuse");
-    const bufferCmd = host.cmdsMatching("buffer ");
-    assertEquals(bufferCmd.length > 0, true);
+    const winFindbuf = host.callsTo("win_findbuf");
+    assertEquals(
+      winFindbuf.length > 0,
+      true,
+      "reuse path must consult win_findbuf to avoid clobbering the viewer",
+    );
   });
 
   it("resolves filetype from kernelspec.language for code cells", async () => {
