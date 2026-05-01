@@ -183,6 +183,118 @@ export function moveCell(
 }
 
 /**
+ * Split a cell into two consecutive cells at the given source line.
+ *
+ * The upper cell keeps the original `id` and — for code cells — its
+ * `outputs` / `execution_count` / `metadata`. The lower cell is the same
+ * `cell_type`, receives a fresh uuid v7 id, an empty `metadata`, and (for
+ * code cells) `outputs = []` / `execution_count = null`. This keeps the
+ * existing execution result tied to the upper half (where the original
+ * code presumably still lives) while making the lower half a clean slate
+ * the user can re-run.
+ *
+ * Boundary semantics:
+ * - `splitLine = 0`: upper cell receives empty source, lower cell holds
+ *   the entire original source (US4 AC6).
+ * - `splitLine = sourceLineCount`: upper cell holds the entire source,
+ *   lower cell is empty (R10 scenario 3).
+ *
+ * @param notebook - Source notebook (not mutated).
+ * @param cellId - The `cell.id` to split.
+ * @param splitLine - 0-origin line index in `cell.source.split("\n")`.
+ * @returns A new notebook with the cell split into two consecutive cells.
+ * @throws {Error} If `cellId` is not found, or `splitLine` is out of range
+ *   (`< 0` or `> source.split("\n").length`).
+ * @category Notebook
+ * @spec-id europa.notebook.cell.split
+ */
+export function splitCell(
+  notebook: Notebook,
+  cellId: string,
+  splitLine: number,
+): Notebook {
+  const idx = notebook.cells.findIndex((c) => c.id === cellId);
+  if (idx === -1) {
+    throw new Error(`splitCell: cellId '${cellId}' not found`);
+  }
+  const cell = notebook.cells[idx];
+  const sourceLines = cell.source.split("\n");
+  if (splitLine < 0 || splitLine > sourceLines.length) {
+    throw new Error(
+      `splitCell: splitLine ${splitLine} out of range [0, ${sourceLines.length}]`,
+    );
+  }
+  const upperSource = sourceLines.slice(0, splitLine).join("\n");
+  const lowerSource = sourceLines.slice(splitLine).join("\n");
+  const upper: Cell = { ...cell, source: upperSource };
+  const lower: Cell = cell.cell_type === "code"
+    ? {
+      cell_type: "code",
+      id: assignCellId(),
+      source: lowerSource,
+      execution_count: null,
+      outputs: [],
+      metadata: {},
+    }
+    : cell.cell_type === "markdown"
+    ? {
+      cell_type: "markdown",
+      id: assignCellId(),
+      source: lowerSource,
+      metadata: {},
+    }
+    : {
+      cell_type: "raw",
+      id: assignCellId(),
+      source: lowerSource,
+      metadata: {},
+    };
+  const cells = [
+    ...notebook.cells.slice(0, idx),
+    upper,
+    lower,
+    ...notebook.cells.slice(idx + 1),
+  ];
+  return { ...notebook, cells };
+}
+
+/**
+ * Join the target cell with the cell immediately above it.
+ *
+ * The previous cell absorbs the target's source via `prev.source + "\n"
+ * + curr.source`, and keeps its own `id` / `cell_type` / `outputs` /
+ * `execution_count` / `metadata` (US4 AC4). The target cell is removed.
+ * On mixed-type joins the previous cell's type wins, even if that means
+ * markdown content gets concatenated into a code cell — the user opted
+ * into this by triggering the join.
+ *
+ * Returns the original notebook unchanged (same reference) when the
+ * target is the first cell or unknown — callers identity-check to
+ * surface "No cell above to join" guidance without needing a separate
+ * return signal.
+ *
+ * @param notebook - Source notebook (not mutated).
+ * @param cellId - The `cell.id` of the target cell (the one being absorbed).
+ * @returns A new notebook with the target merged into the previous cell,
+ *   or the original notebook if the move is a no-op.
+ * @category Notebook
+ * @spec-id europa.notebook.cell.join
+ */
+export function joinCell(notebook: Notebook, cellId: string): Notebook {
+  const idx = notebook.cells.findIndex((c) => c.id === cellId);
+  if (idx <= 0) return notebook;
+  const prev = notebook.cells[idx - 1];
+  const curr = notebook.cells[idx];
+  const merged: Cell = { ...prev, source: `${prev.source}\n${curr.source}` };
+  const cells = [
+    ...notebook.cells.slice(0, idx - 1),
+    merged,
+    ...notebook.cells.slice(idx + 1),
+  ];
+  return { ...notebook, cells };
+}
+
+/**
  * Replace the `source` of a single cell, leaving every other field intact.
  *
  * Used by the scratch edit buffer's `:write` handler (`saveCellEdit`) to

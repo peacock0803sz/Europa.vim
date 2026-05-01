@@ -1,12 +1,14 @@
 /**
  * BDD specs for cell helpers: assignCellId, joinSource, insertCell,
- * deleteCell, moveCell, updateCellSource.
+ * deleteCell, moveCell, splitCell, joinCell, updateCellSource.
  *
  * @spec-id europa.notebook.cell.assign-id
  * @spec-id europa.notebook.cell.join-source
  * @spec-id europa.notebook.cell.insert
  * @spec-id europa.notebook.cell.delete
  * @spec-id europa.notebook.cell.move
+ * @spec-id europa.notebook.cell.split
+ * @spec-id europa.notebook.cell.join
  * @spec-id europa.notebook.cell.update-source
  */
 import { describe, it } from "@std/testing/bdd";
@@ -16,8 +18,10 @@ import {
   deleteCell,
   insertCell,
   isValidCellId,
+  joinCell,
   joinSource,
   moveCell,
+  splitCell,
   updateCellSource,
 } from "../../../denops/europa/notebook/cell.ts";
 import { parseNotebook } from "../../../denops/europa/notebook/parse.ts";
@@ -453,6 +457,249 @@ describe("moveCell", () => {
     assertEquals(result.cells[0].id, secondId);
     assertEquals(result.cells[1].id, firstId);
     assertEquals(result.cells.length, nb.cells.length);
+  });
+});
+
+// --- splitCell (europa.notebook.cell.split) ---
+
+describe("splitCell", () => {
+  function makeCodeCell(source: string): Notebook {
+    return makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source,
+        execution_count: 7,
+        outputs: [{ output_type: "stream", name: "stdout", text: "x" }],
+        metadata: { tags: ["keep"] },
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "# md", metadata: {} },
+    ]);
+  }
+
+  it("splits a 5-line code cell at line 2 into [0..2) / [2..]", () => {
+    const nb = makeCodeCell("a\nb\nc\nd\ne");
+    const result = splitCell(nb, CELL_CODE, 2);
+    assertEquals(result.cells.length, 3);
+    assertEquals(result.cells[0].id, CELL_CODE);
+    assertEquals(result.cells[0].source, "a\nb");
+    assertEquals(result.cells[1].source, "c\nd\ne");
+    assertEquals(result.cells[2].id, CELL_MD);
+  });
+
+  it("upper cell preserves id / outputs / execution_count / metadata", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    const result = splitCell(nb, CELL_CODE, 2);
+    const upper = result.cells[0];
+    assertEquals(upper.id, CELL_CODE);
+    assertEquals(upper.cell_type, "code");
+    assertEquals(upper.metadata, { tags: ["keep"] });
+    if (upper.cell_type === "code") {
+      assertEquals(upper.execution_count, 7);
+      assertEquals(upper.outputs.length, 1);
+    }
+  });
+
+  it("lower cell has fresh uuid v7, outputs=[], execution_count=null", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    const result = splitCell(nb, CELL_CODE, 2);
+    const lower = result.cells[1];
+    assertEquals(lower.cell_type, "code");
+    assertEquals(isValidCellId(lower.id), true);
+    assertNotEquals(lower.id, CELL_CODE);
+    assertEquals(lower.metadata, {});
+    if (lower.cell_type === "code") {
+      assertEquals(lower.outputs, []);
+      assertEquals(lower.execution_count, null);
+    }
+  });
+
+  it("supports splitLine = 0 (upper cell receives empty source)", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    const result = splitCell(nb, CELL_CODE, 0);
+    assertEquals(result.cells[0].source, "");
+    assertEquals(result.cells[1].source, "a\nb\nc");
+  });
+
+  it("supports splitLine = sourceLineCount (lower cell receives empty source)", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    const result = splitCell(nb, CELL_CODE, 3);
+    assertEquals(result.cells[0].source, "a\nb\nc");
+    assertEquals(result.cells[1].source, "");
+  });
+
+  it("throws when splitLine is negative", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    assertThrows(() => splitCell(nb, CELL_CODE, -1), Error, "out of range");
+  });
+
+  it("throws when splitLine is greater than source line count", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    assertThrows(() => splitCell(nb, CELL_CODE, 4), Error, "out of range");
+  });
+
+  it("throws when cellId is not found", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    assertThrows(
+      () => splitCell(nb, "nonexistent-id", 1),
+      Error,
+      "not found",
+    );
+  });
+
+  it("preserves markdown cell type when splitting a markdown cell", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "# heading\n\nbody line",
+        metadata: {},
+      },
+    ]);
+    const result = splitCell(nb, CELL_MD, 1);
+    assertEquals(result.cells[0].cell_type, "markdown");
+    assertEquals(result.cells[1].cell_type, "markdown");
+    assertEquals(result.cells[0].source, "# heading");
+    assertEquals(result.cells[1].source, "\nbody line");
+  });
+
+  it("is immutable — input notebook reference is unchanged", () => {
+    const nb = makeCodeCell("a\nb\nc");
+    const originalCells = nb.cells;
+    const result = splitCell(nb, CELL_CODE, 1);
+    assertEquals(Object.is(nb, result), false);
+    assertEquals(Object.is(nb.cells, result.cells), false);
+    assertEquals(Object.is(nb.cells, originalCells), true);
+    assertEquals(nb.cells.length, 2);
+    assertEquals(nb.cells[0].source, "a\nb\nc");
+  });
+});
+
+// --- joinCell (europa.notebook.cell.join) ---
+
+describe("joinCell", () => {
+  it("joins target cell with the previous cell using \\n", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: 3,
+        outputs: [{ output_type: "stream", name: "stdout", text: "ok" }],
+        metadata: { tags: ["prev"] },
+      },
+      {
+        cell_type: "code",
+        id: CELL_RAW,
+        source: "y = 2",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const result = joinCell(nb, CELL_RAW);
+    assertEquals(result.cells.length, 1);
+    const merged = result.cells[0];
+    assertEquals(merged.id, CELL_CODE);
+    assertEquals(merged.source, "x = 1\ny = 2");
+    assertEquals(merged.cell_type, "code");
+    assertEquals(merged.metadata, { tags: ["prev"] });
+    if (merged.cell_type === "code") {
+      assertEquals(merged.execution_count, 3);
+      assertEquals(merged.outputs.length, 1);
+    }
+  });
+
+  it("returns the same reference when target is the first cell (no-op)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "# md", metadata: {} },
+    ]);
+    const result = joinCell(nb, CELL_CODE);
+    assertEquals(Object.is(nb, result), true);
+  });
+
+  it("returns the same reference when cellId is not found (no-op)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const result = joinCell(nb, "nonexistent-id");
+    assertEquals(Object.is(nb, result), true);
+  });
+
+  it("previous cell type wins on mixed-type join (code + markdown -> code)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "# heading",
+        metadata: {},
+      },
+    ]);
+    const result = joinCell(nb, CELL_MD);
+    assertEquals(result.cells.length, 1);
+    assertEquals(result.cells[0].cell_type, "code");
+    assertEquals(result.cells[0].source, "x = 1\n# heading");
+  });
+
+  it("absorbed cell is removed from cells[]", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "a",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "b", metadata: {} },
+      { cell_type: "raw", id: CELL_RAW, source: "c", metadata: {} },
+    ]);
+    const result = joinCell(nb, CELL_MD);
+    assertEquals(result.cells.length, 2);
+    assertEquals(result.cells.map((c) => c.id), [CELL_CODE, CELL_RAW]);
+  });
+
+  it("is immutable — input notebook reference is unchanged on a real join", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "y", metadata: {} },
+    ]);
+    const originalCells = nb.cells;
+    const result = joinCell(nb, CELL_MD);
+    assertEquals(Object.is(nb, result), false);
+    assertEquals(Object.is(nb.cells, result.cells), false);
+    assertEquals(Object.is(nb.cells, originalCells), true);
+    assertEquals(nb.cells.length, 2);
   });
 });
 
