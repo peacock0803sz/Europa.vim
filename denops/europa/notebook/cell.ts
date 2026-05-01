@@ -139,6 +139,50 @@ export function deleteCell(notebook: Notebook, cellId: string): Notebook {
 }
 
 /**
+ * Swap a cell with its neighbour above (`up`) or below (`down`).
+ *
+ * Returns the original notebook unchanged (same reference) when the move is
+ * a no-op — this lets callers detect the boundary case via `Object.is` and
+ * surface an "Already at top" / "Already at bottom" guidance message
+ * without needing a separate return signal. The same is true when `cellId`
+ * is not found (FR-004).
+ *
+ * Untouched cells (those that are not part of the swap) keep their object
+ * identity via structural sharing; only the two swapped cells change array
+ * positions, never their internal state.
+ *
+ * @param notebook - Source notebook (not mutated).
+ * @param cellId - The `cell.id` to move.
+ * @param direction - `"up"` swaps with `cells[idx - 1]`; `"down"` with `cells[idx + 1]`.
+ * @returns A new notebook with the cells reordered, or the original if the
+ *   move is a no-op (boundary or unknown cellId).
+ * @category Notebook
+ * @spec-id europa.notebook.cell.move
+ */
+export function moveCell(
+  notebook: Notebook,
+  cellId: string,
+  direction: "up" | "down",
+): Notebook {
+  const idx = notebook.cells.findIndex((c) => c.id === cellId);
+  if (idx === -1) return notebook;
+  if (direction === "up" && idx === 0) return notebook;
+  if (direction === "down" && idx === notebook.cells.length - 1) {
+    return notebook;
+  }
+  const swapWith = direction === "up" ? idx - 1 : idx + 1;
+  const lo = Math.min(idx, swapWith);
+  const hi = Math.max(idx, swapWith);
+  const cells = [
+    ...notebook.cells.slice(0, lo),
+    notebook.cells[hi],
+    notebook.cells[lo],
+    ...notebook.cells.slice(hi + 1),
+  ];
+  return { ...notebook, cells };
+}
+
+/**
  * Replace the `source` of a single cell, leaving every other field intact.
  *
  * Used by the scratch edit buffer's `:write` handler (`saveCellEdit`) to
