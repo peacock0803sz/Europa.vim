@@ -384,11 +384,14 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
         return;
       }
-      sessionStore.update(bn, { notebook: newNotebook });
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(bn, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
       });
       sessionStore.setRenderPlan(bn, plan);
       try {
@@ -453,11 +456,14 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
         sessionStore.removeCellEditBuffer(bn, cid);
       }
-      sessionStore.update(bn, { notebook: newNotebook });
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(bn, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
       });
       sessionStore.setRenderPlan(bn, plan);
       try {
