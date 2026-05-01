@@ -50,34 +50,11 @@
             typos.enable = true;
             end-of-file-fixer.enable = true;
 
-            deno-fmt = {
+            deno-check = {
               enable = true;
-              name = "deno fmt --check";
-              entry = "${pkgs.deno}/bin/deno fmt --check";
+              name = "deno task check";
+              entry = "${pkgs.deno}/bin/deno task check";
               files = "\\.(ts|js|tsx|jsx|json|jsonc)$";
-              pass_filenames = false;
-            };
-
-            deno-lint = {
-              enable = true;
-              name = "deno lint";
-              entry = "${pkgs.deno}/bin/deno lint";
-              files = "\\.(ts|js|tsx|jsx)$";
-              pass_filenames = false;
-            };
-
-            deno-ci = {
-              enable = true;
-              name = "deno task ci";
-              entry = "${pkgs.deno}/bin/deno task ci";
-              files = "\\.(ts|js|tsx|jsx)$";
-              pass_filenames = false;
-            };
-
-            gen-vimdoc-diff = {
-              enable = true;
-              name = "gen:vimdoc + git diff doc/europa.txt";
-              entry = "${pkgs.bash}/bin/bash -c '${pkgs.deno}/bin/deno task gen:vimdoc && git diff --exit-code doc/europa.txt'";
               pass_filenames = false;
             };
           };

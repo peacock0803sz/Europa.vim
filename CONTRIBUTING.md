@@ -26,7 +26,7 @@ deno cache deno.json        # warms the Deno module cache (first run only)
 pre-commit install          # registers the git hook
 ```
 
-`deno task ci` should pass on a fresh clone after this.
+`deno task check` should pass on a fresh clone after this.
 
 ## 4. Development workflow
 
@@ -35,7 +35,7 @@ git switch -c <feature>
 nix develop
 ... edit ...
 pre-commit run --files <changed>     # or rely on the auto-installed hook
-deno task ci                          # full local CI pass before pushing
+deno task check                          # full local CI pass before pushing
 git push -u origin HEAD
 gh pr create ...                      # see section 8 for PR conventions
 ```
@@ -46,7 +46,7 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 
 | Task | Purpose | Phase |
 |------|---------|-------|
-| `deno task ci` | Full local CI: `deno fmt --check`, `deno task lint`, `deno task gen:vimdoc`, and `git diff --exit-code doc/europa.txt`. Must pass before opening a PR. | Phase 0+ |
+| `deno task check` | Full local CI: `deno fmt --check`, `deno task lint`, `deno task gen:vimdoc`, and `git diff --exit-code doc/europa.txt`. Must pass before opening a PR. | Phase 0+ |
 | `deno task lint` | Runs `deno lint` and `scripts/lint-no-handwritten-types.ts`. Phase 1 enforces only the `docs/` prohibition; Phase 2 adds the AST-based hand-written-type and comment-quality rules. | Phase 1+ |
 | `deno task gen:vimdoc` | Runs `scripts/concat-md.ts` (passthrough scaffold in Phase 1) and emits `doc/europa.txt`. Re-running yields a zero diff. | Phase 0+ |
 | `deno task smoke:ipynb` | Runs the Phase 0 nbformat-v4 smoke test against `tests/fixtures/hello.ipynb`. | Phase 0+ |
@@ -82,6 +82,20 @@ Phase 1 establishes the operational rule only. The lint that enforces the biject
 - Once the bijection check lands in Phase 2, every PR lists the `@spec-id` values it covers. Phase 1 PRs are exempt and say so in the description, pointing to `plan.md` Complexity Tracking for the active feature.
 - The PR body is paragraph-per-line; do not hard-wrap inside a paragraph, since GitHub renders the wraps as line breaks.
 
-## 9. License and contact
+## 9. Debugging and reporting issues
+
+Reproduce bugs with `mini.vimrc` at the repository root before reporting them. It loads `denops.vim` and Europa.vim itself — plus `capture.vim` if installed — and enables `g:denops#debug` and `g:denops#trace`.
+
+`capture.vim` is optional. `mini.vimrc` skips it when the directory is missing. Install it when you want to dump `:messages` to a file and attach the log to an issue.
+
+Set `VIM_PLUGINS_DIR` to the directory containing the plugin checkouts, then launch:
+
+```sh
+VIM_PLUGINS_DIR=~/.local/share/nvim/lazy nvim -u mini.vimrc ./tests/fixtures/hello.ipynb
+```
+
+A GitHub issue should include the reproduction steps on `mini.vimrc`, the Vim or Neovim version from `:version`, the terminal emulator and its version, and the `:messages` output after the failure. Attach a `capture.vim` dump when the bug involves denops trace output.
+
+## 10. License and contact
 
 The project is distributed under the license described in `LICENCE` at the repository root. Open issues and pull requests on GitHub at `peacock0803sz/Europa.vim`. Security-sensitive reports go through the private security advisory mechanism on the same repository.

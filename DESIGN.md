@@ -69,7 +69,7 @@ graph TD
 - New features are written in the order: schema, tests, then TSDoc-annotated implementation. The reverse order is forbidden.
 - Vim help has a two-tier structure. User-facing guide chapters (Introduction, Requirements, Setup, Configuration, Commands, Mappings, Examples, FAQ, About) are hand-written under `doc/sources/*.txt`, while API reference chapters are auto-generated from TSDoc of the corresponding TS modules and concatenated. `@packageDocumentation`, `@module`, and `@category` are used for chapter organization on the API reference side, not for the user guide.
 - The generation and validation pipelines are consolidated under `deno task`. `gen:vimdoc`, `test:spec`, `test:golden`, `validate`, and `ci` are bundled in `deno.json` tasks. No manual steps are created.
-- The automated PR workflow runs `deno task ci` in `.github/workflows/ci.yml`, checking both generated artifact diffs and golden file diffs. When typedoc or panvimdoc bumps change the output, a human approves it as an intentional fixture-update PR.
+- The automated PR workflow runs `deno task check` in `.github/workflows/ci.yml`, checking both generated artifact diffs and golden file diffs. When typedoc or panvimdoc bumps change the output, a human approves it as an intentional fixture-update PR.
 
 ## 2. Overall Architecture
 
@@ -477,7 +477,7 @@ SoT operations and completion criteria of each step:
 
 | Step | SoT operation | Completion criteria (= "what works at this point") |
 | --- | --- | --- |
-| 1 | (infrastructure only; assumes Phase 0 is complete; Phase 1 is to be completed by mid-Phase 2) | `nix develop` boots the environment, `deno task ci` PASSes empty, `.ipynb` smoke works, `deno task gen:vimdoc` generates an empty vimdoc, `git diff --exit-code doc/europa.txt` PASSes |
+| 1 | (infrastructure only; assumes Phase 0 is complete; Phase 1 is to be completed by mid-Phase 2) | `nix develop` boots the environment, `deno task check` PASSes empty, `.ipynb` smoke works, `deno task gen:vimdoc` generates an empty vimdoc, `git diff --exit-code doc/europa.txt` PASSes |
 | 2 | add schema/notebook.ts | TypeBox schema can infer types like `Static<typeof CodeCellSchema>`; JSON Schema can be exported via `gen-schema-json.ts` |
 | 3 | add tests/spec/notebook/ | `deno test` has 5-10 specs that "fail because of unimplemented" (Test-First) |
 | 4 | add tests/golden/ipynb/ | Express the parse/serialize round-trip diff-0 expectation for official Jupyter samples in spec |
@@ -494,7 +494,7 @@ The shortest path for the MVP is up to step 8 (= "open `.ipynb` and see cell str
 
 ### 3.5 SoT Pipeline (deno task)
 
-Europa.vim's generation/validation pipelines are all consolidated under `tasks` in `deno.json`. No manual steps are created. CI and pre-commit hooks just call `deno task ci`.
+Europa.vim's generation/validation pipelines are all consolidated under `tasks` in `deno.json`. No manual steps are created. CI and pre-commit hooks just call `deno task check`.
 
 #### deno task list
 
@@ -575,14 +575,14 @@ jobs:
         with:
           path: ~/.deno
           key: ${{ runner.os }}-deno-${{ hashFiles('deno.lock') }}
-      - run: deno task ci
+      - run: deno task check
 ```
 
 #### Coordination with renovate / dependabot
 
 When a bot PR for dependency updates arrives:
 
-1. CI runs `deno task ci`
+1. CI runs `deno task check`
 2. `deno task gen:vimdoc` generates a fresh `doc/europa.txt`
 3. If a diff appears in the generated artifact, `git diff --exit-code` fails
 4. The PR becomes unmergeable
@@ -761,7 +761,7 @@ Notes:
 | `typedoc.json` | typedoc settings (entryPoints, plugin-markdown options) |
 | `panvimdoc.config` | panvimdoc settings (toc, doc-mapping, vim-version) |
 | `renovate.json` | renovate config (groupName, automerge, post-upgrade hook) |
-| `.github/workflows/ci.yml` | runs `deno task ci` |
+| `.github/workflows/ci.yml` | runs `deno task check` |
 
 #### SoT-ness of the responsibility description
 
@@ -1141,7 +1141,7 @@ describe("golden:notebook/canonicalize-roundtrip", () => {
 });
 ```
 
-vimdoc treats `doc/europa.txt` itself as the expected value (no separate expected file). In the flow of `deno task ci`, `gen:vimdoc` regenerates `doc/europa.txt`, and `git diff --exit-code` verifies a 0 diff against the repo's `doc/europa.txt`:
+vimdoc treats `doc/europa.txt` itself as the expected value (no separate expected file). In the flow of `deno task check`, `gen:vimdoc` regenerates `doc/europa.txt`, and `git diff --exit-code` verifies a 0 diff against the repo's `doc/europa.txt`:
 
 ```bash
 # CI order (consistent with the SoT pipeline of 3.5)
@@ -1257,9 +1257,9 @@ The automation script:
 | `deno task test:spec` | Unit + Schema validation | < 5s |
 | `deno task test:golden` | Golden file diff | < 10s |
 | `deno task test:fixtures` | fixtures conform to schema | < 2s |
-| `deno task ci` | Everything + gen:vimdoc + git diff | < 30s |
+| `deno task check` | Everything + gen:vimdoc + git diff | < 30s |
 
-The goal is for `deno task ci` to finish within 30s on CI (= speed of the development feedback loop). With the addition of Conformance tests in Phase 3, this is expected to extend to 1-2 minutes.
+The goal is for `deno task check` to finish within 30s on CI (= speed of the development feedback loop). With the addition of Conformance tests in Phase 3, this is expected to extend to 1-2 minutes.
 
 ## 4. Data Model (SoT 1: TypeBox Schema)
 
@@ -2258,7 +2258,7 @@ The purpose of this phase is to put together a working foundation and a technica
    4. `typedoc.json` (entryPoints + plugin-markdown, minimum)
    5. `panvimdoc.config` (minimum)
 3. Minimum CI configuration
-   1. `.github/workflows/ci.yml` (just runs `deno task ci` + installs pandoc)
+   1. `.github/workflows/ci.yml` (just runs `deno task check` + installs pandoc)
 4. Minimum scripts
    1. Minimum implementation of `scripts/gen-vimdoc.ts` (concatenates an empty `doc/sources/` and an empty API Reference; CI passes even if empty)
 5. Technical-validation spike
@@ -2267,7 +2267,7 @@ The purpose of this phase is to put together a working foundation and a technica
 6. Create empty directories
    1. Create `schema/`, `tests/spec/`, `tests/golden/`, `tests/fixtures/`, `denops/europa/`, `plugin/`, `autoload/`, `ftdetect/`, `syntax/`, `doc/`, `doc/sources/` with `.gitkeep`
 
-The completion criteria are as follows. `nix develop` boots the environment, `deno task ci` PASSes empty, `scripts/gen-vimdoc.ts` generates an empty `doc/europa.txt`, and `.ipynb` smoke works.
+The completion criteria are as follows. `nix develop` boots the environment, `deno task check` PASSes empty, `scripts/gen-vimdoc.ts` generates an empty `doc/europa.txt`, and `.ipynb` smoke works.
 
 ### Phase 1 - Pre-Phase 2 Setup
 

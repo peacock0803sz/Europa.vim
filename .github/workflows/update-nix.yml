@@ -9,6 +9,7 @@ defaults:
 jobs:
   update-nix:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     env:
@@ -26,12 +27,13 @@ jobs:
 
       - name: Update flake inputs
         run: |
-          nix flake update && nix flake check
+          nix flake update
 
-          if [[ $(git status --untracked-files --short) ]]; then
-            git add flake.lock
-            git commit -m ":snowflake: Update flake.lock"
-            git push origin HEAD
-          else
+          if [[ -z $(git status --untracked-files --short) ]]; then
             echo "Nothing to commit"
+            exit 0
           fi
+
+          git add flake.lock
+          git commit -m ":snowflake: Update flake.lock"
+          git push origin HEAD

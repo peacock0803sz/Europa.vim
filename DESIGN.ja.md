@@ -69,7 +69,7 @@ graph TD
 - 新機能はスキーマ、テスト、TSDoc 付き実装の順で書く。逆順は禁止。
 - vim help は二層構造にする。ユーザー向けガイド章 (Introduction、Requirements、Setup、Configuration、Commands、Mappings、Examples、FAQ、About) は `doc/sources/*.txt` に手書きし、API リファレンス章は対応する TS モジュールの TSDoc から自動生成して結合する。`@packageDocumentation`、`@module`、`@category` は API リファレンス側の章立てに使い、利用ガイドの章立てには使わない。
 - 生成と検証のパイプラインは `deno task` に集約する。`gen:vimdoc`、`test:spec`、`test:golden`、`validate`、`ci` を `deno.json` の tasks にまとめる。手動ステップは作らない。
-- 自動 PR は `.github/workflows/ci.yml` で `deno task ci` を走らせ、生成物 diff と golden ファイル diff を両方チェックする。typedoc や panvimdoc の bump で出力が変わったら、意図的な fixture 更新 PR として人間が承認する。
+- 自動 PR は `.github/workflows/ci.yml` で `deno task check` を走らせ、生成物 diff と golden ファイル diff を両方チェックする。typedoc や panvimdoc の bump で出力が変わったら、意図的な fixture 更新 PR として人間が承認する。
 
 ## 2. 全体アーキテクチャ
 
@@ -477,7 +477,7 @@ graph TD
 
 | ステップ | SoT 操作 | 完了基準 (= "この時点で何が動くか") |
 | --- | --- | --- |
-| 1 | (インフラのみ、Phase 0 で完了が前提、Phase 1 は Phase 2 中盤までに完了) | `nix develop` で環境起動、`deno task ci` が空 PASS、`.ipynb` smoke が動作、`deno task gen:vimdoc` が空 vimdoc を生成、`git diff --exit-code doc/europa.txt` が PASS |
+| 1 | (インフラのみ、Phase 0 で完了が前提、Phase 1 は Phase 2 中盤までに完了) | `nix develop` で環境起動、`deno task check` が空 PASS、`.ipynb` smoke が動作、`deno task gen:vimdoc` が空 vimdoc を生成、`git diff --exit-code doc/europa.txt` が PASS |
 | 2 | schema/notebook.ts 追加 | TypeBox スキーマで `Static<typeof CodeCellSchema>` が型として推論できる、`gen-schema-json.ts` で JSON Schema export 可能 |
 | 3 | tests/spec/notebook/ 追加 | `deno test` が「未実装で fail する」 spec を 5-10 件持つ (Test-First) |
 | 4 | tests/golden/ipynb/ 追加 | 公式 Jupyter サンプルの parse/serialize round-trip diff 0 期待を spec で表現 |
@@ -494,7 +494,7 @@ MVP の最短経路はステップ 8 まで (= 「.ipynb を開いてセル構�
 
 ### 3.5 SoT パイプライン (deno task)
 
-Europa.vim の生成・検証パイプラインはすべて `deno.json` の `tasks` に集約する。手動ステップは作らない。CI と pre-commit hook は `deno task ci` を呼ぶだけにする。
+Europa.vim の生成・検証パイプラインはすべて `deno.json` の `tasks` に集約する。手動ステップは作らない。CI と pre-commit hook は `deno task check` を呼ぶだけにする。
 
 #### deno task 一覧
 
@@ -575,14 +575,14 @@ jobs:
         with:
           path: ~/.deno
           key: ${{ runner.os }}-deno-${{ hashFiles('deno.lock') }}
-      - run: deno task ci
+      - run: deno task check
 ```
 
 #### renovate / dependabot との連携
 
 依存更新の bot PR が来たとき:
 
-1. CI で `deno task ci` が走る
+1. CI で `deno task check` が走る
 2. `deno task gen:vimdoc` が新しい `doc/europa.txt` を生成
 3. 生成物に diff が出ると `git diff --exit-code` が fail
 4. PR は merge できない状態になる
@@ -761,7 +761,7 @@ jobs:
 | `typedoc.json` | typedoc 設定 (entryPoints, plugin-markdown options) |
 | `panvimdoc.config` | panvimdoc 設定 (toc, doc-mapping, vim-version) |
 | `renovate.json` | renovate config (groupName, automerge, post-upgrade hook) |
-| `.github/workflows/ci.yml` | `deno task ci` 実行 |
+| `.github/workflows/ci.yml` | `deno task check` 実行 |
 
 #### 責務記述の SoT 性
 
@@ -1141,7 +1141,7 @@ describe("golden:notebook/canonicalize-roundtrip", () => {
 });
 ```
 
-vimdoc は `doc/europa.txt` 自体を期待値として扱う (別 expected ファイルは持たない)。`deno task ci` の流れで `gen:vimdoc` が `doc/europa.txt` を再生成し、`git diff --exit-code` で repo の `doc/europa.txt` との diff 0 を検証する:
+vimdoc は `doc/europa.txt` 自体を期待値として扱う (別 expected ファイルは持たない)。`deno task check` の流れで `gen:vimdoc` が `doc/europa.txt` を再生成し、`git diff --exit-code` で repo の `doc/europa.txt` との diff 0 を検証する:
 
 ```bash
 # CI 順序 (3.5 SoT パイプラインと整合)
@@ -1257,9 +1257,9 @@ SoT 2 の核として、spec の `describe` 章と TSDoc の章 (`@module` / `@c
 | `deno task test:spec` | Unit + Schema validation | < 5s |
 | `deno task test:golden` | Golden file diff | < 10s |
 | `deno task test:fixtures` | fixtures が schema 適合 | < 2s |
-| `deno task ci` | 全部 + gen:vimdoc + git diff | < 30s |
+| `deno task check` | 全部 + gen:vimdoc + git diff | < 30s |
 
-CI 上で `deno task ci` が 30s 以内で終わることを目標 (= 開発フィードバックループの速度)。Phase 3 で Conformance test を追加すると 1-2 分まで延びる見込み。
+CI 上で `deno task check` が 30s 以内で終わることを目標 (= 開発フィードバックループの速度)。Phase 3 で Conformance test を追加すると 1-2 分まで延びる見込み。
 
 ## 4. データモデル (SoT 1: TypeBox スキーマ)
 
@@ -2258,7 +2258,7 @@ nnoremap <Plug>(europa-delete-cell)    :<C-u>EuropaDeleteCell<CR>
    4. `typedoc.json` (entryPoints + plugin-markdown、最小)
    5. `panvimdoc.config` (最小)
 3. CI の最小構成
-   1. `.github/workflows/ci.yml` (`deno task ci` 実行 + pandoc install のみ)
+   1. `.github/workflows/ci.yml` (`deno task check` 実行 + pandoc install のみ)
 4. scripts の最小構成
    1. `scripts/gen-vimdoc.ts` 最小実装 (空 `doc/sources/` を結合し、空 API Reference を結合する。空でも CI が通る)
 5. 技術検証スパイク
@@ -2267,7 +2267,7 @@ nnoremap <Plug>(europa-delete-cell)    :<C-u>EuropaDeleteCell<CR>
 6. 空ディレクトリの作成
    1. `schema/` `tests/spec/` `tests/golden/` `tests/fixtures/` `denops/europa/` `plugin/` `autoload/` `ftdetect/` `syntax/` `doc/` `doc/sources/` を `.gitkeep` で作成
 
-完了基準は次の通り。`nix develop` で環境が立ち上がり、`deno task ci` が空 PASS、`scripts/gen-vimdoc.ts` が空 `doc/europa.txt` を生成し、`.ipynb` smoke が動作する。
+完了基準は次の通り。`nix develop` で環境が立ち上がり、`deno task check` が空 PASS、`scripts/gen-vimdoc.ts` が空 `doc/europa.txt` を生成し、`.ipynb` smoke が動作する。
 
 ### Phase 1 — Phase 2 着手前の整備
 
