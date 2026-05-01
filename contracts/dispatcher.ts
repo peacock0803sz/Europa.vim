@@ -6,9 +6,10 @@
  * cannot be expressed as a TypeBox schema. See DESIGN.md §3.7.1.
  *
  * Phase 2 implements: init / open / save / previewOutput / cleanup.
- * Phase 3.1 implements: insertCell / deleteCell / moveCell / splitCell /
- *   joinCell / editCell / changeCellType, and adds internal RPCs
+ * Phase 3.1 implements: insertCell / deleteCell, plus internal RPCs
  *   saveCellEdit / closeCellEdit / lineToCellId.
+ * Phase 3.1 declares (stubbed with UnimplementedError until later phases):
+ *   moveCell / splitCell / joinCell / editCell / changeCellType.
  * Phase 3+ remaining methods are declared here so the type is stable across phases.
  *
  * @module contracts/dispatcher
