@@ -202,8 +202,15 @@ export function lineToCellId(
  * 4. Last cell in `newCellRanges` — end-of-notebook fallback.
  * 5. Empty notebook (`newCellRanges` is empty) — move to line 1.
  *
+ * When `winid` is a positive integer the cursor moves are wrapped with
+ * `win_execute` so the viewer's window is targeted regardless of the
+ * caller's current window (e.g. a scratch edit buffer triggering an
+ * insertCell RPC). A non-positive `winid` falls back to the current
+ * window.
+ *
  * @param denops - Denops instance for emitting cursor commands.
- * @param bufnr - Viewer buffer number (used for future win_execute if needed).
+ * @param winid - Viewer window id (`bufwinid(bufnr)`); pass `-1` to
+ *   target the current window.
  * @param preMutationCellId - The cellId the cursor was in before the mutation.
  * @param preMutationCellRanges - `cellRanges` before the mutation.
  * @param newCellRanges - `cellRanges` after the mutation.
@@ -213,17 +220,21 @@ export function lineToCellId(
  */
 export async function restoreCursor(
   denops: Denops,
-  _bufnr: number,
+  winid: number,
   preMutationCellId: string | null,
   preMutationCellRanges: readonly CellRange[],
   newCellRanges: readonly CellRange[],
   hint?: { preferCellId?: string },
 ): Promise<void> {
+  const cursorCmd = (line: number, col = 1) =>
+    winid > 0
+      ? `call win_execute(${winid}, 'call cursor(${line}, ${col})')`
+      : `call cursor(${line}, ${col})`;
   // (1) hint overrides everything
   if (hint?.preferCellId) {
     const r = newCellRanges.find((r) => r.cellId === hint.preferCellId);
     if (r) {
-      await denops.cmd(`call cursor(${r.startLine + 1}, 1)`);
+      await denops.cmd(cursorCmd(r.startLine + 1));
       return;
     }
   }
@@ -231,7 +242,7 @@ export async function restoreCursor(
   if (preMutationCellId) {
     const r = newCellRanges.find((r) => r.cellId === preMutationCellId);
     if (r) {
-      await denops.cmd(`call cursor(${r.startLine + 1}, 1)`);
+      await denops.cmd(cursorCmd(r.startLine + 1));
       return;
     }
   }
@@ -240,17 +251,17 @@ export async function restoreCursor(
     (r) => r.cellId === preMutationCellId,
   );
   if (idx >= 0 && idx < newCellRanges.length) {
-    await denops.cmd(`call cursor(${newCellRanges[idx].startLine + 1}, 1)`);
+    await denops.cmd(cursorCmd(newCellRanges[idx].startLine + 1));
     return;
   }
   // (4) last cell
   if (newCellRanges.length > 0) {
     const last = newCellRanges[newCellRanges.length - 1];
-    await denops.cmd(`call cursor(${last.startLine + 1}, 1)`);
+    await denops.cmd(cursorCmd(last.startLine + 1));
     return;
   }
   // (5) empty notebook
-  await denops.cmd("call cursor(1, 1)");
+  await denops.cmd(cursorCmd(1));
 }
 
 /**

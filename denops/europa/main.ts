@@ -362,7 +362,10 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const prePlan = sessionStore.getRenderPlan(bn);
       const preCellRanges = prePlan?.cellRanges ?? [];
-      const cursorPos = await denops.call("getcurpos") as number[];
+      const winid = await denops.call("bufwinid", bn) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
       let newNotebook: typeof session.notebook;
       let newCellId: string;
@@ -400,7 +403,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       await restoreCursor(
         denops,
-        bn,
+        winid,
         preCellId,
         preCellRanges,
         plan.cellRanges,
@@ -429,7 +432,10 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const cid = String(cellId);
       const prePlan = sessionStore.getRenderPlan(bn);
       const preCellRanges = prePlan?.cellRanges ?? [];
-      const cursorPos = await denops.call("getcurpos") as number[];
+      const winid = await denops.call("bufwinid", bn) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
       const newNotebook = deleteCell(session.notebook, cid);
       if (Object.is(newNotebook, session.notebook)) {
@@ -472,7 +478,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       await restoreCursor(
         denops,
-        bn,
+        winid,
         preCellId,
         preCellRanges,
         plan.cellRanges,
