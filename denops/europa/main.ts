@@ -446,6 +446,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
             "[Cell deleted from notebook]",
           );
           await denops.call("setbufvar", scratchBufnr, "&modifiable", 0);
+          await denops.call("setbufvar", scratchBufnr, "&modified", 0);
           await denops.call("setbufvar", scratchBufnr, "&buftype", "nofile");
         }
         sessionStore.removeCellEditBuffer(bn, cid);
