@@ -350,6 +350,15 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
       const anchorId = anchorCellId == null ? null : String(anchorCellId);
+      if (anchorId === null || anchorId === "") {
+        await echomError(
+          denops,
+          session.notebook.cells.length === 0
+            ? "insertCell: notebook is empty; place cursor in a cell first"
+            : "insertCell: no cell at cursor; cannot resolve anchor",
+        );
+        return;
+      }
       const prePlan = sessionStore.getRenderPlan(bn);
       const preCellRanges = prePlan?.cellRanges ?? [];
       const cursorPos = await denops.call("getcurpos") as number[];
@@ -357,20 +366,11 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       let newNotebook: typeof session.notebook;
       let newCellId: string;
       try {
-        const effectiveAnchor = anchorId ??
-          (session.notebook.cells[0]?.id ?? null);
-        if (!effectiveAnchor) {
-          await echomError(
-            denops,
-            "insertCell: notebook is empty and no anchor provided",
-          );
-          return;
-        }
         const result = insertCell(
           session.notebook,
           posStr as "before" | "after",
           typeStr as "code" | "markdown" | "raw",
-          effectiveAnchor,
+          anchorId,
         );
         newNotebook = result;
         const inserted = result.cells.find((c) =>
