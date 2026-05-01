@@ -23,3 +23,9 @@ command! -nargs=0 EuropaMoveCellUp
 
 command! -nargs=0 EuropaMoveCellDown
       \ call europa#move_cell('down')
+
+command! -nargs=0 EuropaSplitCell
+      \ call europa#split_cell()
+
+command! -nargs=0 EuropaJoinCell
+      \ call europa#join_cell()
