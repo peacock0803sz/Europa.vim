@@ -56,23 +56,21 @@ export type EuropaDispatcher = {
   // Phase 3.1 internal RPCs (called from autocmd / autoload helper)
   /**
    * Persist scratch buffer content back to the Notebook.
-   * Called from the `BufWriteCmd` autocmd on scratch buffers.
+   * Phase 3.1 internal RPC; called from the `BufWriteCmd` autocmd on scratch buffers.
    * @spec-id europa.dispatcher.save-cell-edit
-   * Phase 3.1 internal RPC; called from BufWriteCmd / BufWipeout autocmd or autoload helper.
    */
   saveCellEdit(scratchBufnr: unknown): Promise<void>;
   /**
    * Clean up a scratch buffer's autocmds and session bookkeeping.
-   * Called from the `BufWipeout` autocmd on scratch buffers.
+   * Phase 3.1 internal RPC; called from the `BufWipeout` autocmd on scratch buffers.
    * @spec-id europa.dispatcher.close-cell-edit
-   * Phase 3.1 internal RPC; called from BufWriteCmd / BufWipeout autocmd or autoload helper.
    */
   closeCellEdit(scratchBufnr: unknown): Promise<void>;
   /**
    * Resolve a 1-origin viewer buffer line to the cell id that contains it.
-   * Called from `europa#current_cell_id()` via `denops#request`.
+   * Phase 3.1 internal RPC; called synchronously from `europa#current_cell_id()`
+   * via `denops#request` to identify the cell at the cursor.
    * @spec-id europa.dispatcher.line-to-cellid
-   * Phase 3.1 internal RPC; called from BufWriteCmd / BufWipeout autocmd or autoload helper.
    */
   lineToCellId(bufnr: unknown, line: unknown): Promise<string | null>;
 
