@@ -137,3 +137,36 @@ export function deleteCell(notebook: Notebook, cellId: string): Notebook {
   ];
   return { ...notebook, cells };
 }
+
+/**
+ * Replace the `source` of a single cell, leaving every other field intact.
+ *
+ * Used by the scratch edit buffer's `:write` handler (`saveCellEdit`) to
+ * commit user edits back into the in-memory notebook without disturbing
+ * outputs, execution_count, metadata, or surrounding cells.
+ *
+ * Returns the original notebook unchanged (same reference) when `cellId`
+ * does not match — callers can identity-check to detect the miss.
+ *
+ * @param notebook - Source notebook (not mutated).
+ * @param cellId - The `cell.id` whose source should change.
+ * @param source - New source content for the matched cell.
+ * @returns A new notebook with the source replaced, or the original if not found.
+ * @category Notebook
+ * @spec-id europa.notebook.cell.update-source
+ */
+export function updateCellSource(
+  notebook: Notebook,
+  cellId: string,
+  source: string,
+): Notebook {
+  const idx = notebook.cells.findIndex((c) => c.id === cellId);
+  if (idx === -1) return notebook;
+  const newCell = { ...notebook.cells[idx], source };
+  const cells = [
+    ...notebook.cells.slice(0, idx),
+    newCell,
+    ...notebook.cells.slice(idx + 1),
+  ];
+  return { ...notebook, cells };
+}
