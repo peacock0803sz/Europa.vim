@@ -32,7 +32,8 @@ import { setupAutocmds } from "./session/events.ts";
 import { parseNotebook } from "./notebook/parse.ts";
 import { serializeNotebook } from "./notebook/serialize.ts";
 import { buildRenderPlan, mergeStreams } from "./render/builder.ts";
-import { applyRenderPlan } from "./view/viewer.ts";
+import { applyRenderPlan, lineToCellId, restoreCursor } from "./view/viewer.ts";
+import { deleteCell, insertCell } from "./notebook/cell.ts";
 import { SessionStore } from "./session/state.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
@@ -85,6 +86,7 @@ async function echomError(denops: Denops, reason: string): Promise<void> {
  * @spec-id europa.contract.dispatcher-alignment
  * @spec-id europa.dispatcher.preview-output
  * @spec-id europa.commands.preview-output
+ * @spec-id europa.contract.dispatcher-phase3-1-alignment
  */
 export function buildDispatcher(denops: Denops): EuropaDispatcher {
   const sessionStore = new SessionStore();
@@ -98,9 +100,31 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       await setupAutocmds(denops);
     },
 
-    cleanup(bufnr: unknown): Promise<void> {
-      sessionStore.remove(Number(bufnr));
-      return Promise.resolve();
+    /**
+     * Clean up all resources for a viewer buffer.
+     *
+     * Iterates all registered scratch buffers, force-wipes each one via
+     * `bwipeout!`, removes its dedicated autocmd group, then removes the
+     * session from the store. Idempotent: if the session is already gone
+     * (e.g. BufUnload fired before BufWipeout) the call is a no-op.
+     *
+     * @spec-id europa.dispatcher.cleanup-idempotent
+     */
+    async cleanup(bufnr: unknown): Promise<void> {
+      const viewerBufnr = Number(bufnr);
+      if (!sessionStore.get(viewerBufnr)) return;
+      for (
+        const [_cellId, scratchBufnr] of sessionStore.getAllScratchBufnrs(
+          viewerBufnr,
+        )
+      ) {
+        const exists = await denops.call("bufexists", scratchBufnr);
+        if (exists) {
+          await denops.call("bwipeout!", scratchBufnr);
+        }
+        await denops.cmd(`autocmd! europa_cell_edit_${scratchBufnr}`);
+      }
+      sessionStore.remove(viewerBufnr);
     },
 
     /**
@@ -129,6 +153,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         notebook,
         cellMap: plan.cellMap,
       });
+      sessionStore.setRenderPlan(bufnrNum, plan);
       await applyRenderPlan(denops, bufnrNum, plan);
     },
 
@@ -289,16 +314,162 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
     },
 
-    // Phase 3+: editing methods — not yet implemented
-    insertCell(
-      _bufnr: unknown,
-      _type: unknown,
-      _position: unknown,
+    /**
+     * Insert a new empty cell adjacent to the anchor cell.
+     *
+     * Validates arguments, mutates the notebook immutably via `cell.ts`,
+     * commits to SessionStore, rebuilds and applies the RenderPlan, and
+     * restores the cursor to the newly inserted cell.
+     *
+     * @spec-id europa.dispatcher.insert-cell
+     */
+    async insertCell(
+      bufnr: unknown,
+      type: unknown,
+      position: unknown,
+      anchorCellId: unknown,
     ): Promise<void> {
-      return Promise.reject(new UnimplementedError("insertCell"));
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `insertCell: no session for buffer ${bn}`);
+        return;
+      }
+      const validTypes = ["code", "markdown", "raw"] as const;
+      const validPositions = ["before", "after"] as const;
+      const typeStr = String(type);
+      const posStr = String(position);
+      if (!validTypes.includes(typeStr as typeof validTypes[number])) {
+        await echomError(denops, `insertCell: invalid type '${typeStr}'`);
+        return;
+      }
+      if (!validPositions.includes(posStr as typeof validPositions[number])) {
+        await echomError(denops, `insertCell: invalid position '${posStr}'`);
+        return;
+      }
+      const anchorId = anchorCellId == null ? null : String(anchorCellId);
+      const prePlan = sessionStore.getRenderPlan(bn);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const cursorPos = await denops.call("getcurpos") as number[];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      let newNotebook: typeof session.notebook;
+      let newCellId: string;
+      try {
+        const effectiveAnchor = anchorId ??
+          (session.notebook.cells[0]?.id ?? null);
+        if (!effectiveAnchor) {
+          await echomError(
+            denops,
+            "insertCell: notebook is empty and no anchor provided",
+          );
+          return;
+        }
+        const result = insertCell(
+          session.notebook,
+          posStr as "before" | "after",
+          typeStr as "code" | "markdown" | "raw",
+          effectiveAnchor,
+        );
+        newNotebook = result;
+        const inserted = result.cells.find((c) =>
+          !session.notebook.cells.some((o) => o.id === c.id)
+        );
+        newCellId = inserted?.id ?? "";
+      } catch (e) {
+        await echomError(
+          denops,
+          `insertCell: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        return;
+      }
+      sessionStore.update(bn, { notebook: newNotebook });
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.setRenderPlan(bn, plan);
+      try {
+        await applyRenderPlan(denops, bn, plan);
+        await denops.call("setbufvar", bn, "&modified", 1);
+      } catch {
+        await echomError(denops, "insertCell: applyRenderPlan failed");
+      }
+      await restoreCursor(
+        denops,
+        bn,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+        {
+          preferCellId: newCellId,
+        },
+      );
     },
-    deleteCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("deleteCell"));
+
+    /**
+     * Delete the cell with the given id from the notebook.
+     *
+     * Validates the session, removes the cell immutably, commits to
+     * SessionStore, rebuilds the RenderPlan, and restores the cursor.
+     * If `cellId` is not found, emits a warning and returns without mutation.
+     *
+     * @spec-id europa.dispatcher.delete-cell
+     */
+    async deleteCell(bufnr: unknown, cellId: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `deleteCell: no session for buffer ${bn}`);
+        return;
+      }
+      const cid = String(cellId);
+      const prePlan = sessionStore.getRenderPlan(bn);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const cursorPos = await denops.call("getcurpos") as number[];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const newNotebook = deleteCell(session.notebook, cid);
+      if (Object.is(newNotebook, session.notebook)) {
+        await echomError(denops, `deleteCell: cell '${cid}' not found`);
+        return;
+      }
+      // Clean up any open scratch buffer for the deleted cell
+      const scratchBufnr = sessionStore.getScratchBufnr(bn, cid);
+      if (scratchBufnr !== undefined) {
+        const exists = await denops.call("bufexists", scratchBufnr);
+        if (exists) {
+          await denops.call("setbufvar", scratchBufnr, "&modifiable", 1);
+          await denops.call(
+            "appendbufline",
+            scratchBufnr,
+            "$",
+            "[Cell deleted from notebook]",
+          );
+          await denops.call("setbufvar", scratchBufnr, "&modifiable", 0);
+          await denops.call("setbufvar", scratchBufnr, "&buftype", "nofile");
+        }
+        sessionStore.removeCellEditBuffer(bn, cid);
+      }
+      sessionStore.update(bn, { notebook: newNotebook });
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.setRenderPlan(bn, plan);
+      try {
+        await applyRenderPlan(denops, bn, plan);
+        await denops.call("setbufvar", bn, "&modified", 1);
+      } catch {
+        await echomError(denops, "deleteCell: applyRenderPlan failed");
+      }
+      await restoreCursor(
+        denops,
+        bn,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+      );
     },
     moveCell(
       _bufnr: unknown,
@@ -320,6 +491,39 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     editCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("editCell"));
     },
+    changeCellType(
+      _bufnr: unknown,
+      _cellId: unknown,
+      _newType: unknown,
+    ): Promise<void> {
+      return Promise.reject(new UnimplementedError("changeCellType"));
+    },
+    saveCellEdit(_scratchBufnr: unknown): Promise<void> {
+      return Promise.reject(new UnimplementedError("saveCellEdit"));
+    },
+    closeCellEdit(_scratchBufnr: unknown): Promise<void> {
+      return Promise.reject(new UnimplementedError("closeCellEdit"));
+    },
+    /**
+     * Resolve a 1-origin viewer buffer line number to the cell id containing it.
+     *
+     * Reads the most recently cached `RenderPlan` from `SessionStore` so the
+     * call is synchronous after the initial render — no re-parse needed.
+     *
+     * @spec-id europa.dispatcher.line-to-cellid
+     */
+    lineToCellId(
+      bufnr: unknown,
+      line: unknown,
+    ): Promise<string | null> {
+      const bn = Number(bufnr);
+      const ln = Number(line);
+      const plan = sessionStore.getRenderPlan(bn);
+      if (!plan) return Promise.resolve(null);
+      return Promise.resolve(lineToCellId(plan.cellRanges, ln));
+    },
+
+    // Phase 3 remaining / Phase 4 — not yet implemented
     runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("runCell"));
     },
