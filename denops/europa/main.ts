@@ -40,7 +40,12 @@ import {
   resolveScratchFiletype,
   restoreCursor,
 } from "./view/viewer.ts";
-import { deleteCell, insertCell, updateCellSource } from "./notebook/cell.ts";
+import {
+  deleteCell,
+  insertCell,
+  moveCell,
+  updateCellSource,
+} from "./notebook/cell.ts";
 import { SessionStore } from "./session/state.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
@@ -491,12 +496,89 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         plan.cellRanges,
       );
     },
-    moveCell(
-      _bufnr: unknown,
-      _cellId: unknown,
-      _direction: unknown,
+    /**
+     * Swap a cell with its neighbour above (`up`) or below (`down`).
+     *
+     * Validates arguments, delegates to the pure `moveCell` helper, and uses
+     * `Object.is` to detect boundary no-ops — the helper returns the same
+     * notebook reference when moving the first cell up, the last cell down,
+     * or when the cellId is unknown. In those cases the dispatcher surfaces
+     * a user-facing guidance message via `:messages` and skips both the
+     * SessionStore commit and the re-render so unrelated buffers aren't
+     * needlessly marked dirty.
+     *
+     * On a real move, the cellId binding survives across the swap, so the
+     * cursor restore prefers the original cell's new `startLine`. Any open
+     * scratch edit buffer is keyed by cellId and therefore needs no
+     * touch-up here (R5).
+     *
+     * @spec-id europa.dispatcher.move-cell
+     */
+    async moveCell(
+      bufnr: unknown,
+      cellId: unknown,
+      direction: unknown,
     ): Promise<void> {
-      return Promise.reject(new UnimplementedError("moveCell"));
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `moveCell: no session for buffer ${bn}`);
+        return;
+      }
+      const cid = String(cellId);
+      const validDirections = ["up", "down"] as const;
+      const dirStr = String(direction);
+      if (!validDirections.includes(dirStr as typeof validDirections[number])) {
+        await echomError(denops, `moveCell: invalid direction '${dirStr}'`);
+        return;
+      }
+      const dir = dirStr as "up" | "down";
+      const idx = session.notebook.cells.findIndex((c) => c.id === cid);
+      if (idx === -1) {
+        await echomError(denops, `moveCell: cell '${cid}' not found`);
+        return;
+      }
+      const newNotebook = moveCell(session.notebook, cid, dir);
+      if (Object.is(newNotebook, session.notebook)) {
+        const guidance = dir === "up" ? "Already at top" : "Already at bottom";
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote(`Europa: ${guidance}`)
+          } | echohl None`,
+        );
+        return;
+      }
+      const prePlan = sessionStore.getRenderPlan(bn);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const winid = await denops.call("bufwinid", bn) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(bn, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(bn, plan);
+      try {
+        await applyRenderPlan(denops, bn, plan);
+        await denops.call("setbufvar", bn, "&modified", 1);
+      } catch {
+        await echomError(denops, "moveCell: applyRenderPlan failed");
+      }
+      await restoreCursor(
+        denops,
+        winid,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+        { preferCellId: cid },
+      );
     },
     splitCell(
       _bufnr: unknown,
