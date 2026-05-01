@@ -589,6 +589,17 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         lookup.cellId,
         newSource,
       );
+      // updateCellSource returns the input notebook reference when the
+      // cellId is gone. Surface that as a save failure rather than
+      // silently clearing the scratch's modified flag and pretending
+      // the write succeeded.
+      if (Object.is(newNotebook, session.notebook)) {
+        await echomError(
+          denops,
+          `saveCellEdit: cell '${lookup.cellId}' is no longer in the notebook; edit was not applied`,
+        );
+        return;
+      }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
