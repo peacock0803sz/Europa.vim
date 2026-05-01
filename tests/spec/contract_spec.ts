@@ -79,6 +79,58 @@ describe("TypeBox ↔ TS interface alignment — dispatcher", () => {
   });
 });
 
+describe("Phase 3.1 dispatcher method presence (europa.contract.dispatcher-phase3-1-alignment)", () => {
+  /**
+   * @spec-id europa.contract.dispatcher-phase3-1-alignment
+   *
+   * Verifies that all Phase 3.1 editing methods and internal RPCs are present
+   * in the dispatcher produced by buildDispatcher. Each method must be a
+   * function — the implementation may throw UnimplementedError, but the
+   * method must be wired into the dispatcher object.
+   */
+  const PHASE31_EDITING_METHODS = [
+    "insertCell",
+    "deleteCell",
+    "moveCell",
+    "splitCell",
+    "joinCell",
+    "editCell",
+    "changeCellType",
+  ] as const;
+
+  const PHASE31_INTERNAL_RPCS = [
+    "saveCellEdit",
+    "closeCellEdit",
+    "lineToCellId",
+  ] as const;
+
+  it("exposes all Phase 3.1 editing methods", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    for (const method of PHASE31_EDITING_METHODS) {
+      assertEquals(
+        typeof d[method],
+        "function",
+        `dispatcher must have method: ${method}`,
+      );
+    }
+  });
+
+  it("exposes all Phase 3.1 internal RPC methods", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    for (const method of PHASE31_INTERNAL_RPCS) {
+      assertEquals(
+        typeof d[method],
+        "function",
+        `dispatcher must have internal RPC: ${method}`,
+      );
+    }
+  });
+});
+
 describe("previewOutput dispatcher contract", () => {
   it("emits an echohl warning when no session is found for the bufnr", async () => {
     const { buildDispatcher } = await import("../../denops/europa/main.ts");

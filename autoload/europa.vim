@@ -24,3 +24,51 @@ function! europa#cleanup(bufnr) abort
   call denops#plugin#wait_async('europa',
         \ { -> denops#notify('europa', 'cleanup', [a:bufnr]) })
 endfunction
+
+" Insert a new cell. bang=1 means 'before', bang=0 means 'after'.
+" type is the first extra argument (e.g. 'code', 'markdown', 'raw').
+function! europa#insert_cell(bang, ...) abort
+  let l:type = get(a:000, 0, 'code')
+  let l:position = a:bang ? 'before' : 'after'
+  let l:anchor = europa#current_cell_id()
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'insertCell',
+        \                    [l:bufnr, l:type, l:position, l:anchor]) })
+endfunction
+
+" Delete the cell at the cursor in the current viewer buffer.
+function! europa#delete_cell() abort
+  let l:cell_id = europa#current_cell_id()
+  if type(l:cell_id) == v:t_string && l:cell_id ==# ''
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  if l:cell_id is v:null
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'deleteCell', [l:bufnr, l:cell_id]) })
+endfunction
+
+" Returns the cell id at the cursor.
+" In a scratch edit buffer, reads b:europa_cell_id directly.
+" Otherwise, makes a synchronous RPC to lineToCellId.
+function! europa#current_cell_id() abort
+  if exists('b:europa_cell_id')
+    return b:europa_cell_id
+  endif
+  return denops#request('europa', 'lineToCellId', [bufnr('%'), line('.')])
+endfunction
+
+" Returns the viewer buffer number for the current context.
+" In a scratch edit buffer, reads b:europa_viewer_bufnr directly.
+" Otherwise, returns the current buffer number (the viewer itself).
+function! europa#current_viewer_bufnr() abort
+  if exists('b:europa_viewer_bufnr')
+    return b:europa_viewer_bufnr
+  endif
+  return bufnr('%')
+endfunction
