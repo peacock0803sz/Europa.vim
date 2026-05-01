@@ -32,8 +32,15 @@ import { setupAutocmds } from "./session/events.ts";
 import { parseNotebook } from "./notebook/parse.ts";
 import { serializeNotebook } from "./notebook/serialize.ts";
 import { buildRenderPlan, mergeStreams } from "./render/builder.ts";
-import { applyRenderPlan, lineToCellId, restoreCursor } from "./view/viewer.ts";
-import { deleteCell, insertCell } from "./notebook/cell.ts";
+import {
+  applyRenderPlan,
+  closeCellEditAutocmds,
+  lineToCellId,
+  openCellEditBuffer,
+  resolveScratchFiletype,
+  restoreCursor,
+} from "./view/viewer.ts";
+import { deleteCell, insertCell, updateCellSource } from "./notebook/cell.ts";
 import { SessionStore } from "./session/state.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
@@ -501,8 +508,46 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     joinCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("joinCell"));
     },
-    editCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("editCell"));
+    /**
+     * Open (or focus) a scratch buffer to edit a single cell's source.
+     *
+     * Looks up the cell, resolves the scratch buffer's filetype from the
+     * notebook's kernel metadata, hands a complete options bag to the
+     * pure host I/O `openCellEditBuffer`, and registers the resulting
+     * scratch bufnr in `cellEditBuffers` so subsequent edits / saves /
+     * cleanups can find their way back to the cell.
+     *
+     * Calling editCell again for the same cellId reuses the existing
+     * scratch bufnr — the user gets a `:buffer N` focus instead of a
+     * fresh split (FR-020).
+     *
+     * @spec-id europa.dispatcher.edit-cell
+     */
+    async editCell(bufnr: unknown, cellId: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `editCell: no session for buffer ${bn}`);
+        return;
+      }
+      const cid = String(cellId);
+      const cell = session.notebook.cells.find((c) => c.id === cid);
+      if (!cell) {
+        await echomError(denops, `editCell: cell '${cid}' not found`);
+        return;
+      }
+      const filetype = resolveScratchFiletype(session.notebook, cell);
+      const sourceLines = cell.source.split("\n");
+      const existing = sessionStore.getScratchBufnr(bn, cid);
+      const scratchBufnr = await openCellEditBuffer(denops, {
+        bufname: `__europa_cell_${cid}__`,
+        cellId: cid,
+        viewerBufnr: bn,
+        sourceLines,
+        filetype,
+        existingScratchBufnr: existing,
+      });
+      sessionStore.setCellEditBuffer(bn, cid, scratchBufnr);
     },
     changeCellType(
       _bufnr: unknown,
@@ -511,11 +556,89 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     ): Promise<void> {
       return Promise.reject(new UnimplementedError("changeCellType"));
     },
-    saveCellEdit(_scratchBufnr: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("saveCellEdit"));
+    /**
+     * Commit a scratch buffer's contents back into the in-memory notebook.
+     *
+     * Triggered by the scratch buffer's `BufWriteCmd` autocmd. Reverse
+     * looks up the viewer bufnr / cellId for `scratchBufnr`, reads the
+     * current scratch lines, replaces the cell's source, rebuilds and
+     * applies the RenderPlan, marks the viewer dirty so the user knows
+     * the notebook has unsaved changes, and clears the scratch's modified
+     * flag so `:write` reports success.
+     *
+     * Disk persistence is deferred to `:write` on the viewer buffer
+     * (FR-035) — saveCellEdit only mutates in-memory state.
+     *
+     * @spec-id europa.dispatcher.save-cell-edit
+     */
+    async saveCellEdit(scratchBufnr: unknown): Promise<void> {
+      const sbn = Number(scratchBufnr);
+      const lookup = sessionStore.findViewerByScratchBufnr(sbn);
+      if (!lookup) return;
+      const session = sessionStore.get(lookup.viewerBufnr);
+      if (!session) return;
+      const lines = await denops.call(
+        "getbufline",
+        sbn,
+        1,
+        "$",
+      ) as string[];
+      const newSource = lines.join("\n");
+      const newNotebook = updateCellSource(
+        session.notebook,
+        lookup.cellId,
+        newSource,
+      );
+      // updateCellSource returns the input notebook reference when the
+      // cellId is gone. Surface that as a save failure rather than
+      // silently clearing the scratch's modified flag and pretending
+      // the write succeeded.
+      if (Object.is(newNotebook, session.notebook)) {
+        await echomError(
+          denops,
+          `saveCellEdit: cell '${lookup.cellId}' is no longer in the notebook; edit was not applied`,
+        );
+        return;
+      }
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(lookup.viewerBufnr, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(lookup.viewerBufnr, plan);
+      try {
+        await applyRenderPlan(denops, lookup.viewerBufnr, plan);
+        await denops.call(
+          "setbufvar",
+          lookup.viewerBufnr,
+          "&modified",
+          1,
+        );
+      } catch {
+        await echomError(denops, "saveCellEdit: applyRenderPlan failed");
+      }
+      await denops.call("setbufvar", sbn, "&modified", 0);
     },
-    closeCellEdit(_scratchBufnr: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("closeCellEdit"));
+    /**
+     * Tear down session state for a wiped scratch buffer.
+     *
+     * Triggered by the scratch buffer's `BufWipeout` autocmd. Removes the
+     * cellId entry from `cellEditBuffers` and clears the per-scratch
+     * autocmd group so stale autocmds do not fire after the buffer is
+     * gone. Idempotent — unknown scratch bufnrs are a no-op.
+     *
+     * @spec-id europa.dispatcher.close-cell-edit
+     */
+    async closeCellEdit(scratchBufnr: unknown): Promise<void> {
+      const sbn = Number(scratchBufnr);
+      const lookup = sessionStore.findViewerByScratchBufnr(sbn);
+      if (!lookup) return;
+      sessionStore.removeCellEditBuffer(lookup.viewerBufnr, lookup.cellId);
+      await closeCellEditAutocmds(denops, sbn);
     },
     /**
      * Resolve a 1-origin viewer buffer line number to the cell id containing it.

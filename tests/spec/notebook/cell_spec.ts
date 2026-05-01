@@ -1,10 +1,12 @@
 /**
- * BDD specs for cell helpers: assignCellId, joinSource, insertCell, deleteCell.
+ * BDD specs for cell helpers: assignCellId, joinSource, insertCell,
+ * deleteCell, updateCellSource.
  *
  * @spec-id europa.notebook.cell.assign-id
  * @spec-id europa.notebook.cell.join-source
  * @spec-id europa.notebook.cell.insert
  * @spec-id europa.notebook.cell.delete
+ * @spec-id europa.notebook.cell.update-source
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
@@ -14,6 +16,7 @@ import {
   insertCell,
   isValidCellId,
   joinSource,
+  updateCellSource,
 } from "../../../denops/europa/notebook/cell.ts";
 import { parseNotebook } from "../../../denops/europa/notebook/parse.ts";
 import type { Notebook } from "../../../schema/notebook.ts";
@@ -363,5 +366,91 @@ describe("deleteCell", () => {
     const result = deleteCell(nb, firstId);
     assertEquals(result.cells.length, 4);
     assertEquals(result.cells[0].id !== firstId, true);
+  });
+});
+
+// --- updateCellSource (europa.notebook.cell.update-source) ---
+
+describe("updateCellSource", () => {
+  it("replaces only the source field of the matching cell", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "print(1)",
+        execution_count: 7,
+        outputs: [],
+        metadata: { tags: ["keep"] },
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "# md", metadata: {} },
+    ]);
+    const result = updateCellSource(nb, CELL_CODE, "print(2)\nprint(3)");
+    assertEquals(result.cells[0].source, "print(2)\nprint(3)");
+    assertEquals(result.cells[0].id, CELL_CODE);
+    assertEquals(result.cells[0].cell_type, "code");
+    assertEquals(result.cells[0].metadata, { tags: ["keep"] });
+    if (result.cells[0].cell_type === "code") {
+      assertEquals(result.cells[0].execution_count, 7);
+      assertEquals(result.cells[0].outputs, []);
+    }
+  });
+
+  it("leaves untouched cells with structural sharing", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "# md", metadata: {} },
+    ]);
+    const result = updateCellSource(nb, CELL_CODE, "x = 2");
+    assertEquals(Object.is(result.cells[1], nb.cells[1]), true);
+  });
+
+  it("returns the same notebook reference when cellId is not found", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const result = updateCellSource(nb, "nonexistent-id", "x = 2");
+    assertEquals(Object.is(nb, result), true);
+  });
+
+  it("is immutable — input notebook is not mutated", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const originalCells = nb.cells;
+    const originalSource = nb.cells[0].source;
+    const result = updateCellSource(nb, CELL_CODE, "x = 2");
+    assertEquals(Object.is(nb, result), false);
+    assertEquals(Object.is(nb.cells, result.cells), false);
+    assertEquals(Object.is(nb.cells, originalCells), true);
+    assertEquals(nb.cells[0].source, originalSource);
+  });
+
+  it("supports an empty new source", () => {
+    const nb = makeMinimalNotebook([
+      { cell_type: "markdown", id: CELL_MD, source: "# heading", metadata: {} },
+    ]);
+    const result = updateCellSource(nb, CELL_MD, "");
+    assertEquals(result.cells[0].source, "");
   });
 });

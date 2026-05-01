@@ -53,6 +53,22 @@ function! europa#delete_cell() abort
         \ { -> denops#notify('europa', 'deleteCell', [l:bufnr, l:cell_id]) })
 endfunction
 
+" Open (or refocus) a scratch buffer to edit the cell at the cursor.
+function! europa#edit_cell() abort
+  let l:cell_id = europa#current_cell_id()
+  if type(l:cell_id) == v:t_string && l:cell_id ==# ''
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  if l:cell_id is v:null
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'editCell', [l:bufnr, l:cell_id]) })
+endfunction
+
 " Returns the cell id at the cursor.
 " In a scratch edit buffer, reads b:europa_cell_id directly.
 " Otherwise, makes a synchronous RPC to lineToCellId.
