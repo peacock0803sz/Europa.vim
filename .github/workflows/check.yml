@@ -31,4 +31,4 @@ jobs:
           key: deno-${{ runner.os }}-${{ hashFiles('deno.json') }}
           restore-keys: deno-${{ runner.os }}-
 
-      - run: deno task ci
+      - run: deno task check
