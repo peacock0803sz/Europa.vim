@@ -120,7 +120,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       ) {
         const exists = await denops.call("bufexists", scratchBufnr);
         if (exists) {
-          await denops.call("bwipeout!", scratchBufnr);
+          await denops.cmd(`bwipeout! ${scratchBufnr}`);
         }
         await denops.cmd(`autocmd! europa_cell_edit_${scratchBufnr}`);
       }
