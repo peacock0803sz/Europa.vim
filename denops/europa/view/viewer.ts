@@ -432,8 +432,12 @@ export async function openCellEditBuffer(
   const group = `europa_cell_edit_${scratchBufnr}`;
   await denops.cmd(`augroup ${group}`);
   await denops.cmd("autocmd!");
+  // BufWriteCmd must be synchronous: with `denops#notify`, `:wq` lets
+  // BufWipeout fire and Vim wipes the buffer before saveCellEdit's
+  // getbufline reads it, returning an empty list and overwriting
+  // cell.source with "". `denops#request` blocks until save completes.
   await denops.cmd(
-    `autocmd BufWriteCmd <buffer=${scratchBufnr}> call denops#notify('europa', 'saveCellEdit', [${scratchBufnr}])`,
+    `autocmd BufWriteCmd <buffer=${scratchBufnr}> call denops#request('europa', 'saveCellEdit', [${scratchBufnr}])`,
   );
   await denops.cmd(
     `autocmd BufWipeout <buffer=${scratchBufnr}> call denops#notify('europa', 'closeCellEdit', [${scratchBufnr}])`,

@@ -639,6 +639,32 @@ describe("openCellEditBuffer", () => {
     assertEquals(wipeAutocmd.length > 0, true);
   });
 
+  it("uses denops#request for BufWriteCmd to keep saveCellEdit synchronous", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    const writeReq = host.cmdsMatching(
+      `BufWriteCmd <buffer=${scratchBufnr}> call denops#request('europa', 'saveCellEdit'`,
+    );
+    assertEquals(
+      writeReq.length > 0,
+      true,
+      "BufWriteCmd must invoke denops#request to block :wq until save completes",
+    );
+    const writeNotify = host.cmdsMatching(
+      `BufWriteCmd <buffer=${scratchBufnr}> call denops#notify`,
+    );
+    assertEquals(
+      writeNotify.length,
+      0,
+      "BufWriteCmd must not use the async denops#notify path",
+    );
+  });
+
   it("opens a split window targeting the scratch bufnr", async () => {
     const scratchBufnr = await openCellEditBuffer(host, {
       bufname: SCRATCH_BUFNAME,
