@@ -122,7 +122,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         if (exists) {
           await denops.cmd(`bwipeout! ${scratchBufnr}`);
         }
-        await denops.cmd(`autocmd! europa_cell_edit_${scratchBufnr}`);
+        const group = `europa_cell_edit_${scratchBufnr}`;
+        await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
+        await denops.cmd(`augroup! ${group}`);
       }
       sessionStore.remove(viewerBufnr);
     },
