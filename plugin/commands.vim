@@ -14,3 +14,6 @@ command! -nargs=1 -bang EuropaInsertCell
 
 command! -nargs=0 EuropaDeleteCell
       \ call europa#delete_cell()
+
+command! -nargs=0 EuropaEditCell
+      \ call europa#edit_cell()
