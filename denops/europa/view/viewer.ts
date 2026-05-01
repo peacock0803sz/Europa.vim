@@ -1,5 +1,6 @@
 /**
- * Viewer: applies a RenderPlan to a Vim/Neovim buffer.
+ * Viewer: applies a RenderPlan to a Vim/Neovim buffer, resolves cursor
+ * positions to cell ids, and manages the per-cell scratch edit buffers.
  *
  * @category View
  * @spec-id europa.view.viewer.modifiable
@@ -16,6 +17,7 @@ import type {
   RenderPlan,
   SixelPlacement,
 } from "../../../schema/render-plan.ts";
+import type { Cell, Notebook } from "../../../schema/notebook.ts";
 
 /**
  * Converts raw PNG bytes to Sixel bytes.
@@ -336,4 +338,161 @@ export async function applyRenderPlan(
       opts?._magickConverter,
     );
   }
+}
+
+/**
+ * Resolve the filetype for a cell's scratch edit buffer.
+ *
+ * Markdown cells always render as `markdown`. Raw cells get an empty
+ * filetype so no LSP/treesitter attaches. Code cells consult notebook
+ * metadata in priority order: `kernelspec.language` first (the kernel
+ * the user picked), then `language_info.name` (the kernel that ran the
+ * notebook last), and finally fall back to `python` so a fresh notebook
+ * with no kernel still gets a sensible default (R4).
+ *
+ * @param notebook - Notebook containing the cell.
+ * @param cell - The cell whose scratch buffer is being opened.
+ * @returns A Vim filetype string (possibly empty for raw cells).
+ * @category View
+ * @spec-id europa.view.viewer.resolve-filetype
+ */
+export function resolveScratchFiletype(
+  notebook: Notebook,
+  cell: Cell,
+): string {
+  if (cell.cell_type === "markdown") return "markdown";
+  if (cell.cell_type === "raw") return "";
+  const ks = notebook.metadata?.kernelspec?.language;
+  if (typeof ks === "string" && ks.length > 0) return ks;
+  const li = notebook.metadata?.language_info?.name;
+  if (typeof li === "string" && li.length > 0) return li;
+  return "python";
+}
+
+/**
+ * Open (or reuse) a scratch buffer for editing a single cell's source.
+ *
+ * Pure host I/O: this function never touches `SessionStore`. The dispatcher
+ * computes the filetype, looks up an existing scratch bufnr, then hands a
+ * complete options bag to this function which performs the buffer
+ * lifecycle: `bufadd` → `bufload` → option configuration → source
+ * injection → buffer-local variables → autocmd group → `:split`.
+ *
+ * Reuse path: when `existingScratchBufnr` is supplied and that buffer
+ * still exists, the function emits `:buffer N` to focus it without
+ * recreating the autocmds or rewriting the source.
+ *
+ * @param denops - Active Denops instance.
+ * @param opts - Buffer name, cell context, source lines, filetype, and
+ *   optional existing scratch bufnr for the reuse path.
+ * @returns The scratch buffer number (newly assigned or reused).
+ * @category View
+ * @spec-id europa.view.viewer.scratch-open
+ */
+export async function openCellEditBuffer(
+  denops: Denops,
+  opts: {
+    bufname: string;
+    cellId: string;
+    viewerBufnr: number;
+    sourceLines: string[];
+    filetype: string;
+    existingScratchBufnr?: number;
+  },
+): Promise<number> {
+  if (opts.existingScratchBufnr !== undefined) {
+    const exists = await denops.call("bufexists", opts.existingScratchBufnr);
+    if (exists) {
+      await denops.cmd(`buffer ${opts.existingScratchBufnr}`);
+      return opts.existingScratchBufnr;
+    }
+  }
+
+  const scratchBufnr = await denops.call("bufadd", opts.bufname) as number;
+  await denops.call("bufload", scratchBufnr);
+
+  await denops.call("setbufvar", scratchBufnr, "&buftype", "acwrite");
+  await denops.call("setbufvar", scratchBufnr, "&swapfile", 0);
+  await denops.call("setbufvar", scratchBufnr, "&bufhidden", "hide");
+  await denops.call("setbufvar", scratchBufnr, "&modifiable", 1);
+  await denops.call("setbufvar", scratchBufnr, "&buflisted", 0);
+  await denops.call("setbufvar", scratchBufnr, "&filetype", opts.filetype);
+
+  await denops.call("setbufline", scratchBufnr, 1, opts.sourceLines);
+  await denops.call("setbufvar", scratchBufnr, "&modified", 0);
+
+  await denops.call("setbufvar", scratchBufnr, "europa_cell_id", opts.cellId);
+  await denops.call(
+    "setbufvar",
+    scratchBufnr,
+    "europa_viewer_bufnr",
+    opts.viewerBufnr,
+  );
+
+  const group = `europa_cell_edit_${scratchBufnr}`;
+  await denops.cmd(`augroup ${group}`);
+  await denops.cmd("autocmd!");
+  await denops.cmd(
+    `autocmd BufWriteCmd <buffer=${scratchBufnr}> call denops#notify('europa', 'saveCellEdit', [${scratchBufnr}])`,
+  );
+  await denops.cmd(
+    `autocmd BufWipeout <buffer=${scratchBufnr}> call denops#notify('europa', 'closeCellEdit', [${scratchBufnr}])`,
+  );
+  await denops.cmd("augroup END");
+
+  await denops.cmd(`split #${scratchBufnr}`);
+  return scratchBufnr;
+}
+
+/**
+ * Freeze a scratch buffer when its underlying cell has been deleted.
+ *
+ * The buffer is briefly made modifiable so the deletion marker can be
+ * appended at the end, then locked (`&modifiable=0`, `&buftype=nofile`)
+ * so the user can still copy content out but cannot `:write` it back.
+ * The dirty flag is cleared so `:q` does not warn about pending changes.
+ *
+ * @param denops - Active Denops instance.
+ * @param scratchBufnr - Scratch buffer number to freeze.
+ * @param cellId - The deleted cell's id, surfaced in the warning message.
+ * @category View
+ * @spec-id europa.view.viewer.scratch-freeze
+ */
+export async function freezeCellEditBuffer(
+  denops: Denops,
+  scratchBufnr: number,
+  cellId: string,
+): Promise<void> {
+  await denops.call("setbufvar", scratchBufnr, "&modifiable", 1);
+  await denops.call(
+    "appendbufline",
+    scratchBufnr,
+    "$",
+    "[Cell deleted from notebook]",
+  );
+  await denops.call("setbufvar", scratchBufnr, "&modifiable", 0);
+  await denops.call("setbufvar", scratchBufnr, "&buftype", "nofile");
+  await denops.call("setbufvar", scratchBufnr, "&modified", 0);
+  await denops.cmd(
+    `echohl WarningMsg | echom 'Europa: Cell ${cellId} was deleted; scratch buffer is now read-only' | echohl None`,
+  );
+}
+
+/**
+ * Tear down the per-scratch autocmd group.
+ *
+ * Called on `closeCellEdit` so that BufWriteCmd / BufWipeout autocmds
+ * registered against the wiped scratch bufnr do not linger. Pure host I/O.
+ *
+ * @param denops - Active Denops instance.
+ * @param scratchBufnr - Scratch buffer whose group should be removed.
+ * @category View
+ */
+export async function closeCellEditAutocmds(
+  denops: Denops,
+  scratchBufnr: number,
+): Promise<void> {
+  const group = `europa_cell_edit_${scratchBufnr}`;
+  await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
+  await denops.cmd(`augroup! ${group}`);
 }

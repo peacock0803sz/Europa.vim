@@ -1,6 +1,8 @@
 /**
  * BDD specs for applyRenderPlan — modifiable, conceal, lazy rendering,
- * Sixel apply, and Sixel fallback; and for lineToCellId / restoreCursor.
+ * Sixel apply, and Sixel fallback; lineToCellId / restoreCursor; and
+ * scratch buffer host I/O (openCellEditBuffer / freezeCellEditBuffer /
+ * resolveScratchFiletype).
  *
  * @spec-id europa.view.viewer.modifiable
  * @spec-id europa.view.viewer.conceal-zero
@@ -9,18 +11,25 @@
  * @spec-id europa.view.viewer.sixel-fallback
  * @spec-id europa.view.viewer.line-to-cellid
  * @spec-id europa.view.viewer.restore-cursor
+ * @spec-id europa.view.viewer.scratch-open
+ * @spec-id europa.view.viewer.scratch-freeze
+ * @spec-id europa.view.viewer.resolve-filetype
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
 import {
   applyRenderPlan,
+  freezeCellEditBuffer,
   lineToCellId,
   type MagickConverter,
+  openCellEditBuffer,
+  resolveScratchFiletype,
   restoreCursor,
 } from "../../../denops/europa/view/viewer.ts";
 import type { CellRange } from "../../../schema/render-plan.ts";
 import { type MockHost, mockNvim, mockVim } from "../../fixtures/mock-host.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
+import type { Cell, Notebook } from "../../../schema/notebook.ts";
 
 // Minimal 1×1 PNG base64 (same fixture as image_spec.ts)
 const PNG_B64 =
@@ -435,5 +444,285 @@ describe("restoreCursor", () => {
     await restoreCursor(h, 1, null, [], []);
     const cursorCmds = h.cmdsMatching("cursor(1, 1)");
     assertEquals(cursorCmds.length > 0, true);
+  });
+});
+
+// --- resolveScratchFiletype (europa.view.viewer.resolve-filetype) ---
+
+const CODE_CELL_ID = "018f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3b";
+const MD_CELL_ID = "028f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3c";
+const RAW_CELL_ID = "038f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3d";
+
+function makeCodeCell(): Cell {
+  return {
+    cell_type: "code",
+    id: CODE_CELL_ID,
+    source: "x = 1",
+    execution_count: null,
+    outputs: [],
+    metadata: {},
+  };
+}
+
+function makeMarkdownCell(): Cell {
+  return {
+    cell_type: "markdown",
+    id: MD_CELL_ID,
+    source: "# md",
+    metadata: {},
+  };
+}
+
+function makeRawCell(): Cell {
+  return {
+    cell_type: "raw",
+    id: RAW_CELL_ID,
+    source: "raw",
+    metadata: {},
+  };
+}
+
+function makeNotebook(metadata: Notebook["metadata"], cells: Cell[]): Notebook {
+  return { nbformat: 4, nbformat_minor: 5, metadata, cells };
+}
+
+describe("resolveScratchFiletype", () => {
+  it("returns 'markdown' for markdown cells regardless of metadata", () => {
+    const nb = makeNotebook({}, [makeMarkdownCell()]);
+    assertEquals(resolveScratchFiletype(nb, makeMarkdownCell()), "markdown");
+  });
+
+  it("returns '' (no filetype) for raw cells", () => {
+    const nb = makeNotebook({}, [makeRawCell()]);
+    assertEquals(resolveScratchFiletype(nb, makeRawCell()), "");
+  });
+
+  it("uses kernelspec.language for code cells when present", () => {
+    const nb = makeNotebook(
+      { kernelspec: { name: "py3", language: "python" } },
+      [makeCodeCell()],
+    );
+    assertEquals(resolveScratchFiletype(nb, makeCodeCell()), "python");
+  });
+
+  it("falls back to language_info.name when kernelspec.language is absent", () => {
+    const nb = makeNotebook(
+      { language_info: { name: "rust" } },
+      [makeCodeCell()],
+    );
+    assertEquals(resolveScratchFiletype(nb, makeCodeCell()), "rust");
+  });
+
+  it("falls back to 'python' when neither kernelspec nor language_info is set", () => {
+    const nb = makeNotebook({}, [makeCodeCell()]);
+    assertEquals(resolveScratchFiletype(nb, makeCodeCell()), "python");
+  });
+
+  it("prefers kernelspec.language over language_info.name", () => {
+    const nb = makeNotebook(
+      {
+        kernelspec: { name: "ruby3", language: "ruby" },
+        language_info: { name: "python" },
+      },
+      [makeCodeCell()],
+    );
+    assertEquals(resolveScratchFiletype(nb, makeCodeCell()), "ruby");
+  });
+
+  it("treats empty string as missing for kernelspec.language fallback", () => {
+    const nb = makeNotebook(
+      {
+        kernelspec: { name: "py3", language: "" },
+        language_info: { name: "python" },
+      },
+      [makeCodeCell()],
+    );
+    assertEquals(resolveScratchFiletype(nb, makeCodeCell()), "python");
+  });
+});
+
+// --- openCellEditBuffer (europa.view.viewer.scratch-open) ---
+
+const SCRATCH_BUFNAME = `__europa_cell_${CODE_CELL_ID}__`;
+
+describe("openCellEditBuffer", () => {
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("registers the scratch buffer via bufadd / bufload", async () => {
+    await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    const bufaddCalls = host.callsTo("bufadd");
+    assertEquals(bufaddCalls.length, 1);
+    assertEquals(bufaddCalls[0].args[1], SCRATCH_BUFNAME);
+    const bufloadCalls = host.callsTo("bufload");
+    assertEquals(bufloadCalls.length, 1);
+  });
+
+  it("sets all required buffer options for an editable scratch", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    const expected: Array<[string, unknown]> = [
+      ["&buftype", "acwrite"],
+      ["&swapfile", 0],
+      ["&bufhidden", "hide"],
+      ["&modifiable", 1],
+      ["&buflisted", 0],
+      ["&filetype", "python"],
+      ["&modified", 0],
+    ];
+    for (const [name, value] of expected) {
+      const call = host.callsTo("setbufvar").find((c) =>
+        c.args[1] === scratchBufnr && c.args[2] === name &&
+        c.args[3] === value
+      );
+      assertEquals(call !== undefined, true, `setbufvar ${name}=${value}`);
+    }
+  });
+
+  it("injects the source lines via setbufline at line 1", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["a = 1", "b = 2", "c = 3"],
+      filetype: "python",
+    });
+    const call = host.callsTo("setbufline").find((c) =>
+      c.args[1] === scratchBufnr && c.args[2] === 1
+    );
+    assertEquals(call !== undefined, true);
+    assertEquals(call!.args[3], ["a = 1", "b = 2", "c = 3"]);
+  });
+
+  it("records cellId / viewerBufnr as buffer-local variables", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    assertEquals(host.getBufVar(scratchBufnr, "europa_cell_id"), CODE_CELL_ID);
+    assertEquals(host.getBufVar(scratchBufnr, "europa_viewer_bufnr"), 42);
+  });
+
+  it("creates an autocmd group bound to the scratch bufnr", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    const expectedGroup = `europa_cell_edit_${scratchBufnr}`;
+    const augroupCmd = host.cmdsMatching(`augroup ${expectedGroup}`);
+    assertEquals(augroupCmd.length > 0, true);
+    const writeAutocmd = host.cmdsMatching(
+      `BufWriteCmd <buffer=${scratchBufnr}>`,
+    );
+    assertEquals(writeAutocmd.length > 0, true);
+    const wipeAutocmd = host.cmdsMatching(
+      `BufWipeout <buffer=${scratchBufnr}>`,
+    );
+    assertEquals(wipeAutocmd.length > 0, true);
+  });
+
+  it("opens a split window targeting the scratch bufnr", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    const splitCmd = host.cmdsMatching(`split #${scratchBufnr}`);
+    assertEquals(splitCmd.length > 0, true);
+  });
+
+  it("returns the bufnr assigned by bufadd", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    assertEquals(typeof scratchBufnr, "number");
+    assertEquals(scratchBufnr > 0, true);
+  });
+
+  it("reuses an existing scratch buffer rather than creating a new split", async () => {
+    const first = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    host.calls = [];
+    const reused = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+      existingScratchBufnr: first,
+    });
+    assertEquals(reused, first);
+    const bufaddCalls = host.callsTo("bufadd");
+    assertEquals(bufaddCalls.length, 0, "bufadd must not be called on reuse");
+    const bufferCmd = host.cmdsMatching(`buffer ${first}`);
+    assertEquals(bufferCmd.length > 0, true);
+    const splitCmd = host.cmdsMatching(`split #${first}`);
+    assertEquals(splitCmd.length, 0, "no fresh :split when reusing");
+  });
+});
+
+// --- freezeCellEditBuffer (europa.view.viewer.scratch-freeze) ---
+
+describe("freezeCellEditBuffer", () => {
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("appends the deletion marker, locks the buffer, and warns the user", async () => {
+    const scratchBufnr = await openCellEditBuffer(host, {
+      bufname: SCRATCH_BUFNAME,
+      cellId: CODE_CELL_ID,
+      viewerBufnr: 42,
+      sourceLines: ["x = 1"],
+      filetype: "python",
+    });
+    host.calls = [];
+    await freezeCellEditBuffer(host, scratchBufnr, CODE_CELL_ID);
+    const append = host.callsTo("appendbufline").find((c) =>
+      c.args[1] === scratchBufnr &&
+      String(c.args[3]).includes("[Cell deleted from notebook]")
+    );
+    assertEquals(append !== undefined, true);
+    const buftype = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === scratchBufnr && c.args[2] === "&buftype" &&
+      c.args[3] === "nofile"
+    );
+    assertEquals(buftype !== undefined, true);
+    const modifiable = host.callsTo("setbufvar").filter((c) =>
+      c.args[1] === scratchBufnr && c.args[2] === "&modifiable" &&
+      c.args[3] === 0
+    );
+    assertEquals(modifiable.length > 0, true);
+    const warn = host.cmdsMatching("WarningMsg");
+    assertEquals(warn.length > 0, true);
   });
 });
