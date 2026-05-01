@@ -219,8 +219,11 @@ describe("insertCell", () => {
     const result = insertCell(nb, "after", "code", CELL_CODE);
     assertEquals(Object.is(nb, result), false);
     assertEquals(Object.is(nb.cells, result.cells), false);
-    // Original cells array is not modified
-    assertEquals(nb.cells, originalCells);
+    // Same reference → still points at the original (un-mutated) array
+    assertEquals(Object.is(nb.cells, originalCells), true);
+    // And the contents of that array were not mutated in place
+    assertEquals(nb.cells.length, 1);
+    assertEquals(nb.cells[0].id, CELL_CODE);
   });
 
   it("untouched cells are structurally shared", () => {
