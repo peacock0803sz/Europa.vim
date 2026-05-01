@@ -9,7 +9,7 @@ command! -nargs=? -complete=file EuropaOpen
 command! -nargs=+ EuropaPreviewOutput
       \ call europa#preview_output(<f-args>)
 
-command! -nargs=+ -bang EuropaInsertCell
+command! -nargs=1 -bang EuropaInsertCell
       \ call europa#insert_cell(<bang>0, <f-args>)
 
 command! -nargs=0 EuropaDeleteCell
