@@ -52,7 +52,6 @@ export const EuropaConfigSchema = Type.Object({
   // Behavior (Phase 2 active)
   auto_save: Type.Boolean({ default: false }),
   use_subprocess: Type.Boolean({ default: true }),
-  use_default_mappings: Type.Boolean({ default: false }),
 });
 
 export type EuropaConfig = Static<typeof EuropaConfigSchema>;

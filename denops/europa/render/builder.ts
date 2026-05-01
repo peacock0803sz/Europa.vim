@@ -7,6 +7,7 @@
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { Notebook, Output } from "../../../schema/notebook.ts";
 import type {
+  CellRange,
   RenderFragment,
   RenderPlan,
   SixelPlacement,
@@ -141,13 +142,19 @@ function appendCellOutputs(
  *      lines (FR-051) — including the truncation summary, when present
  *
  * The `cellMap` records the buffer line range `[bufLineStart, bufLineEnd)`
- * for each cell.
+ * for each cell. The `cellRanges` field records the same range by `cellId`
+ * for cursor restoration after structural mutations.
+ *
+ * When the notebook is empty, 8 guidance lines are emitted and `cellRanges`
+ * is returned as `[]`.
  *
  * @param nb - Normalized notebook (all source fields are plain strings).
  * @param caps - Host capabilities used by `dispatchOutput`.
  * @param opts - Options including `maxOutputLines` and `mimePriority`.
  * @returns A `RenderPlan` ready for `applyRenderPlan`.
  * @spec-id europa.render.builder.assemble
+ * @spec-id europa.render.builder.cell-ranges
+ * @spec-id europa.render.builder.empty-notebook-guidance
  */
 export function buildRenderPlan(
   nb: Notebook,
@@ -171,10 +178,35 @@ export function buildRenderPlan(
   const highlights: RenderPlan["highlights"] = [];
   const sixelPlacements: SixelPlacement[] = [];
   const cellMap: RenderPlan["cellMap"] = [];
+  const cellRanges: CellRange[] = [];
+
+  if (nb.cells.length === 0) {
+    lines.push(
+      "[Empty notebook]",
+      "",
+      "This notebook has no cells.",
+      "",
+      "Add a cell with one of:",
+      "    :EuropaInsertCell code",
+      "    :EuropaInsertCell markdown",
+      "    :EuropaInsertCell raw",
+    );
+    return {
+      lines,
+      highlights,
+      virtText: [],
+      imagePlacements: [],
+      sixelPlacements,
+      clickables: [],
+      cellMap,
+      cellRanges,
+    };
+  }
 
   for (let i = 0; i < nb.cells.length; i++) {
     const cell = nb.cells[i];
-    const bufLineStart = lines.length;
+    const startLine = lines.length;
+    const bufLineStart = startLine;
 
     lines.push(`## [${cell.cell_type}] ${cell.id}`);
 
@@ -201,7 +233,9 @@ export function buildRenderPlan(
     }
 
     const bufLineEnd = lines.length;
+    const endLine = lines.length - 1;
     cellMap.push({ cellIndex: i, bufLineStart, bufLineEnd });
+    cellRanges.push({ cellId: cell.id, startLine, endLine });
   }
 
   return {
@@ -212,5 +246,6 @@ export function buildRenderPlan(
     sixelPlacements,
     clickables: [],
     cellMap,
+    cellRanges,
   };
 }

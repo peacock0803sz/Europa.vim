@@ -2,11 +2,14 @@
  * BDD specs for SessionStore.
  *
  * @spec-id europa.session.state.store
+ * @spec-id europa.session.state.cell-edit-buffers
+ * @spec-id europa.session.state.render-plan-cache
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
 import { SessionStore } from "../../../denops/europa/session/state.ts";
 import type { Session } from "../../../schema/session.ts";
+import type { RenderPlan } from "../../../schema/render-plan.ts";
 
 function makeSession(bufnr: number): Session {
   return {
@@ -71,5 +74,89 @@ describe("SessionStore", () => {
 
   it("all returns empty array when store is empty", () => {
     assertEquals(store.all(), []);
+  });
+});
+
+// --- Phase 3.1: cellEditBuffers map (europa.session.state.cell-edit-buffers) ---
+
+describe("SessionStore — cellEditBuffers map", () => {
+  const viewerBufnr = 10;
+  const cellId = "cell-abc";
+  const scratchBufnr = 200;
+
+  beforeEach(() => {
+    store = new SessionStore();
+    store.add(makeSession(viewerBufnr));
+  });
+
+  it("setCellEditBuffer records cellId → scratchBufnr", () => {
+    store.setCellEditBuffer(viewerBufnr, cellId, scratchBufnr);
+    const reverse = store.findViewerByScratchBufnr(scratchBufnr);
+    assertEquals(reverse?.viewerBufnr, viewerBufnr);
+    assertEquals(reverse?.cellId, cellId);
+  });
+
+  it("removeCellEditBuffer clears only the specified cellId", () => {
+    store.setCellEditBuffer(viewerBufnr, cellId, scratchBufnr);
+    store.setCellEditBuffer(viewerBufnr, "other-cell", 201);
+    store.removeCellEditBuffer(viewerBufnr, cellId);
+    assertEquals(store.findViewerByScratchBufnr(scratchBufnr), undefined);
+    // other-cell remains
+    assertEquals(store.findViewerByScratchBufnr(201)?.cellId, "other-cell");
+  });
+
+  it("findViewerByScratchBufnr returns undefined for unknown scratch bufnr", () => {
+    assertEquals(store.findViewerByScratchBufnr(9999), undefined);
+  });
+
+  it("all cellEditBuffers are cleared when the session is removed", () => {
+    store.setCellEditBuffer(viewerBufnr, cellId, scratchBufnr);
+    store.remove(viewerBufnr);
+    assertEquals(store.findViewerByScratchBufnr(scratchBufnr), undefined);
+  });
+});
+
+// --- Phase 3.1: renderPlan cache (europa.session.state.render-plan-cache) ---
+
+describe("SessionStore — renderPlan cache", () => {
+  const viewerBufnr = 20;
+
+  function makePlan(): RenderPlan {
+    return {
+      lines: ["line0"],
+      highlights: [],
+      virtText: [],
+      imagePlacements: [],
+      clickables: [],
+      cellMap: [],
+      cellRanges: [{ cellId: "cell-x", startLine: 0, endLine: 0 }],
+    };
+  }
+
+  beforeEach(() => {
+    store = new SessionStore();
+    store.add(makeSession(viewerBufnr));
+  });
+
+  it("getRenderPlan returns undefined before any plan is set", () => {
+    assertEquals(store.getRenderPlan(viewerBufnr), undefined);
+  });
+
+  it("setRenderPlan then getRenderPlan returns the plan", () => {
+    const plan = makePlan();
+    store.setRenderPlan(viewerBufnr, plan);
+    assertEquals(store.getRenderPlan(viewerBufnr), plan);
+  });
+
+  it("setRenderPlan replaces the previous plan", () => {
+    const p1 = makePlan();
+    const p2: RenderPlan = { ...makePlan(), lines: ["updated"] };
+    store.setRenderPlan(viewerBufnr, p1);
+    store.setRenderPlan(viewerBufnr, p2);
+    assertEquals(store.getRenderPlan(viewerBufnr)?.lines[0], "updated");
+  });
+
+  it("getRenderPlan returns undefined for unknown bufnr", () => {
+    assertEquals(store.getRenderPlan(9999), undefined);
   });
 });

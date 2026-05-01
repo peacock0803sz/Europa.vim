@@ -5,6 +5,14 @@
  * in-memory log. Supports switching `meta.host` between "vim" and "nvim".
  * Buffer lines and prop/extmark state are tracked as simple maps.
  *
+ * Phase 3.1 writable mode adds:
+ *   - bufadd / bufload / bwipeout / bufnr / bufexists
+ *   - getbufline / setbufline / appendbufline / deletebufline
+ *   - getbufvar / setbufvar (option state per buffer)
+ *   - autocmd.define / autocmd.remove / autocmd.fire (group registry)
+ *   - cursor / getcurpos / currentBufnr
+ *   - dispatcher notify/request mock
+ *
  * @module tests/fixtures/mock-host
  */
 
@@ -18,6 +26,14 @@ export type CallRecord = {
 export type MockHostOptions = {
   host?: "vim" | "nvim";
   hostVersion?: string;
+};
+
+/** Per-buffer state tracked by the writable mock. */
+type BufState = {
+  lines: string[];
+  vars: Map<string, unknown>;
+  exists: boolean;
+  loaded: boolean;
 };
 
 export class MockHost implements Denops {
@@ -41,6 +57,45 @@ export class MockHost implements Denops {
   namespaces: Map<string, number> = new Map();
   private _nextNsId = 1;
 
+  // --- Phase 3.1 writable mode ---
+
+  /** Full buffer state (replaces the simpler bufLines map for writable mode). */
+  private _buffers: Map<number, BufState> = new Map();
+  private _nextBufnr = 100;
+  /** bufname → bufnr */
+  private _bufnames: Map<string, number> = new Map();
+  /** autocmd groups: groupName → list of { event, pattern, command } */
+  private _autocmdGroups: Map<
+    string,
+    Array<{ event: string; pattern: string; command: string }>
+  > = new Map();
+  /** Current active buffer number (for bufnr('%') mock). */
+  currentBufnr = 1;
+  /** cursor position [lnum, col] (1-origin). */
+  cursorPos: [number, number] = [1, 1];
+
+  /** Autocmd helpers accessible from tests. */
+  readonly autocmd = {
+    define: (
+      group: string,
+      event: string,
+      pattern: string,
+      command: string,
+    ) => {
+      const entries = this._autocmdGroups.get(group) ?? [];
+      entries.push({ event, pattern, command });
+      this._autocmdGroups.set(group, entries);
+    },
+    remove: (group: string) => {
+      this._autocmdGroups.delete(group);
+    },
+    fire: (_event: string, _bufnr: number) => {
+      // Records the fire; tests can observe via calls
+    },
+    has: (group: string) => this._autocmdGroups.has(group),
+    get: (group: string) => this._autocmdGroups.get(group) ?? [],
+  };
+
   constructor(opts: MockHostOptions = {}) {
     this.meta = {
       host: opts.host ?? "vim",
@@ -62,12 +117,23 @@ export class MockHost implements Denops {
         }
       }
     }
+    // cursor(lnum, col) — update simulated cursor position
+    const cursorMatch = command.match(/call cursor\((\d+),\s*(\d+)\)/);
+    if (cursorMatch) {
+      this.cursorPos = [parseInt(cursorMatch[1]), parseInt(cursorMatch[2])];
+    }
+    // augroup … | au! | augroup END — remove the group
+    const augroupClear = command.match(/augroup\s+(\S+).*\|.*au!/s);
+    if (augroupClear) {
+      this._autocmdGroups.delete(augroupClear[1]);
+    }
     return Promise.resolve();
   }
 
   call(fn: string, ...args: unknown[]): Promise<unknown> {
     this.calls.push({ method: "call", args: [fn, ...args] });
-    // Simulate specific function return values
+
+    // --- Phase 2 mocks (preserved) ---
     if (fn === "prop_type_list") return Promise.resolve([]);
     if (fn === "nvim_create_namespace") {
       const name = args[0] as string;
@@ -76,15 +142,150 @@ export class MockHost implements Denops {
       }
       return Promise.resolve(this.namespaces.get(name)!);
     }
-    if (fn === "bufnr") return Promise.resolve(1);
+    if (fn === "bufnr") {
+      const expr = args[0];
+      if (expr === "%") return Promise.resolve(this.currentBufnr);
+      if (typeof expr === "string") {
+        const n = this._bufnames.get(expr);
+        return Promise.resolve(n ?? -1);
+      }
+      return Promise.resolve(1);
+    }
     if (fn === "bufwinid") return Promise.resolve(1000);
     if (fn === "screenpos") {
-      // (winid, lnum, col) — return a 1-indexed screen position that maps the
-      // buffer line to itself plus a 1-col offset, so tests can verify the
-      // ANSI cursor-move escape carries the expected row/col.
       const lnum = args[1] as number;
       return Promise.resolve({ row: lnum, col: 1, endcol: 1, curscol: 1 });
     }
+
+    // --- Phase 3.1 buffer lifecycle mocks ---
+    if (fn === "bufadd") {
+      const name = args[0] as string;
+      if (this._bufnames.has(name)) {
+        return Promise.resolve(this._bufnames.get(name)!);
+      }
+      const nr = this._nextBufnr++;
+      this._bufnames.set(name, nr);
+      this._buffers.set(nr, {
+        lines: [],
+        vars: new Map(),
+        exists: true,
+        loaded: false,
+      });
+      return Promise.resolve(nr);
+    }
+    if (fn === "bufload") {
+      const nr = args[0] as number;
+      const buf = this._buffers.get(nr);
+      if (buf) buf.loaded = true;
+      return Promise.resolve(null);
+    }
+    if (fn === "bwipeout" || fn === "bwipeout!") {
+      const nr = args[0] as number;
+      const buf = this._buffers.get(nr);
+      if (buf) {
+        buf.exists = false;
+        buf.loaded = false;
+      }
+      // Remove reverse name mapping
+      for (const [name, n] of this._bufnames) {
+        if (n === nr) {
+          this._bufnames.delete(name);
+          break;
+        }
+      }
+      return Promise.resolve(null);
+    }
+    if (fn === "bufexists") {
+      const nr = args[0] as number;
+      return Promise.resolve(this._buffers.get(nr)?.exists ? 1 : 0);
+    }
+    if (fn === "getbufline") {
+      const nr = args[0] as number;
+      const from = (args[1] as number) - 1; // 1-origin → 0-origin
+      const to = args[2] === "$"
+        ? (this._buffers.get(nr)?.lines.length ?? 0)
+        : (args[2] as number);
+      const lines = this._buffers.get(nr)?.lines ?? [];
+      return Promise.resolve(lines.slice(from, to));
+    }
+    if (fn === "setbufline") {
+      const nr = args[0] as number;
+      const lnum = (args[1] as number) - 1; // 1-origin → 0-origin
+      const newLines = Array.isArray(args[2])
+        ? args[2] as string[]
+        : [args[2] as string];
+      let buf = this._buffers.get(nr);
+      if (!buf) {
+        buf = { lines: [], vars: new Map(), exists: true, loaded: true };
+        this._buffers.set(nr, buf);
+      }
+      // Extend if needed
+      while (buf.lines.length < lnum) buf.lines.push("");
+      buf.lines.splice(lnum, newLines.length, ...newLines);
+      // Also keep the legacy bufLines map in sync
+      this.bufLines.set(nr, buf.lines);
+      return Promise.resolve(null);
+    }
+    if (fn === "appendbufline") {
+      const nr = args[0] as number;
+      const lnum = args[1] === "$"
+        ? (this._buffers.get(nr)?.lines.length ?? 0)
+        : (args[1] as number);
+      const newLines = Array.isArray(args[2])
+        ? args[2] as string[]
+        : [args[2] as string];
+      let buf = this._buffers.get(nr);
+      if (!buf) {
+        buf = { lines: [], vars: new Map(), exists: true, loaded: true };
+        this._buffers.set(nr, buf);
+      }
+      buf.lines.splice(lnum, 0, ...newLines);
+      this.bufLines.set(nr, buf.lines);
+      return Promise.resolve(null);
+    }
+    if (fn === "deletebufline") {
+      const nr = args[0] as number;
+      const from = (args[1] as number) - 1;
+      const to = args[2] === "$"
+        ? (this._buffers.get(nr)?.lines.length ?? 0)
+        : (args[2] as number);
+      const buf = this._buffers.get(nr);
+      if (buf) {
+        buf.lines.splice(from, to - from);
+        this.bufLines.set(nr, buf.lines);
+      }
+      return Promise.resolve(null);
+    }
+    if (fn === "getbufvar") {
+      const nr = args[0] as number;
+      const varName = args[1] as string;
+      const buf = this._buffers.get(nr);
+      if (!buf) return Promise.resolve(args[2] ?? null);
+      const val = buf.vars.get(varName);
+      return Promise.resolve(val !== undefined ? val : (args[2] ?? null));
+    }
+    if (fn === "setbufvar") {
+      const nr = args[0] as number;
+      const varName = args[1] as string;
+      const value = args[2];
+      let buf = this._buffers.get(nr);
+      if (!buf) {
+        buf = { lines: [], vars: new Map(), exists: true, loaded: false };
+        this._buffers.set(nr, buf);
+      }
+      buf.vars.set(varName, value);
+      return Promise.resolve(null);
+    }
+    if (fn === "getcurpos") {
+      return Promise.resolve([0, this.cursorPos[0], this.cursorPos[1], 0, this.cursorPos[1]]);
+    }
+    if (fn === "win_execute") {
+      // win_execute(winid, cmd) — just record, return empty
+      return Promise.resolve("");
+    }
+    if (fn === "writefile") return Promise.resolve(0);
+    if (fn === "chansend") return Promise.resolve(1);
+
     return Promise.resolve(null);
   }
 
@@ -106,11 +307,19 @@ export class MockHost implements Denops {
       }
     }
     if (expr === "g:europa_image_backend") return Promise.resolve("auto");
+    // exists() — return 0 by default (var does not exist)
+    if (expr.startsWith("exists(")) return Promise.resolve(0);
     return Promise.resolve(null);
   }
 
   dispatch(name: string, fn: string, ...args: unknown[]): Promise<unknown> {
     this.calls.push({ method: "dispatch", args: [name, fn, ...args] });
+    // Forward to the registered dispatcher if available
+    if (name === this.name && this.dispatcher[fn]) {
+      return Promise.resolve(
+        (this.dispatcher[fn] as (...a: unknown[]) => unknown)(...args),
+      );
+    }
     return Promise.resolve(null);
   }
 
@@ -128,6 +337,21 @@ export class MockHost implements Denops {
     this.evalValues.set(expr, value);
   }
 
+  /** Get all lines of a buffer. */
+  getBufLines(nr: number): string[] {
+    return this._buffers.get(nr)?.lines ?? this.bufLines.get(nr) ?? [];
+  }
+
+  /** Get a buffer variable. */
+  getBufVar(nr: number, varName: string): unknown {
+    return this._buffers.get(nr)?.vars.get(varName);
+  }
+
+  /** Check if a buffer exists in the writable state map. */
+  hasBuf(nr: number): boolean {
+    return this._buffers.get(nr)?.exists ?? false;
+  }
+
   /** Reset call log and state. */
   reset(): void {
     this.calls = [];
@@ -136,6 +360,12 @@ export class MockHost implements Denops {
     this.props.clear();
     this.namespaces.clear();
     this._nextNsId = 1;
+    this._buffers.clear();
+    this._bufnames.clear();
+    this._autocmdGroups.clear();
+    this._nextBufnr = 100;
+    this.currentBufnr = 1;
+    this.cursorPos = [1, 1];
   }
 
   /** Find all calls to a given function name. */

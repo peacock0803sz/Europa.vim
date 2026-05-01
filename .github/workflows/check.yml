@@ -15,11 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: cachix/install-nix-action@ab739621df7a23f52766f9ccc97f38da6b7af14f # v31.10.5
+
+      - uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
         with:
-          nix_path: nixpkgs=channel:nixpkgs-unstable
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-          extra_nix_config: access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+          deno-version: v2.x
+
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
 
       - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
@@ -29,4 +31,4 @@ jobs:
           key: deno-${{ runner.os }}-${{ hashFiles('deno.json') }}
           restore-keys: deno-${{ runner.os }}-
 
-      - run: nix develop --command pre-commit run --all-files
+      - run: deno task check

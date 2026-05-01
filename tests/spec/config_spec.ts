@@ -25,7 +25,6 @@ describe("loadConfig — basic loading", () => {
     assertEquals(config.max_output_lines, 100);
     assertEquals(config.lazy_padding, 10);
     assertEquals(config.auto_save, false);
-    assertEquals(config.use_default_mappings, false);
   });
 
   it("respects overridden g:europa_image_backend", async () => {
@@ -56,5 +55,64 @@ describe("loadConfig — validation", () => {
       () => loadConfig(denops),
       EuropaConfigError,
     );
+  });
+});
+
+describe("loadConfig — deprecated g:europa_use_default_mappings", () => {
+  /**
+   * @spec-id europa.config.deprecated-use-default-mappings
+   *
+   * When g:europa_use_default_mappings is defined and the per-session flag is
+   * not yet set, loadConfig must emit a WarningMsg via :echom. Once
+   * g:europa_warned_deprecated_mappings is set, subsequent calls are silent.
+   */
+  it("emits a deprecation warning on first load when g:europa_use_default_mappings is defined", async () => {
+    const denops = mockVim();
+    const warnExpr =
+      `exists('g:europa_use_default_mappings') && !exists('g:europa_warned_deprecated_mappings')`;
+    denops.setEval(warnExpr, 1);
+    await loadConfig(denops);
+    const warnCall = denops.calls.find(
+      (c) =>
+        c.method === "cmd" &&
+        typeof c.args[0] === "string" &&
+        c.args[0].includes("use_default_mappings") &&
+        c.args[0].includes("deprecated"),
+    );
+    assertEquals(
+      warnCall !== undefined,
+      true,
+      "Expected a deprecation warning cmd call for g:europa_use_default_mappings",
+    );
+  });
+
+  it("does not emit a warning when the per-session flag is already set", async () => {
+    const denops = mockVim();
+    const warnExpr =
+      `exists('g:europa_use_default_mappings') && !exists('g:europa_warned_deprecated_mappings')`;
+    denops.setEval(warnExpr, 0);
+    await loadConfig(denops);
+    const warnCall = denops.calls.find(
+      (c) =>
+        c.method === "cmd" &&
+        typeof c.args[0] === "string" &&
+        c.args[0].includes("use_default_mappings"),
+    );
+    assertEquals(warnCall, undefined);
+  });
+
+  it("does not emit a warning when g:europa_use_default_mappings is absent", async () => {
+    const denops = mockVim();
+    const warnExpr =
+      `exists('g:europa_use_default_mappings') && !exists('g:europa_warned_deprecated_mappings')`;
+    denops.setEval(warnExpr, 0);
+    await loadConfig(denops);
+    const warnCall = denops.calls.find(
+      (c) =>
+        c.method === "cmd" &&
+        typeof c.args[0] === "string" &&
+        c.args[0].includes("use_default_mappings"),
+    );
+    assertEquals(warnCall, undefined);
   });
 });

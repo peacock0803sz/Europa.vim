@@ -40,5 +40,15 @@ export const SessionSchema = Type.Object({
   notebook: NotebookSchema,
   kernel: Type.Optional(KernelInfoSchema),
   cellMap: Type.Array(CellMapEntrySchema),
+  cellEditBuffers: Type.Optional(
+    Type.Record(Type.String(), Type.Integer({ minimum: 0 })),
+  ),
 });
 export type Session = Static<typeof SessionSchema>;
+
+/** Reverse-lookup result from `SessionStore.findViewerByScratchBufnr`. */
+export const ScratchLookupSchema = Type.Object({
+  viewerBufnr: Type.Integer({ minimum: 0 }),
+  cellId: Type.String(),
+});
+export type ScratchLookup = Static<typeof ScratchLookupSchema>;
