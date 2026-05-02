@@ -2230,17 +2230,26 @@ let g:europa_use_subprocess       = v:true    " ローカル jupyter server を 
 
 ### 9.3 キーマップ (`<Plug>(europa-*)`)
 
+以下の `<Plug>` 名は `plugin/mappings.vim` に定義された安定した公開 contract。
+Europa は default keymap を一切インストールしない — ユーザーが自分の ftplugin でバインドする。
+
 ```vim
-nnoremap <Plug>(europa-run-cell)       :<C-u>EuropaRunCell<CR>
-nnoremap <Plug>(europa-edit-cell)      :<C-u>EuropaEditCell<CR>
-nnoremap <Plug>(europa-insert-code)    :<C-u>EuropaInsertCell code<CR>
-nnoremap <Plug>(europa-insert-markdown):<C-u>EuropaInsertCell markdown<CR>
-nnoremap <Plug>(europa-cell-down)      :<C-u>EuropaMoveCellDown<CR>
-nnoremap <Plug>(europa-cell-up)        :<C-u>EuropaMoveCellUp<CR>
-nnoremap <Plug>(europa-delete-cell)    :<C-u>EuropaDeleteCell<CR>
+" Phase 3.1 (現在利用可能)
+nnoremap <silent> <Plug>(europa-insert-code)     :<C-u>EuropaInsertCell code<CR>
+nnoremap <silent> <Plug>(europa-insert-markdown) :<C-u>EuropaInsertCell markdown<CR>
+nnoremap <silent> <Plug>(europa-insert-raw)      :<C-u>EuropaInsertCell raw<CR>
+nnoremap <silent> <Plug>(europa-delete-cell)     :<C-u>EuropaDeleteCell<CR>
+nnoremap <silent> <Plug>(europa-cell-up)         :<C-u>EuropaMoveCellUp<CR>
+nnoremap <silent> <Plug>(europa-cell-down)       :<C-u>EuropaMoveCellDown<CR>
+nnoremap <silent> <Plug>(europa-edit-cell)       :<C-u>EuropaEditCell<CR>
+nnoremap <silent> <Plug>(europa-split-cell)      :<C-u>EuropaSplitCell<CR>
+nnoremap <silent> <Plug>(europa-join-cell)       :<C-u>EuropaJoinCell<CR>
+
+" Phase 3 (run-cell、未実装)
+nnoremap <silent> <Plug>(europa-run-cell)        :<C-u>EuropaRunCell<CR>
 ```
 
-ユーザーは `nmap <buffer> <CR> <Plug>(europa-run-cell)` のように好きにバインド。Europa は default keymap を提供しない (`g:europa_use_default_mappings` で opt-in)。
+ユーザーは `nmap <buffer><silent> <localleader>ec <Plug>(europa-edit-cell)` のように好きにバインドする。
 
 ## 10. ロードマップ
 
