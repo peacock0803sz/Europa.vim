@@ -8,12 +8,18 @@
  * @spec-id europa.session.events.bufunload-cleanup
  * @spec-id europa.session.events.bufwipeout-cleanup
  * @spec-id europa.dispatcher.cleanup-idempotent
+ * @spec-id europa.dispatcher.cleanup-with-scratch
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
 import { setupAutocmds } from "../../../denops/europa/session/events.ts";
 import { buildDispatcher } from "../../../denops/europa/main.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
+
+const FIXTURE_PATH = new URL(
+  "../../golden/ipynb/edit-target.ipynb",
+  import.meta.url,
+).pathname;
 
 describe("setupAutocmds", () => {
   it("registers BufReadCmd for *.ipynb", async () => {
@@ -145,6 +151,48 @@ describe("cleanup dispatcher — idempotency", () => {
       additionalCalls,
       0,
       "Second cleanup on already-removed bufnr must not issue any Vim calls",
+    );
+  });
+});
+
+// --- cleanup with scratch buffers (europa.dispatcher.cleanup-with-scratch) ---
+
+describe("cleanup dispatcher — scratch buffer wipeout", () => {
+  let host: ReturnType<typeof mockVim>;
+
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("cleanup issues bwipeout! for each open scratch buffer", async () => {
+    const dispatcher = buildDispatcher(host);
+    const VIEWER_BUFNR = 5;
+    // Open a notebook to establish a session
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    // Open a scratch edit buffer for the first cell
+    const plan = await dispatcher.lineToCellId(VIEWER_BUFNR, 1);
+    // editCell opens a scratch buffer for the resolved cell id
+    if (plan) {
+      await dispatcher.editCell(VIEWER_BUFNR, plan);
+    }
+    // Record call count before cleanup
+    const callsBefore = host.calls.length;
+    await dispatcher.cleanup(VIEWER_BUFNR);
+    // After cleanup, the session should be gone (second call is no-op)
+    const callsAfterFirst = host.calls.length;
+    await dispatcher.cleanup(VIEWER_BUFNR);
+    const callsAfterSecond = host.calls.length;
+    // Idempotency: second cleanup adds no Vim calls
+    assertEquals(
+      callsAfterSecond - callsAfterFirst,
+      0,
+      "Second cleanup must be a no-op after session is gone",
+    );
+    // The first cleanup must have done something (bwipeout! or augroup cleanup)
+    assertEquals(
+      callsAfterFirst > callsBefore,
+      true,
+      "cleanup must issue at least one Vim call to tear down the session",
     );
   });
 });

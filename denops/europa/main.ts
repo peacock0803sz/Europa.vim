@@ -176,6 +176,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
      * session from the store. Idempotent: if the session is already gone
      * (e.g. BufUnload fired before BufWipeout) the call is a no-op.
      *
+     * @spec-id europa.dispatcher.cleanup-with-scratch
      * @spec-id europa.dispatcher.cleanup-idempotent
      */
     async cleanup(bufnr: unknown): Promise<void> {
