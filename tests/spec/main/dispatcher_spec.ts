@@ -947,6 +947,29 @@ describe("changeCellType dispatcher", () => {
     assertEquals(threw, false);
   });
 
+  it("emits a warning and is a no-op when cellId is not found", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    host.calls = [];
+    await dispatcher.changeCellType(
+      VIEWER_BUFNR,
+      "nonexistent-cell-id",
+      "markdown",
+    );
+    const errCmds = host.cmdsMatching("echohl");
+    assertEquals(
+      errCmds.length > 0,
+      true,
+      "missing cellId must emit warning",
+    );
+    const dirty = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === VIEWER_BUFNR && c.args[2] === "&modified" &&
+      c.args[3] === 1
+    );
+    assertEquals(dirty, undefined, "missing cellId must not dirty the viewer");
+  });
+
   it("emits a warning for an invalid newType", async () => {
     const dispatcher = buildDispatcher(host);
     host.currentBufnr = VIEWER_BUFNR;

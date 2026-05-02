@@ -986,6 +986,14 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const nt = typeStr as "code" | "markdown" | "raw";
       const cid = String(cellId);
+      // Explicit existence check: changeCellType returns the same reference
+      // for both "same-type no-op" and "cellId not found", so Object.is alone
+      // cannot distinguish the two — a missing cellId would silently do nothing.
+      const cellExists = session.notebook.cells.some((c) => c.id === cid);
+      if (!cellExists) {
+        await echomError(denops, `changeCellType: cell '${cid}' not found`);
+        return;
+      }
       const newNotebook = changeCellType(session.notebook, cid, nt);
       if (Object.is(newNotebook, session.notebook)) {
         // same-type no-op; nothing to do
