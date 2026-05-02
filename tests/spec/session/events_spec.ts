@@ -11,7 +11,7 @@
  * @spec-id europa.dispatcher.cleanup-with-scratch
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertGreater, assertNotEquals } from "@std/assert";
 import { setupAutocmds } from "../../../denops/europa/session/events.ts";
 import { buildDispatcher } from "../../../denops/europa/main.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
@@ -167,32 +167,28 @@ describe("cleanup dispatcher — scratch buffer wipeout", () => {
   it("cleanup issues bwipeout! for each open scratch buffer", async () => {
     const dispatcher = buildDispatcher(host);
     const VIEWER_BUFNR = 5;
-    // Open a notebook to establish a session
     await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
-    // Open a scratch edit buffer for the first cell
     const plan = await dispatcher.lineToCellId(VIEWER_BUFNR, 1);
-    // editCell opens a scratch buffer for the resolved cell id
-    if (plan) {
-      await dispatcher.editCell(VIEWER_BUFNR, plan);
-    }
-    // Record call count before cleanup
-    const callsBefore = host.calls.length;
-    await dispatcher.cleanup(VIEWER_BUFNR);
-    // After cleanup, the session should be gone (second call is no-op)
-    const callsAfterFirst = host.calls.length;
-    await dispatcher.cleanup(VIEWER_BUFNR);
-    const callsAfterSecond = host.calls.length;
-    // Idempotency: second cleanup adds no Vim calls
-    assertEquals(
-      callsAfterSecond - callsAfterFirst,
-      0,
-      "Second cleanup must be a no-op after session is gone",
+    assertNotEquals(
+      plan,
+      null,
+      "lineToCellId must return a cell id for line 1",
     );
-    // The first cleanup must have done something (bwipeout! or augroup cleanup)
+    await dispatcher.editCell(VIEWER_BUFNR, plan!);
+    const bwipeoutsBefore = host.cmdsMatching("bwipeout!").length;
+    await dispatcher.cleanup(VIEWER_BUFNR);
+    assertGreater(
+      host.cmdsMatching("bwipeout!").length,
+      bwipeoutsBefore,
+      "cleanup must issue bwipeout! for each open scratch buffer",
+    );
+    // Idempotency: second cleanup issues no additional bwipeout! calls
+    const bwipeoutsAfterFirst = host.cmdsMatching("bwipeout!").length;
+    await dispatcher.cleanup(VIEWER_BUFNR);
     assertEquals(
-      callsAfterFirst > callsBefore,
-      true,
-      "cleanup must issue at least one Vim call to tear down the session",
+      host.cmdsMatching("bwipeout!").length,
+      bwipeoutsAfterFirst,
+      "Second cleanup must not issue additional bwipeout! calls",
     );
   });
 });
