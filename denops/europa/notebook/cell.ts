@@ -5,7 +5,7 @@
  */
 
 import { v7 } from "@std/uuid";
-import type { Cell, MarkdownCell, Notebook } from "../../../schema/notebook.ts";
+import type { Cell, Notebook } from "../../../schema/notebook.ts";
 
 /**
  * Generate a new uuid v7 cell id.
@@ -388,23 +388,12 @@ export function changeCellType(
       execution_count: null,
     };
   } else if (newType === "markdown") {
-    const base: Cell = {
+    newCell = {
       cell_type: "markdown",
       id: cell.id,
       source: cell.source,
       metadata: cell.metadata,
     };
-    // Preserve existing attachments when converting from another markdown-like
-    // type that happened to carry them (e.g. markdown → markdown is a no-op,
-    // so in practice this only applies if the source already had attachments).
-    if ("attachments" in cell && cell.cell_type === "markdown") {
-      newCell = {
-        ...(base as MarkdownCell),
-        attachments: (cell as MarkdownCell).attachments,
-      };
-    } else {
-      newCell = base;
-    }
   } else {
     newCell = {
       cell_type: "raw",
