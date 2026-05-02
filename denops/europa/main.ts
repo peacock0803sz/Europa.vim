@@ -1,7 +1,7 @@
 /**
  * @packageDocumentation
  *
- * Europa.vim — Jupyter Notebook viewer for Vim and Neovim.
+ * Europa.vim — Jupyter Notebook viewer and editor for Vim and Neovim.
  *
  * Entry point registered with the Denops runtime. The `main` function wires
  * the Europa RPC dispatcher and is called once when the plugin loads.
@@ -13,12 +13,30 @@
  * group decorations. Use `:EuropaPreviewOutput <cellIdx> <outputIdx>` to open
  * image outputs in an external viewer.
  *
+ * ### Cell Editing (Phase 3.1)
+ *
+ * - `:EuropaInsertCell {type}` — insert a new cell (`code`/`markdown`/`raw`)
+ * - `:EuropaDeleteCell` — delete the cell at cursor
+ * - `:EuropaMoveCellUp` / `:EuropaMoveCellDown` — reorder cells
+ * - `:EuropaSplitCell` — split cell at cursor line
+ * - `:EuropaJoinCell` — join cell with the one above
+ * - `:EuropaEditCell` — open cell source in a scratch buffer for editing
+ * - `:EuropaCellType {type}` — change cell type
+ *
+ * `<Plug>(europa-*)` mappings are defined in `plugin/mappings.vim`.
+ * Europa does not install default key mappings — bind them in your ftplugin.
+ *
  * ## Phase Coverage
  *
- * - Phase 2: `init`, `save` (stub), `previewOutput` (stub)
- * - Phase 3 (this release): `open` — reads `.ipynb`, builds a RenderPlan, reflects it to buffer
- * - Phase 3+: cell editing, kernel attach — methods declared but throw `UnimplementedError`
+ * - Phase 2: `init`, `save`, `previewOutput`, viewer rendering
+ * - Phase 3.1 (this release): `insertCell`, `deleteCell`, `moveCell`,
+ *   `splitCell`, `joinCell`, `editCell`, `changeCellType` — full cell
+ *   mutation with scratch buffer lifecycle; `saveCellEdit`, `closeCellEdit`,
+ *   `lineToCellId` — internal RPCs for scratch buffer wiring
+ * - Phase 4+: kernel attach — methods declared but throw `UnimplementedError`
  *
+ * @category Commands
+ * @category Mappings
  * @module denops/europa/main
  */
 
