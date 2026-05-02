@@ -56,7 +56,7 @@ Deno.bench({
 
 for (const n of [10, 100, 1000]) {
   Deno.bench({
-    name: `insertCell × ${n} — O(N) scale check`,
+    name: `insertCell × ${n} — cumulative throughput`,
     async fn() {
       const host = mockVim();
       const dispatcher = buildDispatcher(host);
