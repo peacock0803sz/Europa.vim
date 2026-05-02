@@ -242,6 +242,10 @@ export function splitCell(
       id: assignCellId(),
       source: lowerSource,
       metadata: {},
+      // Copy attachments to the lower half too: `![attachment:foo]`
+      // references can land in either half after a split, and dropping
+      // them silently on save would break image / file embeds.
+      ...(cell.attachments ? { attachments: cell.attachments } : {}),
     }
     : {
       cell_type: "raw",
@@ -285,7 +289,23 @@ export function joinCell(notebook: Notebook, cellId: string): Notebook {
   if (idx <= 0) return notebook;
   const prev = notebook.cells[idx - 1];
   const curr = notebook.cells[idx];
-  const merged: Cell = { ...prev, source: `${prev.source}\n${curr.source}` };
+  const newSource = `${prev.source}\n${curr.source}`;
+  let merged: Cell;
+  if (prev.cell_type === "markdown" && curr.cell_type === "markdown") {
+    // When both halves are markdown, merge their attachment records so
+    // embedded image / file refs from the absorbed cell survive the
+    // join. prev wins on key collisions because prev's identity wins
+    // overall (US4 AC4).
+    const mergedAttachments = {
+      ...(curr.attachments ?? {}),
+      ...(prev.attachments ?? {}),
+    };
+    merged = Object.keys(mergedAttachments).length > 0
+      ? { ...prev, source: newSource, attachments: mergedAttachments }
+      : { ...prev, source: newSource };
+  } else {
+    merged = { ...prev, source: newSource };
+  }
   const cells = [
     ...notebook.cells.slice(0, idx - 1),
     merged,

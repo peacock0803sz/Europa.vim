@@ -563,6 +563,45 @@ describe("splitCell", () => {
     assertEquals(result.cells[1].source, "\nbody line");
   });
 
+  it("copies markdown attachments to both halves so neither side dangles", () => {
+    const attachments = {
+      "logo.png": {
+        "image/png": "iVBORw0KGgo=",
+      },
+    };
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "intro\n![attachment:logo.png]",
+        attachments,
+        metadata: {},
+      },
+    ]);
+    const result = splitCell(nb, CELL_MD, 1);
+    const upper = result.cells[0];
+    const lower = result.cells[1];
+    if (upper.cell_type === "markdown") {
+      assertEquals(upper.attachments, attachments);
+    }
+    if (lower.cell_type === "markdown") {
+      assertEquals(lower.attachments, attachments);
+    }
+  });
+
+  it("does not add an attachments field to the lower half when the source had none", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "a\nb",
+        metadata: {},
+      },
+    ]);
+    const result = splitCell(nb, CELL_MD, 1);
+    assertEquals("attachments" in result.cells[1], false);
+  });
+
   it("is immutable — input notebook reference is unchanged", () => {
     const nb = makeCodeCell("a\nb\nc");
     const originalCells = nb.cells;
@@ -680,6 +719,101 @@ describe("joinCell", () => {
     const result = joinCell(nb, CELL_MD);
     assertEquals(result.cells.length, 2);
     assertEquals(result.cells.map((c) => c.id), [CELL_CODE, CELL_RAW]);
+  });
+
+  it("merges attachments when both halves are markdown", () => {
+    const prevAttachments = {
+      "a.png": { "image/png": "AAAA" },
+    };
+    const currAttachments = {
+      "b.png": { "image/png": "BBBB" },
+    };
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_CODE,
+        source: "intro",
+        attachments: prevAttachments,
+        metadata: {},
+      },
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "body",
+        attachments: currAttachments,
+        metadata: {},
+      },
+    ]);
+    const result = joinCell(nb, CELL_MD);
+    const merged = result.cells[0];
+    if (merged.cell_type === "markdown") {
+      assertEquals(merged.attachments, {
+        "a.png": prevAttachments["a.png"],
+        "b.png": currAttachments["b.png"],
+      });
+    }
+  });
+
+  it("prefers prev's attachment on key collision (prev identity wins)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_CODE,
+        source: "p",
+        attachments: { "x.png": { "image/png": "PREV" } },
+        metadata: {},
+      },
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "c",
+        attachments: { "x.png": { "image/png": "CURR" } },
+        metadata: {},
+      },
+    ]);
+    const result = joinCell(nb, CELL_MD);
+    const merged = result.cells[0];
+    if (merged.cell_type === "markdown") {
+      assertEquals(merged.attachments, {
+        "x.png": { "image/png": "PREV" },
+      });
+    }
+  });
+
+  it("does not synthesise an empty attachments field when neither side had any", () => {
+    const nb = makeMinimalNotebook([
+      { cell_type: "markdown", id: CELL_CODE, source: "p", metadata: {} },
+      { cell_type: "markdown", id: CELL_MD, source: "c", metadata: {} },
+    ]);
+    const result = joinCell(nb, CELL_MD);
+    assertEquals("attachments" in result.cells[0], false);
+  });
+
+  it("keeps prev's attachments only on mixed-type joins (prev type wins)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_CODE,
+        source: "p",
+        attachments: { "x.png": { "image/png": "PREV" } },
+        metadata: {},
+      },
+      {
+        cell_type: "code",
+        id: CELL_MD,
+        source: "c",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const result = joinCell(nb, CELL_MD);
+    const merged = result.cells[0];
+    if (merged.cell_type === "markdown") {
+      assertEquals(merged.attachments, {
+        "x.png": { "image/png": "PREV" },
+      });
+    }
   });
 
   it("is immutable — input notebook reference is unchanged on a real join", () => {
