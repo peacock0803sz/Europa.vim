@@ -778,9 +778,16 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
      *
      * The previous cell's identity (`id` / `cell_type` / outputs /
      * `execution_count` / `metadata`) wins; the target cell is removed.
-     * If the target was the first cell or unknown, the pure helper
-     * returns the same notebook reference and the dispatcher surfaces
-     * a `:messages` guidance instead of committing.
+     *
+     * Boundary handling differs by cause and is reflected in the
+     * `:messages` color so users can distinguish input mistakes from
+     * intentional no-ops:
+     * - First cell (target idx 0): `WarningMsg` "No cell above to join"
+     *   — a soft no-op the user can recover from by moving the cursor.
+     * - Unknown cellId: `ErrorMsg` "joinCell: cell '<id>' not found" —
+     *   a hard error indicating a bug in the caller (autoload / mapping)
+     *   or a stale RPC argument.
+     * In both cases the SessionStore is left untouched.
      *
      * Two scratch buffers may need touch-ups: the absorbed (target)
      * scratch is frozen and its session entry removed, while the
