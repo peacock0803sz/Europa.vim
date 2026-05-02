@@ -123,6 +123,28 @@ function! europa#edit_cell() abort
         \ { -> denops#notify('europa', 'editCell', [l:bufnr, l:cell_id]) })
 endfunction
 
+" Change the type of the cell at the cursor to code, markdown, or raw.
+function! europa#change_cell_type(type) abort
+  let l:valid_types = ['code', 'markdown', 'raw']
+  if index(l:valid_types, a:type) == -1
+    echohl WarningMsg | echom 'Europa: invalid cell type: ' . a:type | echohl None
+    return
+  endif
+  let l:cell_id = europa#current_cell_id()
+  if type(l:cell_id) == v:t_string && l:cell_id ==# ''
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  if l:cell_id is v:null
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'changeCellType',
+        \                    [l:bufnr, l:cell_id, a:type]) })
+endfunction
+
 " Returns the cell id at the cursor.
 " In a scratch edit buffer, reads b:europa_cell_id directly.
 " Otherwise, makes a synchronous RPC to lineToCellId.

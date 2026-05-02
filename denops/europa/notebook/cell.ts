@@ -346,3 +346,74 @@ export function updateCellSource(
   ];
   return { ...notebook, cells };
 }
+
+/**
+ * Change the type of a cell, adjusting type-specific fields accordingly.
+ *
+ * Field transitions:
+ * - code → markdown / raw: drop `outputs` and `execution_count` (physical key
+ *   deletion, not `undefined` assignment).
+ * - markdown / raw → code: initialise `outputs = []` and `execution_count = null`.
+ * - same-type: return the original notebook (same reference).
+ *
+ * **Attachments**: when converting away from `markdown`, the `attachments`
+ * field is physically dropped. Raw and code cells do not carry this field in
+ * the nbformat schema, so embedded images/files stored in a markdown cell are
+ * irreversibly removed on type conversion. This is intentional — call sites
+ * that need to warn users about data loss should inspect `"attachments" in
+ * cell` before invoking this function.
+ *
+ * Callers can detect the no-op case via `Object.is(input, result)`.
+ *
+ * @param notebook - Source notebook (not mutated).
+ * @param cellId - The `cell.id` whose type should change.
+ * @param newType - Target cell type: `"code"` | `"markdown"` | `"raw"`.
+ * @returns A new notebook with the cell type changed, or the original notebook
+ *   if `cellId` is not found or the type is already `newType`.
+ * @category Notebook
+ * @spec-id europa.notebook.cell.change-type
+ */
+export function changeCellType(
+  notebook: Notebook,
+  cellId: string,
+  newType: "code" | "markdown" | "raw",
+): Notebook {
+  const idx = notebook.cells.findIndex((c) => c.id === cellId);
+  if (idx === -1) return notebook;
+
+  const cell = notebook.cells[idx];
+  if (cell.cell_type === newType) return notebook;
+
+  let newCell: Cell;
+  if (newType === "code") {
+    newCell = {
+      cell_type: "code",
+      id: cell.id,
+      source: cell.source,
+      metadata: cell.metadata,
+      outputs: [],
+      execution_count: null,
+    };
+  } else if (newType === "markdown") {
+    newCell = {
+      cell_type: "markdown",
+      id: cell.id,
+      source: cell.source,
+      metadata: cell.metadata,
+    };
+  } else {
+    newCell = {
+      cell_type: "raw",
+      id: cell.id,
+      source: cell.source,
+      metadata: cell.metadata,
+    };
+  }
+
+  const cells = [
+    ...notebook.cells.slice(0, idx),
+    newCell,
+    ...notebook.cells.slice(idx + 1),
+  ];
+  return { ...notebook, cells };
+}

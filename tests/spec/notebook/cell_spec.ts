@@ -1,6 +1,6 @@
 /**
  * BDD specs for cell helpers: assignCellId, joinSource, insertCell,
- * deleteCell, moveCell, splitCell, joinCell, updateCellSource.
+ * deleteCell, moveCell, splitCell, joinCell, updateCellSource, changeCellType.
  *
  * @spec-id europa.notebook.cell.assign-id
  * @spec-id europa.notebook.cell.join-source
@@ -10,11 +10,13 @@
  * @spec-id europa.notebook.cell.split
  * @spec-id europa.notebook.cell.join
  * @spec-id europa.notebook.cell.update-source
+ * @spec-id europa.notebook.cell.change-type
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
 import {
   assignCellId,
+  changeCellType,
   deleteCell,
   insertCell,
   isValidCellId,
@@ -920,5 +922,186 @@ describe("updateCellSource", () => {
     ]);
     const result = updateCellSource(nb, CELL_MD, "");
     assertEquals(result.cells[0].source, "");
+  });
+});
+
+// --- changeCellType (europa.notebook.cell.change-type) ---
+
+describe("changeCellType", () => {
+  it("code → markdown drops outputs and execution_count fields physically", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: 5,
+        outputs: [{ output_type: "stream", name: "stdout", text: "hi" }],
+        metadata: { tags: ["keep"] },
+      },
+    ]);
+    const result = changeCellType(nb, CELL_CODE, "markdown");
+    assertEquals(result.cells.length, 1);
+    assertEquals(result.cells[0].cell_type, "markdown");
+    assertEquals("outputs" in result.cells[0], false);
+    assertEquals("execution_count" in result.cells[0], false);
+    assertEquals(result.cells[0].source, "x = 1");
+    assertEquals(result.cells[0].metadata, { tags: ["keep"] });
+  });
+
+  it("code → raw drops outputs and execution_count fields physically", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "print(1)",
+        execution_count: 3,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, CELL_CODE, "raw");
+    assertEquals(result.cells[0].cell_type, "raw");
+    assertEquals("outputs" in result.cells[0], false);
+    assertEquals("execution_count" in result.cells[0], false);
+  });
+
+  it("markdown → code initialises outputs=[] and execution_count=null", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "# heading",
+        metadata: { collapsed: true },
+      },
+    ]);
+    const result = changeCellType(nb, CELL_MD, "code");
+    assertEquals(result.cells[0].cell_type, "code");
+    assertEquals(result.cells[0].source, "# heading");
+    assertEquals(result.cells[0].metadata, { collapsed: true });
+    if (result.cells[0].cell_type === "code") {
+      assertEquals(result.cells[0].outputs, []);
+      assertEquals(result.cells[0].execution_count, null);
+    }
+  });
+
+  it("raw → code initialises outputs=[] and execution_count=null", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "raw",
+        id: CELL_RAW,
+        source: "raw content",
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, CELL_RAW, "code");
+    assertEquals(result.cells[0].cell_type, "code");
+    if (result.cells[0].cell_type === "code") {
+      assertEquals(result.cells[0].outputs, []);
+      assertEquals(result.cells[0].execution_count, null);
+    }
+  });
+
+  it("same type (code → code) returns the same notebook reference (no-op)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, CELL_CODE, "code");
+    assertEquals(Object.is(nb, result), true);
+  });
+
+  it("same type (markdown → markdown) returns the same notebook reference (no-op)", () => {
+    const nb = makeMinimalNotebook([
+      { cell_type: "markdown", id: CELL_MD, source: "# md", metadata: {} },
+    ]);
+    const result = changeCellType(nb, CELL_MD, "markdown");
+    assertEquals(Object.is(nb, result), true);
+  });
+
+  it("cellId not found returns the same notebook reference (no-op)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, "nonexistent-id", "markdown");
+    assertEquals(Object.is(nb, result), true);
+  });
+
+  it("is immutable — input notebook reference is unchanged on a real type change", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "# md", metadata: {} },
+    ]);
+    const originalCells = nb.cells;
+    const result = changeCellType(nb, CELL_CODE, "markdown");
+    assertEquals(Object.is(nb, result), false);
+    assertEquals(Object.is(nb.cells, result.cells), false);
+    assertEquals(Object.is(nb.cells, originalCells), true);
+    assertEquals(nb.cells[0].cell_type, "code");
+  });
+
+  it("preserves untouched cells via structural sharing", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "code",
+        id: CELL_CODE,
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      },
+      { cell_type: "markdown", id: CELL_MD, source: "# md", metadata: {} },
+    ]);
+    const result = changeCellType(nb, CELL_CODE, "raw");
+    assertEquals(Object.is(result.cells[1], nb.cells[1]), true);
+  });
+
+  it("markdown → code drops attachments (raw/code cells do not carry the field)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "![attachment:logo.png]",
+        attachments: { "logo.png": { "image/png": "iVBORw0KGgo=" } },
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, CELL_MD, "code");
+    assertEquals(result.cells[0].cell_type, "code");
+    assertEquals("attachments" in result.cells[0], false);
+  });
+
+  it("markdown → raw drops attachments", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "![attachment:logo.png]",
+        attachments: { "logo.png": { "image/png": "iVBORw0KGgo=" } },
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, CELL_MD, "raw");
+    assertEquals(result.cells[0].cell_type, "raw");
+    assertEquals("attachments" in result.cells[0], false);
   });
 });

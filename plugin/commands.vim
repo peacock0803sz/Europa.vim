@@ -29,3 +29,6 @@ command! -nargs=0 EuropaSplitCell
 
 command! -nargs=0 EuropaJoinCell
       \ call europa#join_cell()
+
+command! -nargs=1 EuropaCellType
+      \ call europa#change_cell_type(<f-args>)
