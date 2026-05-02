@@ -394,6 +394,40 @@ describe("splitCell dispatcher", () => {
     assertEquals(scratchLines.length, 1);
     assertEquals(scratchLines[0], "# Cell 1: code with stream output");
   });
+
+  it("skips the upper-cell scratch rewrite without throwing when the registered bufnr was wiped", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === FIRST_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    // Stale session map: wipe the scratch but leave the session entry to
+    // simulate the BufWipeout-cleanup race window.
+    await host.call("bwipeout!", scratchBufnr);
+    host.calls = [];
+    let threw = false;
+    try {
+      await dispatcher.splitCell(VIEWER_BUFNR, FIRST_CELL_ID, 3);
+    } catch {
+      threw = true;
+    }
+    assertEquals(
+      threw,
+      false,
+      "splitCell must not throw on a stale scratch bufnr",
+    );
+    const setbufline = host.callsTo("setbufline").find((c) =>
+      c.args[1] === scratchBufnr
+    );
+    assertEquals(
+      setbufline,
+      undefined,
+      "setbufline must not target a wiped scratch buffer",
+    );
+  });
 });
 
 // --- joinCell dispatcher (europa.dispatcher.join-cell) ---
@@ -516,6 +550,40 @@ describe("joinCell dispatcher", () => {
       joinedHasMarkdownLine,
       true,
       "previous cell's scratch must contain the absorbed markdown source",
+    );
+  });
+
+  it("skips the surviving-cell scratch rewrite without throwing when the registered bufnr was wiped", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === FIRST_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    // Same race-window simulation as splitCell: surviving scratch is gone
+    // but the session map still carries its bufnr.
+    await host.call("bwipeout!", scratchBufnr);
+    host.calls = [];
+    let threw = false;
+    try {
+      await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    } catch {
+      threw = true;
+    }
+    assertEquals(
+      threw,
+      false,
+      "joinCell must not throw on a stale surviving scratch bufnr",
+    );
+    const setbufline = host.callsTo("setbufline").find((c) =>
+      c.args[1] === scratchBufnr
+    );
+    assertEquals(
+      setbufline,
+      undefined,
+      "setbufline must not target a wiped scratch buffer",
     );
   });
 });

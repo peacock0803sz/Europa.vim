@@ -707,16 +707,21 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, "splitCell: applyRenderPlan failed");
       }
 
-      // If the upper cell has an open scratch buffer, rewrite it with
-      // the trimmed upper-half source.
+      // Rewrite the upper cell's scratch with the trimmed source. The
+      // bufexists guard matches deleteCell — BufWipeout cleanup is async
+      // (denops#notify), so the session map can briefly hold a stale
+      // bufnr that would otherwise throw on deletebufline / setbufline.
       const scratchBufnr = sessionStore.getScratchBufnr(viewerBufnr, cid);
       if (scratchBufnr !== undefined) {
-        const upperCell = newNotebook.cells.find((c) => c.id === cid);
-        if (upperCell) {
-          const upperLines = upperCell.source.split("\n");
-          await denops.call("deletebufline", scratchBufnr, 1, "$");
-          await denops.call("setbufline", scratchBufnr, 1, upperLines);
-          await denops.call("setbufvar", scratchBufnr, "&modified", 0);
+        const exists = await denops.call("bufexists", scratchBufnr);
+        if (exists) {
+          const upperCell = newNotebook.cells.find((c) => c.id === cid);
+          if (upperCell) {
+            const upperLines = upperCell.source.split("\n");
+            await denops.call("deletebufline", scratchBufnr, 1, "$");
+            await denops.call("setbufline", scratchBufnr, 1, upperLines);
+            await denops.call("setbufvar", scratchBufnr, "&modified", 0);
+          }
         }
       }
 
@@ -807,30 +812,36 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
         sessionStore.removeCellEditBuffer(bn, cid);
       }
-      // If the previous (surviving) cell has an open scratch buffer,
-      // rewrite it with the joined source so the editing context stays
-      // consistent with the now-larger cell.
+      // Rewrite the surviving (previous) cell's scratch with the joined
+      // source. The bufexists guard mirrors splitCell to avoid throws on
+      // a session map that briefly outlives the underlying scratch buffer.
       const survivingScratchBufnr = sessionStore.getScratchBufnr(
         bn,
         prevCellId,
       );
       if (survivingScratchBufnr !== undefined) {
-        const merged = newNotebook.cells.find((c) => c.id === prevCellId);
-        if (merged) {
-          const mergedLines = merged.source.split("\n");
-          await denops.call("deletebufline", survivingScratchBufnr, 1, "$");
-          await denops.call(
-            "setbufline",
-            survivingScratchBufnr,
-            1,
-            mergedLines,
-          );
-          await denops.call(
-            "setbufvar",
-            survivingScratchBufnr,
-            "&modified",
-            0,
-          );
+        const survivingExists = await denops.call(
+          "bufexists",
+          survivingScratchBufnr,
+        );
+        if (survivingExists) {
+          const merged = newNotebook.cells.find((c) => c.id === prevCellId);
+          if (merged) {
+            const mergedLines = merged.source.split("\n");
+            await denops.call("deletebufline", survivingScratchBufnr, 1, "$");
+            await denops.call(
+              "setbufline",
+              survivingScratchBufnr,
+              1,
+              mergedLines,
+            );
+            await denops.call(
+              "setbufvar",
+              survivingScratchBufnr,
+              "&modified",
+              0,
+            );
+          }
         }
       }
 
