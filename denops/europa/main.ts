@@ -1010,15 +1010,18 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       // Update scratch buffer filetype to match the new cell type (FR-023).
       const scratchBufnr = sessionStore.getScratchBufnr(bn, cid);
       if (scratchBufnr !== undefined) {
-        const newCell = newNotebook.cells.find((c) => c.id === cid);
-        if (newCell) {
-          const newFiletype = resolveScratchFiletype(newNotebook, newCell);
-          await denops.call(
-            "setbufvar",
-            scratchBufnr,
-            "&filetype",
-            newFiletype,
-          );
+        const scratchExists = await denops.call("bufexists", scratchBufnr);
+        if (scratchExists) {
+          const newCell = newNotebook.cells.find((c) => c.id === cid);
+          if (newCell) {
+            const newFiletype = resolveScratchFiletype(newNotebook, newCell);
+            await denops.call(
+              "setbufvar",
+              scratchBufnr,
+              "&filetype",
+              newFiletype,
+            );
+          }
         }
       }
     },
