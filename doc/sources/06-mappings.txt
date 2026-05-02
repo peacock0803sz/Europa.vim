@@ -29,9 +29,9 @@ The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
     <Plug>(europa-split-cell)       Split the cell at cursor at the current line
     <Plug>(europa-join-cell)        Join the cell at cursor with the one above
 
-Note: `:EuropaInsertCell`, `:EuropaCellType`, and `:EuropaInsertCell` with an
-explicit position argument are not exposed as `<Plug>` mappings because they
-require arguments and are best invoked from the command line.
+Note: `:EuropaCellType {type}` and `:EuropaInsertCell! {type}` (insert before)
+are not exposed as `<Plug>` mappings because they require arguments and are
+best invoked from the command line.
 
 RECOMMENDED BINDINGS~
 					     *europa-recommended-mappings*
