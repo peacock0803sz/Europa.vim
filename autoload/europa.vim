@@ -53,6 +53,60 @@ function! europa#delete_cell() abort
         \ { -> denops#notify('europa', 'deleteCell', [l:bufnr, l:cell_id]) })
 endfunction
 
+" Move the cell at the cursor up or down (swap with the adjacent cell).
+" direction is 'up' or 'down'. Boundary cases (first cell + 'up' / last cell
+" + 'down') surface guidance via :messages from the dispatcher.
+function! europa#move_cell(direction) abort
+  let l:cell_id = europa#current_cell_id()
+  if type(l:cell_id) == v:t_string && l:cell_id ==# ''
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  if l:cell_id is v:null
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'moveCell',
+        \                    [l:bufnr, l:cell_id, a:direction]) })
+endfunction
+
+" Split the cell at the cursor at the current line.
+" Unlike other helpers, this passes bufnr('%') as-is so the dispatcher can
+" detect viewer vs scratch context and resolve the line accordingly
+" (see Phase 3.1 splitCell contract, Codex review H2-r2).
+function! europa#split_cell() abort
+  let l:cell_id = europa#current_cell_id()
+  if type(l:cell_id) == v:t_string && l:cell_id ==# ''
+    echohl WarningMsg | echom 'Europa: No cell at cursor for split' | echohl None
+    return
+  endif
+  if l:cell_id is v:null
+    echohl WarningMsg | echom 'Europa: No cell at cursor for split' | echohl None
+    return
+  endif
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'splitCell',
+        \                    [bufnr('%'), l:cell_id, line('.')]) })
+endfunction
+
+" Join the cell at the cursor with the previous cell.
+function! europa#join_cell() abort
+  let l:cell_id = europa#current_cell_id()
+  if type(l:cell_id) == v:t_string && l:cell_id ==# ''
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  if l:cell_id is v:null
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'joinCell', [l:bufnr, l:cell_id]) })
+endfunction
+
 " Open (or refocus) a scratch buffer to edit the cell at the cursor.
 function! europa#edit_cell() abort
   let l:cell_id = europa#current_cell_id()

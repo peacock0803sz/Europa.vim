@@ -35,12 +35,20 @@ import { buildRenderPlan, mergeStreams } from "./render/builder.ts";
 import {
   applyRenderPlan,
   closeCellEditAutocmds,
+  freezeCellEditBuffer,
   lineToCellId,
   openCellEditBuffer,
   resolveScratchFiletype,
   restoreCursor,
 } from "./view/viewer.ts";
-import { deleteCell, insertCell, updateCellSource } from "./notebook/cell.ts";
+import {
+  deleteCell,
+  insertCell,
+  joinCell,
+  moveCell,
+  splitCell,
+  updateCellSource,
+} from "./notebook/cell.ts";
 import { SessionStore } from "./session/state.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
@@ -97,6 +105,40 @@ async function echomError(denops: Denops, reason: string): Promise<void> {
  */
 export function buildDispatcher(denops: Denops): EuropaDispatcher {
   const sessionStore = new SessionStore();
+
+  /**
+   * Refuse a structural mutation when the cell's scratch edit buffer has
+   * unsaved changes.
+   *
+   * Both splitCell and joinCell rebuild source from `session.notebook`,
+   * so a dirty scratch's typed-but-not-saved content would otherwise be
+   * silently overwritten when we rewrite the scratch with the new
+   * upper-half / merged source. Refusing here matches Vim convention
+   * (`:bdelete` etc. refuse on dirty buffers) and lets the user choose
+   * `:write` (commit edits) or `:bdelete` (discard them) explicitly.
+   *
+   * @returns `true` when refused (caller should return immediately —
+   *   guidance has already been emitted); `false` when safe to proceed.
+   */
+  async function refuseIfScratchDirty(
+    viewerBufnr: number,
+    cellId: string,
+  ): Promise<boolean> {
+    const sbn = sessionStore.getScratchBufnr(viewerBufnr, cellId);
+    if (sbn === undefined) return false;
+    const exists = await denops.call("bufexists", sbn);
+    if (!exists) return false;
+    const modified = await denops.call("getbufvar", sbn, "&modified");
+    if (modified !== 1 && modified !== "1") return false;
+    await denops.cmd(
+      `echohl WarningMsg | echom ${
+        vimSingleQuote(
+          `Europa: cell ${cellId} has unsaved scratch edits — :write or :bdelete __europa_cell_${cellId}__ first`,
+        )
+      } | echohl None`,
+    );
+    return true;
+  }
 
   return {
     // Phase 2: init — wires highlights, config, capabilities, autocmds
@@ -449,7 +491,10 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `deleteCell: cell '${cid}' not found`);
         return;
       }
-      // Clean up any open scratch buffer for the deleted cell
+      // Clean up any open scratch buffer for the deleted cell. The
+      // augroup must be cleared here, not in closeCellEdit: once we
+      // remove the session entry, a later BufWipeout cannot reverse-
+      // look up the cellId and would leave the autocmd group leaking.
       const scratchBufnr = sessionStore.getScratchBufnr(bn, cid);
       if (scratchBufnr !== undefined) {
         const exists = await denops.call("bufexists", scratchBufnr);
@@ -465,6 +510,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           await denops.call("setbufvar", scratchBufnr, "&modified", 0);
           await denops.call("setbufvar", scratchBufnr, "&buftype", "nofile");
         }
+        await closeCellEditAutocmds(denops, scratchBufnr);
         sessionStore.removeCellEditBuffer(bn, cid);
       }
       const config = await loadConfig(denops);
@@ -491,22 +537,377 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         plan.cellRanges,
       );
     },
-    moveCell(
-      _bufnr: unknown,
-      _cellId: unknown,
-      _direction: unknown,
+    /**
+     * Swap a cell with its neighbour above (`up`) or below (`down`).
+     *
+     * Validates arguments, delegates to the pure `moveCell` helper, and uses
+     * `Object.is` to detect boundary no-ops — the helper returns the same
+     * notebook reference when moving the first cell up, the last cell down,
+     * or when the cellId is unknown. In those cases the dispatcher surfaces
+     * a user-facing guidance message via `:messages` and skips both the
+     * SessionStore commit and the re-render so unrelated buffers aren't
+     * needlessly marked dirty.
+     *
+     * On a real move, the cellId binding survives across the swap, so the
+     * cursor restore prefers the original cell's new `startLine`. Any open
+     * scratch edit buffer is keyed by cellId and therefore needs no
+     * touch-up here (R5).
+     *
+     * @spec-id europa.dispatcher.move-cell
+     */
+    async moveCell(
+      bufnr: unknown,
+      cellId: unknown,
+      direction: unknown,
     ): Promise<void> {
-      return Promise.reject(new UnimplementedError("moveCell"));
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `moveCell: no session for buffer ${bn}`);
+        return;
+      }
+      const cid = String(cellId);
+      const validDirections = ["up", "down"] as const;
+      const dirStr = String(direction);
+      if (!validDirections.includes(dirStr as typeof validDirections[number])) {
+        await echomError(denops, `moveCell: invalid direction '${dirStr}'`);
+        return;
+      }
+      const dir = dirStr as "up" | "down";
+      const idx = session.notebook.cells.findIndex((c) => c.id === cid);
+      if (idx === -1) {
+        await echomError(denops, `moveCell: cell '${cid}' not found`);
+        return;
+      }
+      const newNotebook = moveCell(session.notebook, cid, dir);
+      if (Object.is(newNotebook, session.notebook)) {
+        const guidance = dir === "up" ? "Already at top" : "Already at bottom";
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote(`Europa: ${guidance}`)
+          } | echohl None`,
+        );
+        return;
+      }
+      const prePlan = sessionStore.getRenderPlan(bn);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const winid = await denops.call("bufwinid", bn) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(bn, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(bn, plan);
+      try {
+        await applyRenderPlan(denops, bn, plan);
+        await denops.call("setbufvar", bn, "&modified", 1);
+      } catch {
+        await echomError(denops, "moveCell: applyRenderPlan failed");
+      }
+      await restoreCursor(
+        denops,
+        winid,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+        { preferCellId: cid },
+      );
     },
-    splitCell(
-      _bufnr: unknown,
-      _cellId: unknown,
-      _line: unknown,
+    /**
+     * Split the cell at the given line into two consecutive cells.
+     *
+     * `bufnr` may be either the viewer or one of its scratch edit buffers.
+     * `findViewerByScratchBufnr` decides which path: scratch callers pass
+     * `line` as a direct 1-origin source row (line - 1 = splitLine), while
+     * viewer callers go through cellRange geometry — the cursor snaps to
+     * splitLine 0 if it lands on the boundary header, and to
+     * `sourceLineCount` if it lands on an output line past the source. The
+     * branching lives here (not in autoload) so `:EuropaSplitCell` works
+     * uniformly from both contexts (Codex review H2-r2).
+     *
+     * After commit, the upper cell keeps the original cellId and outputs;
+     * if a scratch edit buffer is open for that cellId, its contents are
+     * trimmed to the upper-half source so the user's editing context
+     * stays consistent with the notebook.
+     *
+     * @spec-id europa.dispatcher.split-cell
+     */
+    async splitCell(
+      bufnr: unknown,
+      cellId: unknown,
+      line: unknown,
     ): Promise<void> {
-      return Promise.reject(new UnimplementedError("splitCell"));
+      const bn = Number(bufnr);
+      const cid = String(cellId);
+      const ln = Number(line);
+      if (!Number.isInteger(ln) || ln < 1) {
+        await echomError(denops, `splitCell: invalid line '${line}'`);
+        return;
+      }
+
+      // Dispatch viewer vs scratch here so the autoload helper can pass
+      // bufnr('%') raw (Codex H2-r2 contract decision).
+      const reverseLookup = sessionStore.findViewerByScratchBufnr(bn);
+      let viewerBufnr: number;
+      let splitLine: number;
+      if (reverseLookup) {
+        viewerBufnr = reverseLookup.viewerBufnr;
+        if (reverseLookup.cellId !== cid) {
+          await echomError(
+            denops,
+            `splitCell: scratch buffer ${bn} does not own cell '${cid}'`,
+          );
+          return;
+        }
+        splitLine = ln - 1;
+      } else {
+        viewerBufnr = bn;
+        const session = sessionStore.get(viewerBufnr);
+        if (!session) {
+          await echomError(denops, `splitCell: no session for buffer ${bn}`);
+          return;
+        }
+        const cell = session.notebook.cells.find((c) => c.id === cid);
+        if (!cell) {
+          await echomError(denops, `splitCell: cell '${cid}' not found`);
+          return;
+        }
+        const plan = sessionStore.getRenderPlan(viewerBufnr);
+        const range = plan?.cellRanges.find((r) => r.cellId === cid);
+        if (!range) {
+          await echomError(
+            denops,
+            `splitCell: no render plan range for cell '${cid}'`,
+          );
+          return;
+        }
+        const userLine0 = ln - 1;
+        const sourceStart = range.startLine + 1;
+        const sourceLineCount = cell.source.split("\n").length;
+        const sourceEnd = sourceStart + sourceLineCount - 1;
+        if (userLine0 < sourceStart) {
+          splitLine = 0;
+        } else if (userLine0 > sourceEnd) {
+          splitLine = sourceLineCount;
+        } else {
+          splitLine = userLine0 - sourceStart;
+        }
+      }
+
+      const session = sessionStore.get(viewerBufnr);
+      if (!session) {
+        await echomError(
+          denops,
+          `splitCell: no session for viewer buffer ${viewerBufnr}`,
+        );
+        return;
+      }
+      if (await refuseIfScratchDirty(viewerBufnr, cid)) return;
+      const prePlan = sessionStore.getRenderPlan(viewerBufnr);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const winid = await denops.call("bufwinid", viewerBufnr) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+
+      let newNotebook: typeof session.notebook;
+      try {
+        newNotebook = splitCell(session.notebook, cid, splitLine);
+      } catch (e) {
+        await echomError(
+          denops,
+          `splitCell: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        return;
+      }
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(viewerBufnr, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(viewerBufnr, plan);
+      try {
+        await applyRenderPlan(denops, viewerBufnr, plan);
+        await denops.call("setbufvar", viewerBufnr, "&modified", 1);
+      } catch {
+        await echomError(denops, "splitCell: applyRenderPlan failed");
+      }
+
+      // Rewrite the upper cell's scratch with the trimmed source. The
+      // bufexists guard matches deleteCell — BufWipeout cleanup is async
+      // (denops#notify), so the session map can briefly hold a stale
+      // bufnr that would otherwise throw on deletebufline / setbufline.
+      const scratchBufnr = sessionStore.getScratchBufnr(viewerBufnr, cid);
+      if (scratchBufnr !== undefined) {
+        const exists = await denops.call("bufexists", scratchBufnr);
+        if (exists) {
+          const upperCell = newNotebook.cells.find((c) => c.id === cid);
+          if (upperCell) {
+            const upperLines = upperCell.source.split("\n");
+            await denops.call("deletebufline", scratchBufnr, 1, "$");
+            await denops.call("setbufline", scratchBufnr, 1, upperLines);
+            await denops.call("setbufvar", scratchBufnr, "&modified", 0);
+          }
+        }
+      }
+
+      await restoreCursor(
+        denops,
+        winid,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+        { preferCellId: cid },
+      );
     },
-    joinCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("joinCell"));
+    /**
+     * Merge the target cell into the cell immediately above it.
+     *
+     * The previous cell's identity (`id` / `cell_type` / outputs /
+     * `execution_count` / `metadata`) wins; the target cell is removed.
+     *
+     * Boundary handling differs by cause and is reflected in the
+     * `:messages` color so users can distinguish input mistakes from
+     * intentional no-ops:
+     * - First cell (target idx 0): `WarningMsg` "No cell above to join"
+     *   — a soft no-op the user can recover from by moving the cursor.
+     * - Unknown cellId: `ErrorMsg` "joinCell: cell '<id>' not found" —
+     *   a hard error indicating a bug in the caller (autoload / mapping)
+     *   or a stale RPC argument.
+     * In both cases the SessionStore is left untouched.
+     *
+     * Two scratch buffers may need touch-ups: the absorbed (target)
+     * scratch is frozen and its session entry removed, while the
+     * surviving (previous) scratch — if open — gets its contents
+     * rewritten to the joined source so the user keeps editing the
+     * combined cell without confusion.
+     *
+     * @spec-id europa.dispatcher.join-cell
+     */
+    async joinCell(bufnr: unknown, cellId: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `joinCell: no session for buffer ${bn}`);
+        return;
+      }
+      const cid = String(cellId);
+      const idx = session.notebook.cells.findIndex((c) => c.id === cid);
+      if (idx === -1) {
+        await echomError(denops, `joinCell: cell '${cid}' not found`);
+        return;
+      }
+      if (idx === 0) {
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote("Europa: No cell above to join")
+          } | echohl None`,
+        );
+        return;
+      }
+      const prevCellId = session.notebook.cells[idx - 1].id;
+      // Both halves of the join read source from session.notebook, so
+      // unsaved scratch edits on either side would be silently dropped
+      // when we rewrite the surviving scratch / freeze the absorbed one.
+      if (await refuseIfScratchDirty(bn, cid)) return;
+      if (await refuseIfScratchDirty(bn, prevCellId)) return;
+      const prePlan = sessionStore.getRenderPlan(bn);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const winid = await denops.call("bufwinid", bn) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const newNotebook = joinCell(session.notebook, cid);
+      if (Object.is(newNotebook, session.notebook)) {
+        // Already caught by the first-cell guard above; defensive no-op.
+        return;
+      }
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(bn, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(bn, plan);
+      try {
+        await applyRenderPlan(denops, bn, plan);
+        await denops.call("setbufvar", bn, "&modified", 1);
+      } catch {
+        await echomError(denops, "joinCell: applyRenderPlan failed");
+      }
+
+      // Freeze the target cell's scratch buffer and drop it from the
+      // session map so future :EuropaEditCell on this cellId starts fresh.
+      // Augroup is cleared synchronously here for the same reason as
+      // deleteCell — once the session entry is gone, closeCellEdit can
+      // no longer locate the cellId on a later BufWipeout.
+      const targetScratchBufnr = sessionStore.getScratchBufnr(bn, cid);
+      if (targetScratchBufnr !== undefined) {
+        const exists = await denops.call("bufexists", targetScratchBufnr);
+        if (exists) {
+          await freezeCellEditBuffer(denops, targetScratchBufnr, cid);
+        }
+        await closeCellEditAutocmds(denops, targetScratchBufnr);
+        sessionStore.removeCellEditBuffer(bn, cid);
+      }
+      // Rewrite the surviving (previous) cell's scratch with the joined
+      // source. The bufexists guard mirrors splitCell to avoid throws on
+      // a session map that briefly outlives the underlying scratch buffer.
+      const survivingScratchBufnr = sessionStore.getScratchBufnr(
+        bn,
+        prevCellId,
+      );
+      if (survivingScratchBufnr !== undefined) {
+        const survivingExists = await denops.call(
+          "bufexists",
+          survivingScratchBufnr,
+        );
+        if (survivingExists) {
+          const merged = newNotebook.cells.find((c) => c.id === prevCellId);
+          if (merged) {
+            const mergedLines = merged.source.split("\n");
+            await denops.call("deletebufline", survivingScratchBufnr, 1, "$");
+            await denops.call(
+              "setbufline",
+              survivingScratchBufnr,
+              1,
+              mergedLines,
+            );
+            await denops.call(
+              "setbufvar",
+              survivingScratchBufnr,
+              "&modified",
+              0,
+            );
+          }
+        }
+      }
+
+      await restoreCursor(
+        denops,
+        winid,
+        preCellId,
+        preCellRanges,
+        plan.cellRanges,
+        { preferCellId: prevCellId },
+      );
     },
     /**
      * Open (or focus) a scratch buffer to edit a single cell's source.
