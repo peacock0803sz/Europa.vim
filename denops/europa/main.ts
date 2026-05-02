@@ -457,7 +457,10 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `deleteCell: cell '${cid}' not found`);
         return;
       }
-      // Clean up any open scratch buffer for the deleted cell
+      // Clean up any open scratch buffer for the deleted cell. The
+      // augroup must be cleared here, not in closeCellEdit: once we
+      // remove the session entry, a later BufWipeout cannot reverse-
+      // look up the cellId and would leave the autocmd group leaking.
       const scratchBufnr = sessionStore.getScratchBufnr(bn, cid);
       if (scratchBufnr !== undefined) {
         const exists = await denops.call("bufexists", scratchBufnr);
@@ -473,6 +476,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           await denops.call("setbufvar", scratchBufnr, "&modified", 0);
           await denops.call("setbufvar", scratchBufnr, "&buftype", "nofile");
         }
+        await closeCellEditAutocmds(denops, scratchBufnr);
         sessionStore.removeCellEditBuffer(bn, cid);
       }
       const config = await loadConfig(denops);
@@ -804,12 +808,16 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
 
       // Freeze the target cell's scratch buffer and drop it from the
       // session map so future :EuropaEditCell on this cellId starts fresh.
+      // Augroup is cleared synchronously here for the same reason as
+      // deleteCell — once the session entry is gone, closeCellEdit can
+      // no longer locate the cellId on a later BufWipeout.
       const targetScratchBufnr = sessionStore.getScratchBufnr(bn, cid);
       if (targetScratchBufnr !== undefined) {
         const exists = await denops.call("bufexists", targetScratchBufnr);
         if (exists) {
           await freezeCellEditBuffer(denops, targetScratchBufnr, cid);
         }
+        await closeCellEditAutocmds(denops, targetScratchBufnr);
         sessionStore.removeCellEditBuffer(bn, cid);
       }
       // Rewrite the surviving (previous) cell's scratch with the joined

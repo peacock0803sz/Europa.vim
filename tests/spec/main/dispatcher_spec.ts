@@ -156,6 +156,31 @@ describe("deleteCell dispatcher", () => {
       "renderPlan must be cached after delete so lineToCellId resolves",
     );
   });
+
+  it("clears the frozen scratch's europa_cell_edit augroup", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    const targetCellId = "018f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3b";
+    await dispatcher.editCell(VIEWER_BUFNR, targetCellId);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === targetCellId
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    host.calls = [];
+    await dispatcher.deleteCell(VIEWER_BUFNR, targetCellId);
+    // Without this fix, only closeCellEdit clears the augroup, but
+    // deleteCell removes the session entry first so closeCellEdit can
+    // no longer locate the cellId — the group would leak forever.
+    const augroupClear = host.cmdsMatching(
+      `europa_cell_edit_${scratchBufnr}`,
+    );
+    assertEquals(
+      augroupClear.length > 0,
+      true,
+      "deleteCell must clear the augroup synchronously",
+    );
+  });
 });
 
 // --- moveCell dispatcher (europa.dispatcher.move-cell) ---
@@ -529,6 +554,30 @@ describe("joinCell dispatcher", () => {
       c.args[1] === scratchBufnr
     );
     assertEquals(append !== undefined, true);
+  });
+
+  it("clears the absorbed scratch's europa_cell_edit augroup", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === SECOND_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    // Same reasoning as deleteCell: closeCellEdit cannot reach this
+    // augroup once the session entry is removed, so joinCell must
+    // clear it synchronously.
+    const augroupClear = host.cmdsMatching(
+      `europa_cell_edit_${scratchBufnr}`,
+    );
+    assertEquals(
+      augroupClear.length > 0,
+      true,
+      "joinCell must clear the absorbed scratch's augroup synchronously",
+    );
   });
 
   it("rewrites the surviving (previous) cell's scratch buffer with the joined source", async () => {
