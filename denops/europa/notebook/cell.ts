@@ -356,6 +356,13 @@ export function updateCellSource(
  * - markdown / raw → code: initialise `outputs = []` and `execution_count = null`.
  * - same-type: return the original notebook (same reference).
  *
+ * **Attachments**: when converting away from `markdown`, the `attachments`
+ * field is physically dropped. Raw and code cells do not carry this field in
+ * the nbformat schema, so embedded images/files stored in a markdown cell are
+ * irreversibly removed on type conversion. This is intentional — call sites
+ * that need to warn users about data loss should inspect `"attachments" in
+ * cell` before invoking this function.
+ *
  * Callers can detect the no-op case via `Object.is(input, result)`.
  *
  * @param notebook - Source notebook (not mutated).

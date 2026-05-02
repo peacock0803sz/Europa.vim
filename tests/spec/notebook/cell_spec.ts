@@ -1074,4 +1074,34 @@ describe("changeCellType", () => {
     const result = changeCellType(nb, CELL_CODE, "raw");
     assertEquals(Object.is(result.cells[1], nb.cells[1]), true);
   });
+
+  it("markdown → code drops attachments (raw/code cells do not carry the field)", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "![attachment:logo.png]",
+        attachments: { "logo.png": { "image/png": "iVBORw0KGgo=" } },
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, CELL_MD, "code");
+    assertEquals(result.cells[0].cell_type, "code");
+    assertEquals("attachments" in result.cells[0], false);
+  });
+
+  it("markdown → raw drops attachments", () => {
+    const nb = makeMinimalNotebook([
+      {
+        cell_type: "markdown",
+        id: CELL_MD,
+        source: "![attachment:logo.png]",
+        attachments: { "logo.png": { "image/png": "iVBORw0KGgo=" } },
+        metadata: {},
+      },
+    ]);
+    const result = changeCellType(nb, CELL_MD, "raw");
+    assertEquals(result.cells[0].cell_type, "raw");
+    assertEquals("attachments" in result.cells[0], false);
+  });
 });
