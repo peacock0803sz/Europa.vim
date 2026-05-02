@@ -2230,17 +2230,26 @@ let g:europa_use_subprocess       = v:true    " spawn local jupyter server
 
 ### 9.3 Key Mappings (`<Plug>(europa-*)`)
 
+The following `<Plug>` names are stable public contracts defined in `plugin/mappings.vim`.
+Europa does **not** install any default key mappings — users bind them in their own ftplugin.
+
 ```vim
-nnoremap <Plug>(europa-run-cell)       :<C-u>EuropaRunCell<CR>
-nnoremap <Plug>(europa-edit-cell)      :<C-u>EuropaEditCell<CR>
-nnoremap <Plug>(europa-insert-code)    :<C-u>EuropaInsertCell code<CR>
-nnoremap <Plug>(europa-insert-markdown):<C-u>EuropaInsertCell markdown<CR>
-nnoremap <Plug>(europa-cell-down)      :<C-u>EuropaMoveCellDown<CR>
-nnoremap <Plug>(europa-cell-up)        :<C-u>EuropaMoveCellUp<CR>
-nnoremap <Plug>(europa-delete-cell)    :<C-u>EuropaDeleteCell<CR>
+" Phase 3.1 (available now)
+nnoremap <silent> <Plug>(europa-insert-code)     :<C-u>EuropaInsertCell code<CR>
+nnoremap <silent> <Plug>(europa-insert-markdown) :<C-u>EuropaInsertCell markdown<CR>
+nnoremap <silent> <Plug>(europa-insert-raw)      :<C-u>EuropaInsertCell raw<CR>
+nnoremap <silent> <Plug>(europa-delete-cell)     :<C-u>EuropaDeleteCell<CR>
+nnoremap <silent> <Plug>(europa-cell-up)         :<C-u>EuropaMoveCellUp<CR>
+nnoremap <silent> <Plug>(europa-cell-down)       :<C-u>EuropaMoveCellDown<CR>
+nnoremap <silent> <Plug>(europa-edit-cell)       :<C-u>EuropaEditCell<CR>
+nnoremap <silent> <Plug>(europa-split-cell)      :<C-u>EuropaSplitCell<CR>
+nnoremap <silent> <Plug>(europa-join-cell)       :<C-u>EuropaJoinCell<CR>
+
+" Phase 3 (run-cell, not yet implemented)
+nnoremap <silent> <Plug>(europa-run-cell)        :<C-u>EuropaRunCell<CR>
 ```
 
-Users bind freely, e.g., `nmap <buffer> <CR> <Plug>(europa-run-cell)`. Europa does not provide default keymaps (opt-in via `g:europa_use_default_mappings`).
+Users bind freely, e.g., `nmap <buffer><silent> <localleader>ec <Plug>(europa-edit-cell)`.
 
 ## 10. Roadmap
 

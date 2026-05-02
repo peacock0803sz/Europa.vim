@@ -8,12 +8,18 @@
  * @spec-id europa.session.events.bufunload-cleanup
  * @spec-id europa.session.events.bufwipeout-cleanup
  * @spec-id europa.dispatcher.cleanup-idempotent
+ * @spec-id europa.dispatcher.cleanup-with-scratch
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertGreater, assertNotEquals } from "@std/assert";
 import { setupAutocmds } from "../../../denops/europa/session/events.ts";
 import { buildDispatcher } from "../../../denops/europa/main.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
+
+const FIXTURE_PATH = new URL(
+  "../../golden/ipynb/edit-target.ipynb",
+  import.meta.url,
+).pathname;
 
 describe("setupAutocmds", () => {
   it("registers BufReadCmd for *.ipynb", async () => {
@@ -145,6 +151,44 @@ describe("cleanup dispatcher — idempotency", () => {
       additionalCalls,
       0,
       "Second cleanup on already-removed bufnr must not issue any Vim calls",
+    );
+  });
+});
+
+// --- cleanup with scratch buffers (europa.dispatcher.cleanup-with-scratch) ---
+
+describe("cleanup dispatcher — scratch buffer wipeout", () => {
+  let host: ReturnType<typeof mockVim>;
+
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it("cleanup issues bwipeout! for each open scratch buffer", async () => {
+    const dispatcher = buildDispatcher(host);
+    const VIEWER_BUFNR = 5;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    const plan = await dispatcher.lineToCellId(VIEWER_BUFNR, 1);
+    assertNotEquals(
+      plan,
+      null,
+      "lineToCellId must return a cell id for line 1",
+    );
+    await dispatcher.editCell(VIEWER_BUFNR, plan!);
+    const bwipeoutsBefore = host.cmdsMatching("bwipeout!").length;
+    await dispatcher.cleanup(VIEWER_BUFNR);
+    assertGreater(
+      host.cmdsMatching("bwipeout!").length,
+      bwipeoutsBefore,
+      "cleanup must issue bwipeout! for each open scratch buffer",
+    );
+    // Idempotency: second cleanup issues no additional bwipeout! calls
+    const bwipeoutsAfterFirst = host.cmdsMatching("bwipeout!").length;
+    await dispatcher.cleanup(VIEWER_BUFNR);
+    assertEquals(
+      host.cmdsMatching("bwipeout!").length,
+      bwipeoutsAfterFirst,
+      "Second cleanup must not issue additional bwipeout! calls",
     );
   });
 });
