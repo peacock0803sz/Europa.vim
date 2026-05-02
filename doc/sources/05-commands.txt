@@ -27,9 +27,101 @@ COMMANDS						*europa-commands*
 	Calling this command on a non-image output prints a message and does
 	nothing.
 
-PHASE 3+ COMMANDS (NOT YET AVAILABLE)~
-					*europa-commands-future*
-The following commands are planned for Phase 3 and later.
+CELL EDITING COMMANDS~
+						*europa-commands-editing*
+
+							*:EuropaInsertCell*
+:EuropaInsertCell {type} [{position}]
+	Insert a new empty cell of {type} (`code`, `markdown`, or `raw`)
+	relative to the cell at cursor. {position} is `before` or `after`
+	(default `after`).
+
+	:EuropaInsertCell! {type}
+		Equivalent to `:EuropaInsertCell {type} before`.
+
+	Example: >
+	  :EuropaInsertCell code
+	  :EuropaInsertCell markdown after
+	  :EuropaInsertCell! raw
+<
+	See also: |:EuropaDeleteCell|, |:EuropaCellType|,
+	          |<Plug>(europa-insert-code)|
+
+							*:EuropaDeleteCell*
+:EuropaDeleteCell
+	Delete the cell at the cursor position. If this is the last cell,
+	the viewer shows an empty-notebook guidance message.
+
+	See also: |:EuropaInsertCell|, |<Plug>(europa-delete-cell)|
+
+						*:EuropaMoveCellUp*
+:EuropaMoveCellUp
+	Swap the cell at cursor with the cell immediately above it in the
+	notebook. No-op with a guidance message if already at the top.
+
+	See also: |:EuropaMoveCellDown|, |<Plug>(europa-cell-up)|
+
+						*:EuropaMoveCellDown*
+:EuropaMoveCellDown
+	Swap the cell at cursor with the cell immediately below it in the
+	notebook. No-op with a guidance message if already at the bottom.
+
+	See also: |:EuropaMoveCellUp|, |<Plug>(europa-cell-down)|
+
+							*:EuropaSplitCell*
+:EuropaSplitCell
+	Split the cell at cursor into two cells at the current line.
+
+	When called from a viewer buffer, the split point is resolved
+	relative to the cell's source lines. When called from a scratch
+	edit buffer (see |:EuropaEditCell|), the cursor line maps directly
+	to the source.
+
+	The upper cell retains the original cell ID, outputs, and
+	execution_count. The lower cell gets a new UUID and empty outputs.
+
+	See also: |:EuropaJoinCell|, |<Plug>(europa-split-cell)|
+
+							*:EuropaJoinCell*
+:EuropaJoinCell
+	Join the cell at cursor with the cell immediately above it. The
+	surviving cell retains the upper cell's ID, type, outputs, and
+	execution_count. Sources are concatenated with a newline separator.
+
+	No-op if cursor is on the first cell.
+
+	See also: |:EuropaSplitCell|, |<Plug>(europa-join-cell)|
+
+							*:EuropaEditCell*
+:EuropaEditCell
+	Open the source of the cell at cursor in a scratch buffer named
+	`__europa_cell_<id>__`. The scratch buffer has `buftype=acwrite`
+	so that `:write` commits the edited source back to the notebook
+	and re-renders the viewer.
+
+	A second call on the same cell reuses the existing scratch buffer
+	(`:buffer <scratchBufnr>`).
+
+	See also: |:EuropaSplitCell|, |<Plug>(europa-edit-cell)|
+
+							*:EuropaCellType*
+:EuropaCellType {type}
+	Change the type of the cell at cursor to {type} (`code`, `markdown`,
+	or `raw`).
+
+	  code → markdown/raw: `outputs` and `execution_count` fields are
+	                        removed from the cell.
+	  markdown/raw → code: `outputs` and `execution_count` are
+	                        initialized to `[]` and `null`.
+
+	If a scratch edit buffer is open for the cell, its `filetype` is
+	updated to match the new cell type.
+
+	See also: |:EuropaEditCell|
+
+PHASE 4+ COMMANDS (NOT YET AVAILABLE)~
+						*europa-commands-future*
+The following commands are planned for Phase 4 and later.
 
 	`:EuropaRun`		Execute the current cell against the kernel.
 	`:EuropaRunAll`		Execute all cells in order.

@@ -1,16 +1,52 @@
 ==============================================================================
 MAPPINGS						*europa-mappings*
 
-Europa.vim does not define any default key mappings in Phase 2.
+Europa.vim does NOT install any default key mappings. You must bind the
+`<Plug>(europa-*)` handles to keys of your choice.
 
-The viewer buffer is read-only (`modifiable=false`), so normal text-editing
-keys do nothing harmful. Navigation (`j`/`k`, `Ctrl-D`/`Ctrl-U`, etc.)
-works as in any other buffer.
+PLUG MAPPINGS~
+							*europa-plug-mappings*
 
-PLUG MAPPINGS (PHASE 3+)~
-						*europa-mappings-plug*
-`<Plug>(europa-*)` mapping handles will be introduced in Phase 3 alongside
-the editing and execution commands. Setting `g:europa_use_default_mappings`
-to `v:true` is a no-op in Phase 2 and is reserved for future use.
+					     *<Plug>(europa-insert-code)*
+					 *<Plug>(europa-insert-markdown)*
+					      *<Plug>(europa-insert-raw)*
+					      *<Plug>(europa-delete-cell)*
+					        *<Plug>(europa-cell-up)*
+					      *<Plug>(europa-cell-down)*
+					        *<Plug>(europa-edit-cell)*
+					       *<Plug>(europa-split-cell)*
+					        *<Plug>(europa-join-cell)*
+
+The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
+
+    <Plug>(europa-insert-code)      Insert a new code cell after cursor
+    <Plug>(europa-insert-markdown)  Insert a new markdown cell after cursor
+    <Plug>(europa-insert-raw)       Insert a new raw cell after cursor
+    <Plug>(europa-delete-cell)      Delete the cell at cursor
+    <Plug>(europa-cell-up)          Move the cell at cursor one position up
+    <Plug>(europa-cell-down)        Move the cell at cursor one position down
+    <Plug>(europa-edit-cell)        Open scratch buffer for the cell at cursor
+    <Plug>(europa-split-cell)       Split the cell at cursor at the current line
+    <Plug>(europa-join-cell)        Join the cell at cursor with the one above
+
+Note: `:EuropaInsertCell`, `:EuropaCellType`, and `:EuropaInsertCell` with an
+explicit position argument are not exposed as `<Plug>` mappings because they
+require arguments and are best invoked from the command line.
+
+RECOMMENDED BINDINGS~
+					     *europa-recommended-mappings*
+
+Place the following in `~/.vim/after/ftplugin/europa.vim` (or the Neovim
+equivalent) to bind the mappings for notebook buffers: >
+
+    nmap <buffer><silent> <localleader>ic <Plug>(europa-insert-code)
+    nmap <buffer><silent> <localleader>im <Plug>(europa-insert-markdown)
+    nmap <buffer><silent> <localleader>dc <Plug>(europa-delete-cell)
+    nmap <buffer><silent> <localleader>ec <Plug>(europa-edit-cell)
+    nmap <buffer><silent> <localleader>cu <Plug>(europa-cell-up)
+    nmap <buffer><silent> <localleader>cd <Plug>(europa-cell-down)
+    nmap <buffer><silent> <localleader>sc <Plug>(europa-split-cell)
+    nmap <buffer><silent> <localleader>jc <Plug>(europa-join-cell)
+<
 
 vim:tw=78:ts=8:noet:ft=help:norl:
