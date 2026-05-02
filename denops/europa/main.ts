@@ -615,8 +615,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
-      // bufnr が scratch なら viewer を逆引きし、line を source-relative に変換。
-      // viewer なら cellRanges 経由で source 行に正規化する (R10)。
+      // Dispatch viewer vs scratch here so the autoload helper can pass
+      // bufnr('%') raw (Codex H2-r2 contract decision).
       const reverseLookup = sessionStore.findViewerByScratchBufnr(bn);
       let viewerBufnr: number;
       let splitLine: number;
@@ -707,7 +707,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, "splitCell: applyRenderPlan failed");
       }
 
-      // 上 cell の scratch buffer が開いていれば短縮された source を書き戻す。
+      // If the upper cell has an open scratch buffer, rewrite it with
+      // the trimmed upper-half source.
       const scratchBufnr = sessionStore.getScratchBufnr(viewerBufnr, cid);
       if (scratchBufnr !== undefined) {
         const upperCell = newNotebook.cells.find((c) => c.id === cid);
@@ -776,7 +777,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
       const newNotebook = joinCell(session.notebook, cid);
       if (Object.is(newNotebook, session.notebook)) {
-        // 既に上の guard で検知済だが防御として no-op。
+        // Already caught by the first-cell guard above; defensive no-op.
         return;
       }
       const config = await loadConfig(denops);
@@ -796,7 +797,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, "joinCell: applyRenderPlan failed");
       }
 
-      // target cell の scratch を frozen 化し、session map から削除。
+      // Freeze the target cell's scratch buffer and drop it from the
+      // session map so future :EuropaEditCell on this cellId starts fresh.
       const targetScratchBufnr = sessionStore.getScratchBufnr(bn, cid);
       if (targetScratchBufnr !== undefined) {
         const exists = await denops.call("bufexists", targetScratchBufnr);
@@ -805,7 +807,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
         sessionStore.removeCellEditBuffer(bn, cid);
       }
-      // 前 cell の scratch が開いていれば結合後 source を書き戻す。
+      // If the previous (surviving) cell has an open scratch buffer,
+      // rewrite it with the joined source so the editing context stays
+      // consistent with the now-larger cell.
       const survivingScratchBufnr = sessionStore.getScratchBufnr(
         bn,
         prevCellId,
