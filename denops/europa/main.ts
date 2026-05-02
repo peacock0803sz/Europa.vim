@@ -106,6 +106,40 @@ async function echomError(denops: Denops, reason: string): Promise<void> {
 export function buildDispatcher(denops: Denops): EuropaDispatcher {
   const sessionStore = new SessionStore();
 
+  /**
+   * Refuse a structural mutation when the cell's scratch edit buffer has
+   * unsaved changes.
+   *
+   * Both splitCell and joinCell rebuild source from `session.notebook`,
+   * so a dirty scratch's typed-but-not-saved content would otherwise be
+   * silently overwritten when we rewrite the scratch with the new
+   * upper-half / merged source. Refusing here matches Vim convention
+   * (`:bdelete` etc. refuse on dirty buffers) and lets the user choose
+   * `:write` (commit edits) or `:bdelete` (discard them) explicitly.
+   *
+   * @returns `true` when refused (caller should return immediately —
+   *   guidance has already been emitted); `false` when safe to proceed.
+   */
+  async function refuseIfScratchDirty(
+    viewerBufnr: number,
+    cellId: string,
+  ): Promise<boolean> {
+    const sbn = sessionStore.getScratchBufnr(viewerBufnr, cellId);
+    if (sbn === undefined) return false;
+    const exists = await denops.call("bufexists", sbn);
+    if (!exists) return false;
+    const modified = await denops.call("getbufvar", sbn, "&modified");
+    if (modified !== 1 && modified !== "1") return false;
+    await denops.cmd(
+      `echohl WarningMsg | echom ${
+        vimSingleQuote(
+          `Europa: cell ${cellId} has unsaved scratch edits — :write or :bdelete __europa_cell_${cellId}__ first`,
+        )
+      } | echohl None`,
+    );
+    return true;
+  }
+
   return {
     // Phase 2: init — wires highlights, config, capabilities, autocmds
     async init(): Promise<void> {
@@ -676,6 +710,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
         return;
       }
+      if (await refuseIfScratchDirty(viewerBufnr, cid)) return;
       const prePlan = sessionStore.getRenderPlan(viewerBufnr);
       const preCellRanges = prePlan?.cellRanges ?? [];
       const winid = await denops.call("bufwinid", viewerBufnr) as number;
@@ -777,6 +812,11 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
       const prevCellId = session.notebook.cells[idx - 1].id;
+      // Both halves of the join read source from session.notebook, so
+      // unsaved scratch edits on either side would be silently dropped
+      // when we rewrite the surviving scratch / freeze the absorbed one.
+      if (await refuseIfScratchDirty(bn, cid)) return;
+      if (await refuseIfScratchDirty(bn, prevCellId)) return;
       const prePlan = sessionStore.getRenderPlan(bn);
       const preCellRanges = prePlan?.cellRanges ?? [];
       const winid = await denops.call("bufwinid", bn) as number;

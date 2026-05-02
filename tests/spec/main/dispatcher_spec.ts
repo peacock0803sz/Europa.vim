@@ -420,6 +420,35 @@ describe("splitCell dispatcher", () => {
     assertEquals(scratchLines[0], "# Cell 1: code with stream output");
   });
 
+  it("refuses to split when the cell's scratch buffer has unsaved edits", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === FIRST_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    // Mark the scratch as dirty (= user typed but did not :write).
+    await host.call("setbufvar", scratchBufnr, "&modified", 1);
+    host.calls = [];
+    await dispatcher.splitCell(VIEWER_BUFNR, FIRST_CELL_ID, 3);
+    // Expect a guidance message (refusal), no &modified=1 on viewer (= no
+    // structural mutation), and no setbufline against the scratch (= we
+    // did not silently overwrite the user's typed content).
+    const refusal = host.cmdsMatching("unsaved scratch edits");
+    assertEquals(refusal.length > 0, true, "refusal guidance must appear");
+    const dirty = host.callsTo("setbufvar").find((c) =>
+      c.args[1] === VIEWER_BUFNR && c.args[2] === "&modified" &&
+      c.args[3] === 1
+    );
+    assertEquals(dirty, undefined, "viewer must not be re-rendered");
+    const setbufline = host.callsTo("setbufline").find((c) =>
+      c.args[1] === scratchBufnr
+    );
+    assertEquals(setbufline, undefined, "scratch must not be overwritten");
+  });
+
   it("skips the upper-cell scratch rewrite without throwing when the registered bufnr was wiped", async () => {
     const dispatcher = buildDispatcher(host);
     host.currentBufnr = VIEWER_BUFNR;
@@ -554,6 +583,57 @@ describe("joinCell dispatcher", () => {
       c.args[1] === scratchBufnr
     );
     assertEquals(append !== undefined, true);
+  });
+
+  it("refuses to join when the target cell's scratch has unsaved edits", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === SECOND_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    await host.call("setbufvar", scratchBufnr, "&modified", 1);
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const refusal = host.cmdsMatching("unsaved scratch edits");
+    assertEquals(refusal.length > 0, true);
+    const append = host.callsTo("appendbufline").find((c) =>
+      c.args[1] === scratchBufnr
+    );
+    assertEquals(
+      append,
+      undefined,
+      "scratch must not be frozen when join is refused",
+    );
+  });
+
+  it("refuses to join when the previous cell's scratch has unsaved edits", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    // Open scratch on the FIRST (= prev) cell, leave it dirty, then try
+    // joining the SECOND cell upward. The dispatcher must refuse so
+    // the user's typed content in the first cell's scratch survives.
+    await dispatcher.editCell(VIEWER_BUFNR, FIRST_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === FIRST_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    await host.call("setbufvar", scratchBufnr, "&modified", 1);
+    host.calls = [];
+    await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
+    const refusal = host.cmdsMatching("unsaved scratch edits");
+    assertEquals(refusal.length > 0, true);
+    const setbufline = host.callsTo("setbufline").find((c) =>
+      c.args[1] === scratchBufnr
+    );
+    assertEquals(
+      setbufline,
+      undefined,
+      "previous cell's scratch must not be overwritten",
+    );
   });
 
   it("clears the absorbed scratch's europa_cell_edit augroup", async () => {
