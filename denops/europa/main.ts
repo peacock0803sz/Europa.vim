@@ -42,6 +42,7 @@ import {
   restoreCursor,
 } from "./view/viewer.ts";
 import {
+  changeCellType,
   deleteCell,
   insertCell,
   joinCell,
@@ -950,12 +951,76 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       });
       sessionStore.setCellEditBuffer(bn, cid, scratchBufnr);
     },
-    changeCellType(
-      _bufnr: unknown,
-      _cellId: unknown,
-      _newType: unknown,
+    /**
+     * Change a cell's type and update the viewer and any open scratch buffer.
+     *
+     * Field transitions (per contract):
+     * - code → markdown / raw: drops `outputs` / `execution_count`.
+     * - markdown / raw → code: initialises `outputs = []` / `execution_count = null`.
+     * - same-type: no-op (returns early without mutating state).
+     *
+     * When a scratch buffer is open for the cell, its `&filetype` is updated to
+     * match the new type so the user's editor mode stays in sync (FR-023).
+     *
+     * @spec-id europa.dispatcher.change-cell-type
+     */
+    async changeCellType(
+      bufnr: unknown,
+      cellId: unknown,
+      newType: unknown,
     ): Promise<void> {
-      return Promise.reject(new UnimplementedError("changeCellType"));
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `changeCellType: no session for buffer ${bn}`);
+        return;
+      }
+      const validTypes = ["code", "markdown", "raw"] as const;
+      const typeStr = String(newType);
+      if (!validTypes.includes(typeStr as typeof validTypes[number])) {
+        await echomError(
+          denops,
+          `changeCellType: invalid type '${typeStr}'; must be code, markdown, or raw`,
+        );
+        return;
+      }
+      const nt = typeStr as "code" | "markdown" | "raw";
+      const cid = String(cellId);
+      const newNotebook = changeCellType(session.notebook, cid, nt);
+      if (Object.is(newNotebook, session.notebook)) {
+        // same-type no-op; nothing to do
+        return;
+      }
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(newNotebook, caps, {
+        maxOutputLines: config.max_output_lines,
+      });
+      sessionStore.update(bn, {
+        notebook: newNotebook,
+        cellMap: plan.cellMap,
+      });
+      sessionStore.setRenderPlan(bn, plan);
+      try {
+        await applyRenderPlan(denops, bn, plan);
+        await denops.call("setbufvar", bn, "&modified", 1);
+      } catch {
+        await echomError(denops, "changeCellType: applyRenderPlan failed");
+      }
+      // Update scratch buffer filetype to match the new cell type (FR-023).
+      const scratchBufnr = sessionStore.getScratchBufnr(bn, cid);
+      if (scratchBufnr !== undefined) {
+        const newCell = newNotebook.cells.find((c) => c.id === cid);
+        if (newCell) {
+          const newFiletype = resolveScratchFiletype(newNotebook, newCell);
+          await denops.call(
+            "setbufvar",
+            scratchBufnr,
+            "&filetype",
+            newFiletype,
+          );
+        }
+      }
     },
     /**
      * Commit a scratch buffer's contents back into the in-memory notebook.
