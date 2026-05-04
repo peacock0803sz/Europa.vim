@@ -5,23 +5,31 @@
  * - `cellEditBuffers` map: cellId → scratchBufnr per viewer buffer
  * - `renderPlan` cache: stores the most recent RenderPlan per viewer buffer
  *
- * `byKernel` always returns an empty array because kernel connections
- * are a Phase 3 concern.
+ * Phase 3.2 adds:
+ * - `SessionRuntime` type: Session augmented with `kernelRuntime?: KernelRuntime`
+ * - `byKernel(kernelId)`: find all sessions sharing a kernel (many-to-many ready)
+ * - `update` now accepts `kernelRuntime` via the `SessionRuntime` augment patch
  *
  * @category Session
  */
 
 import type { ScratchLookup, Session } from "../../../schema/session.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
+import type { SessionRuntime } from "../../../contracts/session-runtime.ts";
+export type { SessionRuntime };
 
 /**
  * In-memory registry mapping buffer numbers to open notebook sessions.
  * @spec-id europa.session.state.store
  * @spec-id europa.session.state.cell-edit-buffers
  * @spec-id europa.session.state.render-plan-cache
+ * @spec-id europa.session.state.kernel-runtime-set
+ * @spec-id europa.session.state.kernel-runtime-update
+ * @spec-id europa.session.state.kernel-runtime-remove
+ * @spec-id europa.session.state.by-kernel-many
  */
 export class SessionStore {
-  private readonly store = new Map<number, Session>();
+  private readonly store = new Map<number, SessionRuntime>();
 
   /** viewerBufnr → (cellId → scratchBufnr) */
   private readonly cellEditBuffers = new Map<
@@ -32,15 +40,18 @@ export class SessionStore {
   /** viewerBufnr → most recent RenderPlan */
   private readonly renderPlans = new Map<number, RenderPlan>();
 
-  get(bufnr: number): Session | undefined {
+  get(bufnr: number): SessionRuntime | undefined {
     return this.store.get(bufnr);
   }
 
   add(session: Session): void {
-    this.store.set(session.bufnr, session);
+    this.store.set(session.bufnr, { ...session });
   }
 
-  update(bufnr: number, patch: Partial<Omit<Session, "bufnr">>): void {
+  update(
+    bufnr: number,
+    patch: Partial<Omit<SessionRuntime, "bufnr">>,
+  ): void {
     const existing = this.store.get(bufnr);
     if (existing) {
       this.store.set(bufnr, { ...existing, ...patch });
@@ -53,12 +64,23 @@ export class SessionStore {
     this.renderPlans.delete(bufnr);
   }
 
-  /** Always returns empty in Phase 2 — kernel connections are Phase 3. */
-  byKernel(_kernelId: string): Session[] {
-    return [];
+  /**
+   * Return all sessions whose kernelRuntime.info.kernelId matches.
+   *
+   * Phase 3.2 has 1 buffer = 1 kernel, so this returns 0 or 1 elements.
+   * The many-to-many signature prepares for Phase 3.3 multi-buffer sharing.
+   */
+  byKernel(kernelId: string): SessionRuntime[] {
+    const results: SessionRuntime[] = [];
+    for (const session of this.store.values()) {
+      if (session.kernelRuntime?.info.kernelId === kernelId) {
+        results.push(session);
+      }
+    }
+    return results;
   }
 
-  all(): Session[] {
+  all(): SessionRuntime[] {
     return [...this.store.values()];
   }
 
@@ -97,9 +119,6 @@ export class SessionStore {
   /**
    * Find the viewer buffer and cell id corresponding to a scratch bufnr.
    *
-   * Used by `saveCellEdit` / `closeCellEdit` to reverse-look up from the
-   * scratch buffer's bufnr to the viewer session it belongs to.
-   *
    * @param scratchBufnr - The scratch buffer number.
    * @returns `{ viewerBufnr, cellId }` or `undefined` if not found.
    */
@@ -134,10 +153,6 @@ export class SessionStore {
 
   /**
    * Cache the most recent RenderPlan for a viewer buffer.
-   *
-   * Called after each successful `applyRenderPlan` so that internal RPCs
-   * (e.g. `lineToCellId`) can access the latest `cellRanges` without
-   * rebuilding the plan.
    *
    * @param viewerBufnr - The viewer buffer.
    * @param plan - The RenderPlan to cache.

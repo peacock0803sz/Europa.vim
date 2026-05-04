@@ -52,6 +52,19 @@ export const EuropaConfigSchema = Type.Object({
   // Behavior (Phase 2 active)
   auto_save: Type.Boolean({ default: false }),
   use_subprocess: Type.Boolean({ default: true }),
+
+  // Phase 3.2: WebSocket reconnect options (Q3)
+  wsReconnectMaxRetries: Type.Integer({ default: 5, minimum: 0, maximum: 20 }),
+  wsReconnectInitialIntervalMs: Type.Integer({
+    default: 1000,
+    minimum: 100,
+    maximum: 30000,
+  }),
+  wsReconnectMultiplier: Type.Number({
+    default: 2.0,
+    minimum: 1.0,
+    maximum: 4.0,
+  }),
 });
 
 export type EuropaConfig = Static<typeof EuropaConfigSchema>;

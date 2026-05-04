@@ -29,6 +29,9 @@ const AREA_ALLOWLIST = new Set([
   "commands",
   "lint",
   "main",
+  // Phase 3.2 additions
+  "kernel",
+  "conformance",
 ]);
 
 type Occurrence = { id: string; file: string; line: number };
