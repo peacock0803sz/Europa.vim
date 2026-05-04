@@ -570,6 +570,13 @@ export class MockChildProcess {
 
     const enc = new TextEncoder();
 
+    // Resolve `status` only after stdout finishes streaming so callers awaiting
+    // process exit do not race with `lineDelayMs`-throttled output.
+    let stdoutDone!: () => void;
+    const stdoutFinished = new Promise<void>((r) => {
+      stdoutDone = r;
+    });
+
     this.stdout = new ReadableStream<Uint8Array>({
       async start(controller) {
         for (const line of lines) {
@@ -579,6 +586,7 @@ export class MockChildProcess {
           controller.enqueue(enc.encode(line + "\n"));
         }
         controller.close();
+        stdoutDone();
       },
     });
 
@@ -591,7 +599,10 @@ export class MockChildProcess {
       },
     });
 
-    this.status = Promise.resolve({ code: exitCode, success: exitCode === 0 });
+    this.status = stdoutFinished.then(() => ({
+      code: exitCode,
+      success: exitCode === 0,
+    }));
   }
 
   kill(signal?: string): void {
