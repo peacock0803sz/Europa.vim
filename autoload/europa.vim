@@ -147,11 +147,11 @@ endfunction
 
 " Start (or reconnect to) the kernel for the current buffer.
 " name: kernel name to start; falls back to g:europa_default_kernel when empty.
-function! europa#start_kernel(name) abort
+function! europa#start_kernel(name, ...) abort
   let l:name = empty(a:name)
         \ ? get(g:, 'europa_default_kernel', 'python3')
         \ : a:name
-  let l:bufnr = bufnr('%')
+  let l:bufnr = get(a:000, 0, bufnr('%'))
   call denops#plugin#wait_async('europa',
         \ { -> denops#notify('europa', 'startKernel', [l:bufnr, l:name]) })
 endfunction
