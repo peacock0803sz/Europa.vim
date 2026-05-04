@@ -393,6 +393,28 @@ KERNEL COMMANDS~
 	See also: |g:europa_default_kernel|, |g:europa_jupyter_url|,
 	|g:europa_use_subprocess|
 
+							*:EuropaShutdownKernel*
+:EuropaShutdownKernel
+	Shut down the kernel attached to the current buffer and release its
+	server-side session.
+
+	The command is asynchronous: it returns immediately and kernel teardown
+	proceeds in the background.  Progress and errors are reported via
+	|:messages|.
+
+	Cleanup is automatic on three other paths:
+	  - `:bwipeout` of the notebook buffer fires the `BufWipeout` autocmd,
+	    which shuts down the attached kernel as part of buffer cleanup.
+	  - Quitting Vim (`:qa!`, normal exit) fires `VimLeavePre`, which shuts
+	    down every active kernel via the `atexit` dispatcher.
+	  - If Vim is killed with SIGKILL, the watchdog subprocess detects the
+	    parent's death and kills the Jupyter server process within 15 s.
+
+	When `g:europa_use_subprocess = v:false` (external server mode), the
+	session DELETE is sent but the Jupyter server process is not killed.
+
+	See also: |:EuropaStartKernel|, |g:europa_use_subprocess|
+
 PHASE 4+ COMMANDS (NOT YET AVAILABLE)~
 						*europa-commands-future*
 The following commands are planned for Phase 4 and later.
