@@ -228,9 +228,15 @@ CONNECTION OPTIONS~
 	chain are active (DESIGN.md §6.5).
 	Type: string  Default: `'auto'`
 
-	`'auto'`	Full chain: explicit override → cwd `.venv` / `venv`
-			→ `$VIRTUAL_ENV` → `$CONDA_PREFIX` → `which jupyter`.
-	`'disabled'`	Skip steps 2-5; use only explicit override or PATH.
+	`'auto'`	Full detection chain (6 steps):
+			  1. |g:europa_jupyter_executable| (explicit override)
+			  2. `{cwd}/.venv/bin/jupyter`  (Windows: `Scripts\jupyter.exe`)
+			  3. `{cwd}/venv/bin/jupyter`   (Windows: `Scripts\jupyter.exe`)
+			  4. `$VIRTUAL_ENV/bin/jupyter`
+			  5. `$CONDA_PREFIX/bin/jupyter`
+			  6. `which jupyter` on PATH    (Windows: `where jupyter`)
+	`'disabled'`	Skip steps 2-5; use only step 1 (explicit override)
+			or step 6 (PATH / `where`).
 
 *g:europa_ws_reconnect_max_retries*
 	Maximum number of WebSocket reconnect attempts before giving up.
