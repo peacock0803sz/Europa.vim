@@ -13,11 +13,15 @@
  * @spec-id europa.dispatcher.cleanup-with-kernel
  * @spec-id europa.dispatcher.atexit
  */
-import { beforeEach, describe, it } from "@std/testing/bdd";
+import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertGreater, assertNotEquals } from "@std/assert";
 import { setupAutocmds } from "../../../denops/europa/session/events.ts";
 import { buildDispatcher } from "../../../denops/europa/main.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
+import {
+  makeMockKernel,
+  type MockKernelHandle,
+} from "../../fixtures/mock-kernel.ts";
 
 const FIXTURE_PATH = new URL(
   "../../golden/ipynb/edit-target.ipynb",
@@ -228,16 +232,53 @@ describe("setupAutocmds — VimLeavePre registration (Phase 3.2)", () => {
 
 // --- Phase 3.2 cleanup with kernelRuntime (europa.dispatcher.cleanup-with-kernel) ---
 
-describe("cleanup dispatcher — kernelRuntime shutdown (Phase 3.2)", () => {
-  it("cleanup is still idempotent when kernelRuntime is absent", async () => {
-    const host = mockVim();
-    const dispatcher = buildDispatcher(host);
-    const VIEWER_BUFNR = 8;
-    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
-    await dispatcher.cleanup(VIEWER_BUFNR);
-    await dispatcher.cleanup(VIEWER_BUFNR); // second call: no-op
-  });
-});
+describe(
+  "cleanup dispatcher — kernelRuntime shutdown (Phase 3.2)",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    let mk: MockKernelHandle | null = null;
+
+    afterEach(async () => {
+      await mk?.close();
+      mk = null;
+    });
+
+    it("(a) cleanup is still idempotent when kernelRuntime is absent", async () => {
+      const host = mockVim();
+      const dispatcher = buildDispatcher(host);
+      const VIEWER_BUFNR = 8;
+      await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+      await dispatcher.cleanup(VIEWER_BUFNR);
+      await dispatcher.cleanup(VIEWER_BUFNR); // second call: no-op
+    });
+
+    it("(b) cleanup issues DELETE when an active kernel is attached", async () => {
+      mk = makeMockKernel();
+      const host = mockVim();
+      host.setEval(`get(g:, 'europa_use_subprocess', v:true)`, false);
+      host.setEval(
+        `get(g:, 'europa_jupyter_url', "http://localhost:8888")`,
+        mk.url,
+      );
+      host.setEval(`get(g:, 'europa_jupyter_token', "")`, mk.token);
+      host.setEval(
+        `get(g:, 'europa_jupyter_ws_subprotocol', "default")`,
+        "default",
+      );
+      const dispatcher = buildDispatcher(host);
+      const VIEWER_BUFNR = 9;
+      await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+      await dispatcher.startKernel(VIEWER_BUFNR, "python3");
+      assertEquals(mk.deletedSessions.length, 0, "no DELETE before cleanup");
+      await dispatcher.cleanup(VIEWER_BUFNR);
+      assertNotEquals(
+        mk.deletedSessions.length,
+        0,
+        "cleanup must issue DELETE /api/sessions when kernelRuntime is active",
+      );
+    });
+  },
+);
 
 // --- Phase 3.2 atexit dispatcher (europa.dispatcher.atexit) ---
 
