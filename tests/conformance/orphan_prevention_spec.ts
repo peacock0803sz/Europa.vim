@@ -9,8 +9,8 @@
  * SIGKILLs a fake-parent process and observes that the jupyter pid disappears.
  *
  * Note: SIGKILL is POSIX-only. On Windows this test is skipped automatically
- * because Deno.kill with SIGKILL is not available. The CI matrix marks Windows
- * jobs as informational for this reason (CONTRIBUTING.md §10).
+ * because Deno.kill with SIGKILL is not available. The CI matrix
+ * (e2e.yml) marks Windows jobs as informational; failure does not block merge.
  *
  * @spec-id europa.conformance.orphan-prevention.parent-sigkill
  */
