@@ -3,8 +3,9 @@
  *
  * Token resolution order (DESIGN.md §6.4):
  *   1. g:europa_jupyter_token (Vim var via denops)
- *   2. $JUPYTER_TOKEN environment variable
- *   3. Random 32-char hex (local spawn only)
+ *   2. config.jupyter_token (EuropaConfig field)
+ *   3. $JUPYTER_TOKEN environment variable
+ *   4. Random 32-char hex (local spawn only)
  * Attach mode (use_subprocess=false) throws TOKEN_MISSING when no token is configured.
  *
  * @module europa-kernel-auth
