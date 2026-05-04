@@ -165,6 +165,8 @@ export type MockKernelHandle = {
   url: string;
   /** Random token for Authorization header / subprotocol. */
   token: string;
+  /** Session IDs for which DELETE /api/sessions/<sid> was received. */
+  deletedSessions: string[];
   /** Stop the server and clean up. */
   close(): Promise<void>;
 };
@@ -196,6 +198,7 @@ export function makeMockKernel(
 
   const kernelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
+  const deletedSessions: string[] = [];
 
   const kernelInfoReply: Record<string, unknown> = opts.kernelInfoReply ?? {
     status: "ok",
@@ -232,6 +235,8 @@ export function makeMockKernel(
 
     // DELETE /api/sessions/:sid
     if (req.method === "DELETE" && path.startsWith("/api/sessions/")) {
+      const sid = path.slice("/api/sessions/".length);
+      deletedSessions.push(sid);
       return new Response(null, { status: 204 });
     }
 
@@ -361,6 +366,7 @@ export function makeMockKernel(
   return {
     url: serverUrl,
     token,
+    deletedSessions,
     async close(): Promise<void> {
       await serverController?.shutdown();
     },

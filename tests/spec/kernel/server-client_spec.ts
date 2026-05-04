@@ -318,6 +318,88 @@ describe("ServerKernelClient.shutdown", () => {
       await mk.close();
     }
   });
+
+  it("issues DELETE /api/sessions on shutdown (SC-004)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+      assertEquals(mk.deletedSessions.length, 0, "no DELETE before shutdown");
+      await client.shutdown();
+      await delay(50);
+      assertEquals(mk.deletedSessions.length, 1, "DELETE issued on shutdown");
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("calls serverPool.release on shutdown (refcount SC-013)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      let releaseCalls = 0;
+      const originalRelease = pool.release.bind(pool);
+      pool.release = (key: string) => {
+        releaseCalls++;
+        return originalRelease(key);
+      };
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+      assertEquals(releaseCalls, 0);
+      await client.shutdown();
+      assertEquals(releaseCalls, 1, "pool.release called exactly once");
+      await client.shutdown(); // idempotent — no second release
+      assertEquals(
+        releaseCalls,
+        1,
+        "second shutdown must not call release again",
+      );
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("external attach does not kill server on shutdown (SC-014)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+        use_subprocess: false,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+      await client.shutdown();
+      // Mock kernel is still reachable after shutdown (external server stays up)
+      const resp = await fetch(`${mk.url}/api/kernelspecs`, {
+        headers: { Authorization: `token ${mk.token}` },
+      });
+      await resp.body?.cancel();
+      assertEquals(
+        resp.ok,
+        true,
+        "external server still alive after client shutdown",
+      );
+    } finally {
+      await mk.close();
+    }
+  });
 });
 
 describe("ServerKernelClient.start — abort race (SC-010a)", () => {
