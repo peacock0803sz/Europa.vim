@@ -48,26 +48,24 @@ describe("encodeV1 — kernel_info_request (no buffers)", () => {
     const msg = makeMsg("kernel_info_request");
     const buf = encodeV1(msg);
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    const offsetCount = view.getUint32(0, true); // LE
+    const offsetCount = Number(view.getBigUint64(0, true)); // LE
     assertEquals(offsetCount, 6);
   });
 
-  it("offset_count is encoded as uint32 little-endian", () => {
+  it("offset_count is encoded as uint64 little-endian", () => {
     const msg = makeMsg("kernel_info_request");
     const buf = encodeV1(msg);
     // Little-endian: byte 0 is least significant
     assertEquals(buf[0], 6);
-    assertEquals(buf[1], 0);
-    assertEquals(buf[2], 0);
-    assertEquals(buf[3], 0);
+    for (let i = 1; i < 8; i++) assertEquals(buf[i], 0, `byte ${i}`);
   });
 
   it("last offset equals total buffer length (sentinel)", () => {
     const msg = makeMsg("kernel_info_request");
     const buf = encodeV1(msg);
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    const offsetCount = view.getUint32(0, true);
-    const lastOffset = view.getUint32(offsetCount * 4, true);
+    const offsetCount = Number(view.getBigUint64(0, true));
+    const lastOffset = Number(view.getBigUint64(offsetCount * 8, true));
     assertEquals(lastOffset, buf.byteLength);
   });
 });
@@ -133,7 +131,7 @@ describe("encodeV1/decodeV1 — binary buffers", () => {
     const msg = makeMsg("stream", {}, [bin]);
     const buf = encodeV1(msg);
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    assertEquals(view.getUint32(0, true), 7); // 6 + 1 buffer
+    assertEquals(Number(view.getBigUint64(0, true)), 7); // 6 + 1 buffer
   });
 
   it("round-trips a single binary buffer byte-identical", () => {
@@ -163,7 +161,7 @@ describe("encodeV1/decodeV1 — binary buffers", () => {
       const msg = makeMsg("execute_result", {}, buffers);
       const buf = encodeV1(msg);
       const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-      assertEquals(view.getUint32(0, true), 6 + n, `n=${n}`);
+      assertEquals(Number(view.getBigUint64(0, true)), 6 + n, `n=${n}`);
     }
   });
 });
@@ -221,24 +219,22 @@ describe("encodeV1/decodeV1 — property test: 1000 messages × 5 types", () => 
 });
 
 describe("encodeV1 — endianness verification", () => {
-  it("offset_count field is uint32 little-endian (6 = 0x06 0x00 0x00 0x00)", () => {
+  it("offset_count field is uint64 little-endian (6 = 0x06 followed by 7 zero bytes)", () => {
     const msg = makeMsg("kernel_info_request");
     const buf = encodeV1(msg);
     assertEquals(buf[0], 0x06); // LSB
-    assertEquals(buf[1], 0x00);
-    assertEquals(buf[2], 0x00);
-    assertEquals(buf[3], 0x00); // MSB
+    for (let i = 1; i < 8; i++) assertEquals(buf[i], 0x00, `byte ${i}`); // upper 7 bytes
   });
 
-  it("offsets are uint32 little-endian (byte order verification)", () => {
+  it("offsets are uint64 little-endian (byte order verification)", () => {
     const msg = makeMsg("kernel_info_request");
     const buf = encodeV1(msg);
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    const offsetCount = view.getUint32(0, true);
+    const offsetCount = Number(view.getBigUint64(0, true));
     // Verify all offsets are monotonically non-decreasing (basic sanity)
     let prev = 0;
     for (let i = 0; i < offsetCount; i++) {
-      const off = view.getUint32((i + 1) * 4, true);
+      const off = Number(view.getBigUint64((i + 1) * 8, true));
       assertGreater(off, prev - 1, `offset[${i}]=${off} < prev=${prev}`);
       prev = off;
     }

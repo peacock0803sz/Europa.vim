@@ -1,9 +1,10 @@
 /**
  * Jupyter wire protocol v1 — binary offset-table codec.
  *
- * Frame layout (all integers uint32 little-endian):
- *   [0..3]      offset_count      number of offsets = 6 + buffers.length
- *   [4..]       offsets[N]        byte positions of each frame part
+ * Frame layout (all integers uint64 little-endian per jupyter_server
+ * `serialize_msg_to_ws_v1` in jupyter_server/services/kernels/connection/base.py):
+ *   [0..7]      offset_count      number of offsets = 6 + buffers.length
+ *   [8..]       offsets[N]        byte positions of each frame part
  *               order: channel, header, parent_header, metadata, content, buffer[0..], sentinel
  *   [offsets[0]..] channel        UTF-8 string ('shell' | 'iopub' | etc.)
  *   [offsets[1]..] header         UTF-8 JSON
@@ -12,8 +13,6 @@
  *   [offsets[4]..] content        UTF-8 JSON
  *   [offsets[5]..] buffer[0..N]   raw bytes
  *   offsets[offset_count-1]       sentinel = total frame length
- *
- * Only little-endian is supported (Jupyter wire protocol v1 spec).
  *
  * @module europa-kernel-wire-v1
  * @category Kernel
@@ -43,10 +42,8 @@ export function encodeV1(msg: KernelMessage, channel = "shell"): Uint8Array {
     ...msg.buffers,
   ];
 
-  // offset_count = number of parts + 1 sentinel
   const offsetCount = parts.length + 1;
-  // Header: offset_count field (4 bytes) + offsets array (offsetCount × 4 bytes)
-  const headerBytes = 4 + offsetCount * 4;
+  const headerBytes = 8 + offsetCount * 8;
 
   let totalSize = headerBytes;
   for (const p of parts) totalSize += p.byteLength;
@@ -54,16 +51,15 @@ export function encodeV1(msg: KernelMessage, channel = "shell"): Uint8Array {
   const out = new Uint8Array(totalSize);
   const view = new DataView(out.buffer);
 
-  view.setUint32(0, offsetCount, true); // offset_count (LE)
+  view.setBigUint64(0, BigInt(offsetCount), true);
 
   let cursor = headerBytes;
   for (let i = 0; i < parts.length; i++) {
-    view.setUint32(4 + i * 4, cursor, true); // offset[i] (LE)
+    view.setBigUint64(8 + i * 8, BigInt(cursor), true);
     out.set(parts[i], cursor);
     cursor += parts[i].byteLength;
   }
-  // Sentinel: last offset = total length
-  view.setUint32(4 + parts.length * 4, cursor, true);
+  view.setBigUint64(8 + parts.length * 8, BigInt(cursor), true);
 
   return out;
 }
@@ -80,24 +76,24 @@ export function encodeV1(msg: KernelMessage, channel = "shell"): Uint8Array {
  * @spec-id europa.kernel.wire-v1.binary-buffers
  */
 export function decodeV1(buf: Uint8Array): KernelMessage {
-  if (buf.byteLength < 8) {
+  if (buf.byteLength < 16) {
     throw new TypeError("v1 frame too short to contain offset header");
   }
 
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const offsetCount = view.getUint32(0, true);
+  const offsetCount = Number(view.getBigUint64(0, true));
 
-  if (buf.byteLength < 4 + offsetCount * 4) {
+  if (buf.byteLength < 8 + offsetCount * 8) {
     throw new TypeError(
       `v1 frame too short: need ${
-        4 + offsetCount * 4
+        8 + offsetCount * 8
       } bytes for ${offsetCount} offsets, got ${buf.byteLength}`,
     );
   }
 
   const offsets: number[] = [];
   for (let i = 0; i < offsetCount; i++) {
-    offsets.push(view.getUint32(4 + i * 4, true));
+    offsets.push(Number(view.getBigUint64(8 + i * 8, true)));
   }
 
   // Slice part i: from offsets[i] to offsets[i+1]
