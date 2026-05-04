@@ -97,22 +97,6 @@ VIM_PLUGINS_DIR=~/.local/share/nvim/lazy nvim -u mini.vimrc ./tests/fixtures/hel
 
 A GitHub issue should include the reproduction steps on `mini.vimrc`, the Vim or Neovim version from `:version`, the terminal emulator and its version, and the `:messages` output after the failure. Attach a `capture.vim` dump when the bug involves denops trace output.
 
-## 10. CI gates
-
-### Main gate (`check.yml`)
-
-`deno task check` is the primary CI gate. It runs on every PR push via `.github/workflows/check.yml`. All PRs must pass this gate before merging.
-
-### E2E gate (`e2e.yml`)
-
-`.github/workflows/e2e.yml` runs `deno task test:conformance` across an OS × Python matrix (ubuntu-latest / macos-latest / windows-latest × Python 3.12 / 3.13). It triggers on pull requests that touch `denops/europa/kernel/**` or other kernel-related paths (see the workflow's `paths` filter).
-
-**Branch protection rule**: `e2e (ubuntu-latest, 3.13)` is registered as a required status check for the `main` branch. All other 5 matrix jobs are informational and failure does not block merge.
-
-To configure: GitHub repository Settings → Branches → Add branch protection rule for `main` → Required status checks → `e2e (ubuntu-latest, 3.13)`.
-
-**Version refresh policy**: When Python 3.13 enters security-only mode (expected Q4 2026), move the required check from `e2e (ubuntu-latest, 3.13)` to `e2e (ubuntu-latest, 3.14)` and drop `e2e (ubuntu-latest, 3.12)` from the matrix. Track this in `tmp/` Phase 3.2 completion report.
-
-## 11. License and contact
+## 10. License and contact
 
 The project is distributed under the license described in `LICENCE` at the repository root. Open issues and pull requests on GitHub at `peacock0803sz/Europa.vim`. Security-sensitive reports go through the private security advisory mechanism on the same repository.
