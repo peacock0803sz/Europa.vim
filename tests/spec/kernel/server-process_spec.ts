@@ -221,7 +221,7 @@ describe("detectJupyterExecutable — priority 6: PATH via which/where", () => {
             python_env_detect: "disabled" as const,
           };
           const result = await detectJupyterExecutable(cleanDir, config);
-          assertStringIncludes(result, "jupyter");
+          assertStringIncludes(result, binDir);
         } finally {
           Deno.env.set("PATH", savedPath);
           if (savedVenv !== undefined) Deno.env.set("VIRTUAL_ENV", savedVenv);
