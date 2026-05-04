@@ -5,7 +5,7 @@
     "validate": "deno check schema/ contracts/ denops/europa/",
     "gen:vimdoc": "deno run --allow-read --allow-write --allow-run scripts/gen-vimdoc.ts",
     "test:fixtures": "deno run --allow-read --allow-env scripts/validate-fixtures.ts",
-    "test:spec": "deno test --allow-read --allow-write --allow-run --ignore=tests/spec/notebook/serialize_spec.ts 'tests/spec/**/*_spec.ts'",
+    "test:spec": "deno test --allow-read --allow-write --allow-run --allow-net --allow-env --ignore=tests/spec/notebook/serialize_spec.ts 'tests/spec/**/*_spec.ts'",
     "check": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && deno task test:fixtures && deno task test:spec && deno task test:golden && git diff --exit-code doc/europa.txt",
     "test:golden": "deno test --allow-read 'tests/spec/notebook/serialize_spec.ts'",
     "bench": "deno bench --allow-read tests/bench/",

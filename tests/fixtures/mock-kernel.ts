@@ -288,6 +288,10 @@ export function makeMockKernel(
       const isV1 = negotiated !== undefined &&
         V1_PROTOCOLS.some((_p) => negotiated.startsWith("v1"));
 
+      // Abort any in-flight delay when the socket closes (prevents timer leaks)
+      const socketAbort = new AbortController();
+      socket.onclose = () => { socketAbort.abort(); };
+
       socket.onmessage = async (event) => {
         let msg: MockKernelMessage;
         try {
@@ -303,7 +307,11 @@ export function makeMockKernel(
         if (msg.header.msg_type !== "kernel_info_request") return;
 
         if (opts.replyDelayMs && opts.replyDelayMs > 0) {
-          await delay(opts.replyDelayMs);
+          try {
+            await delay(opts.replyDelayMs, { signal: socketAbort.signal });
+          } catch {
+            return; // socket closed during delay
+          }
         }
 
         if (opts.closeAfterOpen) {

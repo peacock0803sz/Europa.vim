@@ -28,6 +28,13 @@ const WHITELIST = new Set([
   "contracts/session-runtime.ts",
   // MagickConverter is a DI callback type for testability — not a domain type
   "denops/europa/view/viewer.ts",
+  // Phase 3.2 kernel implementation files use internal helper type aliases
+  // (ActiveHandle, SpawnResult, ConnectResult, WatchdogArgs, etc.) that are
+  // local to the implementation and do not model domain entities.
+  "denops/europa/kernel/server-process.ts",
+  "denops/europa/kernel/watchdog.ts",
+  "denops/europa/kernel/server-client.ts",
+  "denops/europa/kernel/server-pool.ts",
 ]);
 
 // Argument parsing: --target <path> runs rule 1+2 on that path instead of

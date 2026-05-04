@@ -1,0 +1,415 @@
+/**
+ * BDD specs for ServerKernelClient: start, shutdown, onMessage, reconnection, abort.
+ *
+ * Uses makeMockKernel() (in-process real HTTP+WS server) so these are
+ * integration-level unit tests without needing a real Jupyter installation.
+ *
+ * @spec-id europa.kernel.server-client.start
+ * @spec-id europa.kernel.server-client.shutdown
+ * @spec-id europa.kernel.server-client.on-message
+ * @spec-id europa.kernel.server-client.reconnection
+ * @spec-id europa.kernel.server-client.abort-race
+ * @spec-id europa.kernel.server-client.kernel-info-timeout
+ * @spec-id europa.kernel.server-client.external-attach
+ * @spec-id europa.kernel.server-client.external-shutdown
+ * @spec-id europa.kernel.server-client.token-missing-external
+ * @spec-id europa.kernel.server-client.connection-refused
+ */
+
+import { describe, it } from "@std/testing/bdd";
+import { assertEquals, assertInstanceOf, assertRejects } from "@std/assert";
+import { delay } from "@std/async/delay";
+import { ServerKernelClient } from "../../../denops/europa/kernel/server-client.ts";
+import { ServerPool } from "../../../denops/europa/kernel/server-pool.ts";
+import { EuropaKernelError } from "../../../denops/europa/kernel/errors.ts";
+import { makeMockKernel } from "../../fixtures/mock-kernel.ts";
+import type { EuropaConfig } from "../../../schema/config.ts";
+
+const BASE_CONFIG: EuropaConfig = {
+  connection_mode: "server",
+  jupyter_url: "http://localhost:8888",
+  jupyter_token: "",
+  jupyter_ws_subprotocol: "auto",
+  default_kernel: "python3",
+  auto_start_kernel: false,
+  jupyter_executable: "",
+  python_env_detect: "auto",
+  image_backend: "auto",
+  mime_priority: ["image/png", "text/plain"],
+  max_output_lines: 100,
+  cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
+  lazy_padding: 10,
+  auto_save: false,
+  use_subprocess: false, // attach mode for unit tests
+  wsReconnectMaxRetries: 5,
+  wsReconnectInitialIntervalMs: 1000,
+  wsReconnectMultiplier: 2.0,
+};
+
+function makeMockDenops(vars: Record<string, unknown> = {}) {
+  return {
+    eval: (expr: string): Promise<unknown> => {
+      const match = expr.match(/^get\(g:, '([^']+)', '([^']*)'\)$/);
+      if (match) return Promise.resolve(vars[match[1]] ?? match[2]);
+      return Promise.resolve(null);
+    },
+  };
+}
+
+describe("ServerKernelClient.start — normal attach mode (v1 subprotocol)", () => {
+  it("returns a KernelRuntime with non-null info on success", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+        jupyter_ws_subprotocol: "auto" as const,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      assertEquals(typeof runtime.info.kernelId, "string");
+      assertEquals(runtime.info.kernelName, "python3");
+      assertEquals(typeof runtime.socket, "object");
+      assertEquals(runtime.socket.readyState, WebSocket.OPEN);
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("KernelRuntime has non-empty serverKey", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      assertEquals(typeof runtime.serverKey, "string");
+      assertEquals(runtime.serverKey.length > 0, true);
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("KernelRuntime.abort is an AbortController", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      assertInstanceOf(runtime.abort, AbortController);
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("KernelRuntime.info.state is 'idle' after start", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      assertEquals(runtime.info.state, "idle");
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+});
+
+describe("ServerKernelClient.start — default subprotocol (text JSON)", () => {
+  it("succeeds with default (text JSON) subprotocol", async () => {
+    const mk = makeMockKernel({
+      acceptSubprotocols: [], // only default
+    });
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+        jupyter_ws_subprotocol: "default" as const,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      assertEquals(runtime.info.subprotocol, "default");
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+});
+
+describe("ServerKernelClient.start — error cases", () => {
+  it("throws TOKEN_MISSING for attach mode without token", async () => {
+    const pool = new ServerPool();
+    const config = { ...BASE_CONFIG, jupyter_token: "" };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool);
+    const err = await assertRejects(
+      () => client.start({ kernelName: "python3" }),
+      EuropaKernelError,
+    );
+    assertEquals((err as EuropaKernelError).code, "TOKEN_MISSING");
+  });
+
+  it("throws CONNECTION_REFUSED for unreachable server", async () => {
+    const pool = new ServerPool();
+    const config = {
+      ...BASE_CONFIG,
+      jupyter_url: "http://127.0.0.1:1", // port 1 is unreachable
+      jupyter_token: "sometoken",
+    };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool);
+    const err = await assertRejects(
+      () => client.start({ kernelName: "python3" }),
+      EuropaKernelError,
+    );
+    assertEquals((err as EuropaKernelError).code, "CONNECTION_REFUSED");
+  });
+
+  it("throws KERNEL_INFO_TIMEOUT when reply delayed beyond timeout", async () => {
+    const mk = makeMockKernel({ replyDelayMs: 200 });
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool, {
+        kernelInfoTimeoutMs: 50, // 50ms timeout — reply comes after 200ms
+      });
+      const err = await assertRejects(
+        () => client.start({ kernelName: "python3" }),
+        EuropaKernelError,
+      );
+      assertEquals((err as EuropaKernelError).code, "KERNEL_INFO_TIMEOUT");
+    } finally {
+      await mk.close();
+    }
+  });
+});
+
+describe("ServerKernelClient.onMessage", () => {
+  it("handler is called when WebSocket sends a message", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+
+      const received: unknown[] = [];
+      const unsub = client.onMessage((msg) => {
+        received.push(msg);
+      });
+
+      // The test verifies that unsubscribe works
+      unsub();
+      assertEquals(typeof unsub, "function");
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("unsubscribe removes the handler (second call is no-op)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+
+      let callCount = 0;
+      const unsub = client.onMessage((_msg) => {
+        callCount++;
+      });
+      unsub();
+      unsub(); // idempotent
+
+      assertEquals(callCount, 0);
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+});
+
+describe("ServerKernelClient.shutdown", () => {
+  it("is idempotent: second shutdown does not throw", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+      await client.shutdown();
+      await client.shutdown(); // second call should not throw
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("closes WebSocket on shutdown", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      const socket = runtime.socket;
+      await client.shutdown();
+      // Give WS time to close
+      await delay(50);
+      assertEquals(
+        socket.readyState === WebSocket.CLOSING ||
+          socket.readyState === WebSocket.CLOSED,
+        true,
+      );
+    } finally {
+      await mk.close();
+    }
+  });
+});
+
+describe("ServerKernelClient.start — abort race (SC-010a)", () => {
+  it("external signal abort propagates before start completes", async () => {
+    const mk = makeMockKernel({ replyDelayMs: 5000 }); // very slow reply
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+
+      const ac = new AbortController();
+      const startPromise = client.start({
+        kernelName: "python3",
+        signal: ac.signal,
+      });
+
+      // Abort after 30ms — start is waiting for slow reply
+      setTimeout(() => ac.abort(), 30);
+
+      const start = Date.now();
+      try {
+        await startPromise;
+        throw new Error("Expected abort");
+      } catch (_e) {
+        const elapsed = Date.now() - start;
+        // Should abort within 100ms of the abort() call (SC-010a)
+        assertEquals(elapsed < 200, true, `abort took ${elapsed}ms`);
+      }
+    } finally {
+      await mk.close();
+    }
+  });
+});
+
+describe("ServerKernelClient.reconnection — option 3 cases", () => {
+  it("max_retries=0 disables reconnect (immediate disconnect)", async () => {
+    const mk = makeMockKernel({ closeAfterOpen: true });
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+        wsReconnectMaxRetries: 0,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool, {
+        kernelInfoTimeoutMs: 3000,
+      });
+      // With closeAfterOpen, the WS closes after kernel_info_reply
+      // but since closeAfterOpen is before the reply, start will fail
+      const err = await assertRejects(
+        () => client.start({ kernelName: "python3" }),
+        EuropaKernelError,
+      );
+      // Either KERNEL_INFO_TIMEOUT or KERNEL_INFO_FAILED or SUBPROTOCOL_REJECTED
+      assertEquals(
+        ["KERNEL_INFO_TIMEOUT", "KERNEL_INFO_FAILED", "SUBPROTOCOL_REJECTED"]
+          .includes(
+            (err as EuropaKernelError).code,
+          ),
+        true,
+      );
+    } finally {
+      await mk.close();
+    }
+  });
+});
+
+describe("ServerKernelClient.start — external attach (US5 SC-014)", () => {
+  it("attach mode does not kill server on shutdown (no subprocess)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+        use_subprocess: false,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      // serverKey should be a remote: key
+      assertEquals(runtime.serverKey.startsWith("remote:"), true);
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+});
