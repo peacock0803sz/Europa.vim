@@ -4,7 +4,7 @@
  * This module is the Source of Truth (SoT 1) for session-related types.
  * Phase 3.2 fully implements KernelInfoSchema (reserved in Phase 2),
  * and adds KernelStatusReportSchema + ServerHandleSchema.
- * The `SessionRuntime` augment type lives in `denops/europa/session/state.ts`.
+ * The `SessionRuntime` augment type lives in `contracts/session-runtime.ts`.
  *
  * @module schema/session
  */
