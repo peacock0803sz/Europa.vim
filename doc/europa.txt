@@ -3,9 +3,10 @@
 ==============================================================================
 INTRODUCTION						*europa-introduction*
 
-Europa.vim is a Vim/Neovim plugin for viewing Jupyter `.ipynb` notebooks
-directly inside the editor. It is built on denops.vim and runs all TypeScript
-logic under Deno, giving identical behaviour on both hosts.
+Europa.vim turns your Vim/Neovim into a moon of Jupyter: a quiet orbit around
+`.ipynb` notebooks, viewed directly inside the editor. It runs on Deno via
+denops.vim, gives identical behaviour on both hosts, and keeps the host
+Python-free — no `pip install` of plugin dependencies required.
 
 Phase 2 (current) provides read-only viewing and round-trip saving. Opening
 a notebook renders each cell with Unicode border decoration and highlights
