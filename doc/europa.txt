@@ -415,6 +415,28 @@ KERNEL COMMANDS~
 
 	See also: |:EuropaStartKernel|, |g:europa_use_subprocess|
 
+							*:EuropaKernelStatus*
+:EuropaKernelStatus
+	Display the current kernel connection status for the buffer in
+	|:messages|.
+
+	When a kernel is attached, the output includes:
+	  - Kernel name and kernel ID
+	  - Kernel execution state (`starting`, `idle`, `busy`,
+	    `reconnecting`, or `disconnected`) and WebSocket state
+	  - Reconnection progress (`retry: 2/5`) when reconnecting
+	  - Language name and version (from the kernel_info_reply)
+	  - Server reference count (number of buffers sharing the process)
+
+	When no kernel is attached: >
+	    Europa: No kernel attached to this buffer.
+	    Use :EuropaStartKernel to start one.
+<
+	All four connection states (before start, connected, reconnecting,
+	disconnected) are handled without crashing (SC-011).
+
+	See also: |:EuropaStartKernel|, |:EuropaShutdownKernel|
+
 PHASE 4+ COMMANDS (NOT YET AVAILABLE)~
 						*europa-commands-future*
 The following commands are planned for Phase 4 and later.
