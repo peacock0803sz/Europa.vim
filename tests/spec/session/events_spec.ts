@@ -199,18 +199,17 @@ describe("cleanup dispatcher — scratch buffer wipeout", () => {
 // --- Phase 3.2 VimLeavePre registration (europa.session.events.vimleavepre-cleanup) ---
 
 describe("setupAutocmds — VimLeavePre registration (Phase 3.2)", () => {
-  it("registers VimLeavePre for *.ipynb in europa_ipynb group", async () => {
+  it("registers VimLeavePre with wildcard pattern in europa_ipynb group", async () => {
     const host = mockVim();
     await setupAutocmds(host);
     const cmds = host.cmdsMatching("VimLeavePre");
     const hasVimLeavePre = cmds.some((c) =>
-      String(c.args[0]).includes("VimLeavePre") &&
-      String(c.args[0]).includes("*.ipynb")
+      String(c.args[0]).includes("VimLeavePre *")
     );
     assertEquals(
       hasVimLeavePre,
       true,
-      "VimLeavePre *.ipynb must be registered in europa_ipynb group",
+      "VimLeavePre must use * pattern so atexit fires on exit from any buffer",
     );
   });
 

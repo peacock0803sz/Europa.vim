@@ -53,7 +53,7 @@ export async function setupAutocmds(host: Denops): Promise<void> {
     "autocmd BufWipeout *.ipynb call europa#cleanup(str2nr(expand('<abuf>')))",
   );
   await host.cmd(
-    "autocmd VimLeavePre *.ipynb call denops#notify('europa', 'atexit', [])",
+    "autocmd VimLeavePre * call denops#notify('europa', 'atexit', [])",
   );
   await host.cmd("augroup END");
 }
