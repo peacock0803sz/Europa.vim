@@ -177,30 +177,50 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     /**
      * Clean up all resources for a viewer buffer.
      *
-     * Iterates all registered scratch buffers, force-wipes each one via
-     * `bwipeout!`, removes its dedicated autocmd group, then removes the
-     * session from the store. Idempotent: if the session is already gone
+     * If a kernel is attached, initiates shutdown in parallel with the scratch
+     * buffer wipeout. Shutdown failures emit a warning but do not halt the
+     * broader cleanup. Idempotent: if the session is already gone
      * (e.g. BufUnload fired before BufWipeout) the call is a no-op.
      *
      * @spec-id europa.dispatcher.cleanup-with-scratch
      * @spec-id europa.dispatcher.cleanup-idempotent
+     * @spec-id europa.dispatcher.cleanup-with-kernel
      */
     async cleanup(bufnr: unknown): Promise<void> {
       const viewerBufnr = Number(bufnr);
-      if (!sessionStore.get(viewerBufnr)) return;
-      for (
-        const [_cellId, scratchBufnr] of sessionStore.getAllScratchBufnrs(
-          viewerBufnr,
-        )
-      ) {
-        const exists = await denops.call("bufexists", scratchBufnr);
-        if (exists) {
-          await denops.cmd(`bwipeout! ${scratchBufnr}`);
+      const session = sessionStore.get(viewerBufnr);
+      if (!session) return;
+
+      // Fire kernel shutdown and scratch wipeout in parallel.
+      const kernelShutdown = session.kernelRuntime
+        ? session.kernelRuntime.client.shutdown().catch(async (e) => {
+          const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
+          await echomError(
+            denops,
+            `cleanup: kernel shutdown failed${code}: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        })
+        : Promise.resolve();
+
+      const scratchWipeout = (async () => {
+        for (
+          const [_cellId, scratchBufnr] of sessionStore.getAllScratchBufnrs(
+            viewerBufnr,
+          )
+        ) {
+          const exists = await denops.call("bufexists", scratchBufnr);
+          if (exists) {
+            await denops.cmd(`bwipeout! ${scratchBufnr}`);
+          }
+          const group = `europa_cell_edit_${scratchBufnr}`;
+          await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
+          await denops.cmd(`augroup! ${group}`);
         }
-        const group = `europa_cell_edit_${scratchBufnr}`;
-        await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
-        await denops.cmd(`augroup! ${group}`);
-      }
+      })();
+
+      await Promise.all([kernelShutdown, scratchWipeout]);
       sessionStore.remove(viewerBufnr);
     },
 
@@ -1213,14 +1233,54 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
       }
     },
-    shutdownKernel(_bufnr: unknown): Promise<void> {
-      return Promise.resolve();
+    /**
+     * Shuts down the kernel attached to the given viewer buffer.
+     *
+     * Idempotent: calling on a buffer with no active kernel is a no-op.
+     *
+     * @spec-id europa.dispatcher.shutdown-kernel
+     */
+    async shutdownKernel(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session?.kernelRuntime) return;
+      const { client } = session.kernelRuntime;
+      try {
+        await client.shutdown();
+      } catch (e) {
+        const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
+        await echomError(
+          denops,
+          `shutdownKernel failed${code}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      }
+      sessionStore.update(bn, { kernelRuntime: undefined });
     },
     kernelStatus(_bufnr: unknown): Promise<KernelStatusReport> {
       return Promise.resolve({ info: null, wsState: "NONE" });
     },
-    atexit(): Promise<void> {
-      return Promise.resolve();
+    /**
+     * Shuts down all active kernels and kills any remaining server processes.
+     *
+     * Called via VimLeavePre autocmd. Iterates all sessions and calls
+     * client.shutdown() in parallel, then calls serverPool.killAll().
+     *
+     * @spec-id europa.dispatcher.atexit
+     */
+    async atexit(): Promise<void> {
+      const sessions = sessionStore.all();
+      await Promise.all(
+        sessions
+          .filter((s) => s.kernelRuntime != null)
+          .map(async (s) => {
+            try {
+              await s.kernelRuntime!.client.shutdown();
+            } catch { /* shutdown errors during exit are best-effort */ }
+          }),
+      );
+      await serverPool.killAll();
     },
 
     // Phase 3.3+ remaining / Phase 4 — not yet implemented

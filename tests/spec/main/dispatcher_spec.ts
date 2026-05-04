@@ -12,6 +12,7 @@
  * @spec-id europa.dispatcher.close-cell-edit
  * @spec-id europa.dispatcher.change-cell-type
  * @spec-id europa.dispatcher.start-kernel
+ * @spec-id europa.dispatcher.shutdown-kernel
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
@@ -1199,6 +1200,86 @@ describe(
       await assertRejects(
         () => dispatcher.startKernel("not-a-number", "python3"),
         EuropaKernelError,
+      );
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// shutdownKernel dispatcher (europa.dispatcher.shutdown-kernel)
+// ---------------------------------------------------------------------------
+
+describe(
+  "shutdownKernel dispatcher",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    const KERNEL_BUFNR = 78;
+    let kernelHost: MockHost;
+    let currentMockKernel: MockKernelHandle | null = null;
+
+    beforeEach(() => {
+      kernelHost = mockVim();
+      currentMockKernel = null;
+    });
+
+    afterEach(async () => {
+      await currentMockKernel?.close();
+      currentMockKernel = null;
+    });
+
+    function setKernelConfig(url: string, token: string): void {
+      kernelHost.setEval(`get(g:, 'europa_use_subprocess', v:true)`, false);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_url', "http://localhost:8888")`,
+        url,
+      );
+      kernelHost.setEval(`get(g:, 'europa_jupyter_token', "")`, token);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_ws_subprotocol', "default")`,
+        "default",
+      );
+    }
+
+    it("(a) is a no-op when no kernelRuntime is attached", async () => {
+      const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+    });
+
+    it("(b) shuts down an active kernel and issues DELETE /api/sessions", async () => {
+      currentMockKernel = makeMockKernel();
+      const mk = currentMockKernel;
+      setKernelConfig(mk.url, mk.token);
+      const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+      await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+      assertEquals(
+        mk.deletedSessions.length,
+        0,
+        "no DELETE before shutdown",
+      );
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+      assertNotEquals(
+        mk.deletedSessions.length,
+        0,
+        "DELETE must be issued after shutdownKernel",
+      );
+    });
+
+    it("(c) idempotent: second shutdownKernel on same buffer is a no-op", async () => {
+      currentMockKernel = makeMockKernel();
+      const mk = currentMockKernel;
+      setKernelConfig(mk.url, mk.token);
+      const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+      await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+      const deletionCountAfterFirst = mk.deletedSessions.length;
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+      assertEquals(
+        mk.deletedSessions.length,
+        deletionCountAfterFirst,
+        "second shutdownKernel must not issue additional DELETE",
       );
     });
   },

@@ -1,14 +1,17 @@
 /**
- * BDD specs for setupAutocmds — BufReadCmd, BufWriteCmd, BufUnload, BufWipeout
- * registration, and the `cleanup` dispatcher lifecycle.
+ * BDD specs for setupAutocmds — BufReadCmd, BufWriteCmd, BufUnload, BufWipeout,
+ * VimLeavePre registration, and the `cleanup` / `atexit` dispatcher lifecycle.
  *
  * @spec-id europa.session.events.bufreadcmd
  * @spec-id europa.session.events.bufwritecmd
  * @spec-id europa.session.events.cleanup
  * @spec-id europa.session.events.bufunload-cleanup
  * @spec-id europa.session.events.bufwipeout-cleanup
+ * @spec-id europa.session.events.vimleavepre-cleanup
  * @spec-id europa.dispatcher.cleanup-idempotent
  * @spec-id europa.dispatcher.cleanup-with-scratch
+ * @spec-id europa.dispatcher.cleanup-with-kernel
+ * @spec-id europa.dispatcher.atexit
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertGreater, assertNotEquals } from "@std/assert";
@@ -190,5 +193,70 @@ describe("cleanup dispatcher — scratch buffer wipeout", () => {
       bwipeoutsAfterFirst,
       "Second cleanup must not issue additional bwipeout! calls",
     );
+  });
+});
+
+// --- Phase 3.2 VimLeavePre registration (europa.session.events.vimleavepre-cleanup) ---
+
+describe("setupAutocmds — VimLeavePre registration (Phase 3.2)", () => {
+  it("registers VimLeavePre for *.ipynb in europa_ipynb group", async () => {
+    const host = mockVim();
+    await setupAutocmds(host);
+    const cmds = host.cmdsMatching("VimLeavePre");
+    const hasVimLeavePre = cmds.some((c) =>
+      String(c.args[0]).includes("VimLeavePre") &&
+      String(c.args[0]).includes("*.ipynb")
+    );
+    assertEquals(
+      hasVimLeavePre,
+      true,
+      "VimLeavePre *.ipynb must be registered in europa_ipynb group",
+    );
+  });
+
+  it("VimLeavePre autocmd invokes atexit", async () => {
+    const host = mockVim();
+    await setupAutocmds(host);
+    const cmds = host.cmdsMatching("VimLeavePre");
+    const hasAtexit = cmds.some((c) => String(c.args[0]).includes("atexit"));
+    assertEquals(
+      hasAtexit,
+      true,
+      "VimLeavePre autocmd must dispatch atexit so kernels are cleaned up on exit",
+    );
+  });
+});
+
+// --- Phase 3.2 cleanup with kernelRuntime (europa.dispatcher.cleanup-with-kernel) ---
+
+describe("cleanup dispatcher — kernelRuntime shutdown (Phase 3.2)", () => {
+  it("cleanup is still idempotent when kernelRuntime is absent", async () => {
+    const host = mockVim();
+    const dispatcher = buildDispatcher(host);
+    const VIEWER_BUFNR = 8;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.cleanup(VIEWER_BUFNR);
+    await dispatcher.cleanup(VIEWER_BUFNR); // second call: no-op
+  });
+});
+
+// --- Phase 3.2 atexit dispatcher (europa.dispatcher.atexit) ---
+
+describe("atexit dispatcher — all kernels shutdown", () => {
+  it("atexit completes without error when no kernels are active", async () => {
+    const host = mockVim();
+    const dispatcher = buildDispatcher(host);
+    await dispatcher.atexit();
+  });
+
+  it("atexit is a no-op on sessions without kernelRuntime", async () => {
+    const host = mockVim();
+    const dispatcher = buildDispatcher(host);
+    const VIEWER1 = 11;
+    const VIEWER2 = 12;
+    await dispatcher.open(VIEWER1, FIXTURE_PATH);
+    await dispatcher.open(VIEWER2, FIXTURE_PATH);
+    // No kernelRuntimes registered — atexit must complete without error
+    await dispatcher.atexit();
   });
 });
