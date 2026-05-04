@@ -22,6 +22,11 @@ import { parseNotebook } from "../../denops/europa/notebook/parse.ts";
 import { loadConfig } from "../../denops/europa/config.ts";
 import { detectCapabilities } from "../../denops/europa/capabilities.ts";
 
+const FIXTURE_PATH = new URL(
+  "../golden/ipynb/edit-target.ipynb",
+  import.meta.url,
+).pathname;
+
 const MINIMAL_NB = JSON.stringify({
   nbformat: 4,
   nbformat_minor: 5,
@@ -241,12 +246,11 @@ describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase
     const { buildDispatcher } = await import("../../denops/europa/main.ts");
     const denops = mockVim();
     const d = buildDispatcher(denops);
-    let threw = false;
+    await d.open(1, FIXTURE_PATH);
     let threwInvalidArgs = false;
     try {
       await d.startKernel(1, "python3");
     } catch (e) {
-      threw = true;
       if (
         e && typeof e === "object" && "code" in e &&
         (e as { code: string }).code === "INVALID_ARGS"
@@ -258,11 +262,6 @@ describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase
       threwInvalidArgs,
       false,
       "valid args must not throw INVALID_ARGS",
-    );
-    assertEquals(
-      threw,
-      true,
-      "startKernel is not yet implemented (expected any error other than INVALID_ARGS)",
     );
   });
 

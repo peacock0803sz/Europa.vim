@@ -34,7 +34,11 @@ export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd("augroup europa_ipynb");
   await host.cmd("autocmd!");
   await host.cmd(
-    "autocmd BufReadCmd *.ipynb setfiletype europa | call europa#open(str2nr(expand('<abuf>')), expand('<afile>'))",
+    "autocmd BufReadCmd *.ipynb setfiletype europa" +
+      " | call europa#open(str2nr(expand('<abuf>')), expand('<afile>'))" +
+      " | if get(g:, 'europa_auto_start_kernel', v:false)" +
+      " | call timer_start(0, function('europa#start_kernel', [get(g:, 'europa_default_kernel', 'python3'), str2nr(expand('<abuf>'))]))" +
+      " | endif",
   );
   await host.cmd(
     "autocmd BufWriteCmd *.ipynb call europa#save()",
