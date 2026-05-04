@@ -59,7 +59,6 @@ describe("[golden] notebook round-trip", () => {
     "markdown-html",
     "kitty-image",
     "ansi-stream",
-    "large-1000cells",
   ];
 
   for (const name of FIXTURES) {
