@@ -1258,8 +1258,44 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       sessionStore.update(bn, { kernelRuntime: undefined });
     },
-    kernelStatus(_bufnr: unknown): Promise<KernelStatusReport> {
-      return Promise.resolve({ info: null, wsState: "NONE" });
+    /**
+     * Returns the current connection status of the kernel attached to the
+     * given viewer buffer.
+     *
+     * Reads the live WebSocket readyState, the KernelInfo stored in
+     * SessionStore, and the serverPool refcount. No RPC to the kernel is
+     * made — this is a pure local state read.
+     *
+     * @spec-id europa.dispatcher.kernel-status
+     */
+    kernelStatus(bufnr: unknown): Promise<KernelStatusReport> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      const kr = session?.kernelRuntime;
+
+      if (!kr) {
+        return Promise.resolve({ info: null, wsState: "NONE" });
+      }
+
+      const WS_STATE_NAMES = [
+        "CONNECTING",
+        "OPEN",
+        "CLOSING",
+        "CLOSED",
+      ] as const;
+      const wsState = WS_STATE_NAMES[kr.socket.readyState] ?? "CLOSED";
+
+      const handles = serverPool.snapshot();
+      const poolHandle = handles.find((h) => h.serverKey === kr.serverKey);
+
+      const report: KernelStatusReport = {
+        info: kr.info,
+        wsState,
+        ...(kr.reconnect ? { reconnect: kr.reconnect } : {}),
+        ...(poolHandle ? { serverRefcount: poolHandle.refcount } : {}),
+      };
+
+      return Promise.resolve(report);
     },
     /**
      * Shuts down all active kernels and kills any remaining server processes.
