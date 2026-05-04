@@ -119,13 +119,35 @@ CELL EDITING COMMANDS~
 
 	See also: |:EuropaEditCell|
 
+KERNEL COMMANDS~
+					*europa-kernel-commands*
+
+							*:EuropaStartKernel*
+:EuropaStartKernel [{name}]
+	Start or connect to a Jupyter kernel for the current buffer.
+
+	{name} is the kernel name to start (e.g. `python3`, `ir`).  When
+	{name} is omitted the value of |g:europa_default_kernel| is used
+	(default: `python3`).
+
+	The command is asynchronous: it returns immediately and the kernel
+	connection is established in the background.  Progress and errors
+	are reported via |:messages| (e.g. `EuropaKernelError: ...`).
+
+	Example — explicit kernel name: >
+		:EuropaStartKernel python3
+<	Example — use default kernel: >
+		:EuropaStartKernel
+<
+	See also: |g:europa_default_kernel|, |g:europa_jupyter_url|,
+	|g:europa_use_subprocess|
+
 PHASE 4+ COMMANDS (NOT YET AVAILABLE)~
 						*europa-commands-future*
 The following commands are planned for Phase 4 and later.
 
 	`:EuropaRun`		Execute the current cell against the kernel.
 	`:EuropaRunAll`		Execute all cells in order.
-	`:EuropaStartKernel`	Start or connect to a Jupyter kernel.
 	`:EuropaRestartKernel`	Restart the running kernel.
 	`:EuropaInterruptKernel` Send an interrupt to the kernel.
 	`:EuropaAttach`		Attach to an existing connection file (Phase 4).

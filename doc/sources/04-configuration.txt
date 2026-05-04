@@ -54,17 +54,87 @@ BEHAVIOUR OPTIONS~
 	Reserved for Phase 3. No default mappings are provided in Phase 2.
 	Type: boolean  Default: `v:false`
 
-CONNECTION OPTIONS (RESERVED FOR PHASE 3)~
-				*europa-configuration-connection*
-The following options are parsed by the schema but not acted upon in Phase 2.
-They are listed here so users can prepare their configuration in advance.
+CONNECTION OPTIONS~
+					*europa-configuration-connection*
 
-	`g:europa_connection_mode`      `'auto'` | `'server'` | `'zmq'`
-	`g:europa_jupyter_url`          URL of the Jupyter server
-	`g:europa_jupyter_token`        Authentication token
-	`g:europa_default_kernel`       Default kernel name
-	`g:europa_auto_start_kernel`    Auto-start kernel on open
-	`g:europa_jupyter_executable`   Path to `jupyter` binary
-	`g:europa_python_env_detect`    `'auto'` | `'disabled'`
+*g:europa_use_subprocess*
+	Whether europa spawns a local Jupyter Server subprocess or connects
+	to an already-running server.
+	Type: boolean  Default: `v:true`
+
+	`v:true`	Subprocess mode. Europa starts `jupyter server` via the
+			watchdog wrapper and manages its lifecycle.  The
+			executable is located with |g:europa_jupyter_executable|
+			or the 6-priority auto-detect chain (see
+			|g:europa_python_env_detect|).
+	`v:false`	Attach mode. Europa connects to the URL given by
+			|g:europa_jupyter_url|.  A token must be set via
+			|g:europa_jupyter_token| or `$JUPYTER_TOKEN`.
+
+*g:europa_jupyter_url*
+	Base URL of the Jupyter server used in attach mode
+	(|g:europa_use_subprocess| = `v:false`).
+	Type: string  Default: `'http://localhost:8888'`
+
+*g:europa_jupyter_token*
+	Authentication token for Jupyter Server REST/WebSocket requests.
+	Type: string  Default: `''`
+
+	Token resolution order:
+	  1. `g:europa_jupyter_token` (this option)
+	  2. `$JUPYTER_TOKEN` environment variable
+	  3. Random 32-char hex (subprocess mode only, generated at startup)
+	  Attach mode raises an error if steps 1-2 are both empty.
+
+*g:europa_jupyter_ws_subprotocol*
+	WebSocket subprotocol negotiation mode.
+	Type: string  Default: `'default'`
+
+	`'default'`	Text JSON subprotocol only (widest compatibility).
+	`'v1'`		Binary v1 subprotocol only (offset-table frame layout).
+	`'auto'`	Offer all three subprotocols; server picks the best.
+			Requires JupyterLab-style server >= 2.x.
+
+*g:europa_default_kernel*
+	Kernel name used when |:EuropaStartKernel| is called without an
+	argument, and for |g:europa_auto_start_kernel|.
+	Type: string  Default: `'python3'`
+
+*g:europa_auto_start_kernel*
+	When `v:true`, automatically call |:EuropaStartKernel| after a
+	notebook buffer is opened (via a zero-delay timer so the buffer is
+	fully loaded first).
+	Type: boolean  Default: `v:false`
+
+*g:europa_jupyter_executable*
+	Absolute path to the `jupyter` (or `jupyter.exe`) binary.  When set,
+	overrides all auto-detection (step 1 of the 6-priority chain).
+	Type: string  Default: `''` (auto-detect)
+
+*g:europa_python_env_detect*
+	Controls which steps of the 6-priority Jupyter executable detection
+	chain are active (DESIGN.md §6.5).
+	Type: string  Default: `'auto'`
+
+	`'auto'`	Full chain: explicit override → cwd `.venv` / `venv`
+			→ `$VIRTUAL_ENV` → `$CONDA_PREFIX` → `which jupyter`.
+	`'disabled'`	Skip steps 2-5; use only explicit override or PATH.
+
+*g:europa_ws_reconnect_max_retries*
+	Maximum number of WebSocket reconnect attempts before giving up.
+	Type: integer  Range: 0-20  Default: `5`
+
+	Set to `0` to disable reconnection entirely.
+
+*g:europa_ws_reconnect_initial_interval_ms*
+	Initial delay in milliseconds before the first reconnect attempt.
+	Subsequent attempts use exponential backoff controlled by
+	|g:europa_ws_reconnect_multiplier|.
+	Type: integer  Range: 100-30000  Default: `1000`
+
+*g:europa_ws_reconnect_multiplier*
+	Backoff multiplier applied to the reconnect interval after each
+	failed attempt.  A value of `2.0` doubles the interval each time.
+	Type: float  Range: 1.0-4.0  Default: `2.0`
 
 vim:tw=78:ts=8:noet:ft=help:norl:
