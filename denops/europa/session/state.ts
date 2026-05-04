@@ -15,8 +15,8 @@
 
 import type { ScratchLookup, Session } from "../../../schema/session.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
-export type { SessionRuntime } from "../../../contracts/session-runtime.ts";
 import type { SessionRuntime } from "../../../contracts/session-runtime.ts";
+export type { SessionRuntime };
 
 /**
  * In-memory registry mapping buffer numbers to open notebook sessions.
