@@ -1194,7 +1194,7 @@ describe(
       );
     });
 
-    it("(e) non-numeric bufnr throws EuropaKernelError INVALID_ARGS", async () => {
+    it("(f) non-numeric bufnr throws EuropaKernelError INVALID_ARGS", async () => {
       const dispatcher = buildDispatcher(kernelHost);
       await assertRejects(
         () => dispatcher.startKernel("not-a-number", "python3"),
