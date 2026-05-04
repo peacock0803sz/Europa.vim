@@ -11,13 +11,24 @@
  * @spec-id europa.dispatcher.save-cell-edit
  * @spec-id europa.dispatcher.close-cell-edit
  * @spec-id europa.dispatcher.change-cell-type
+ * @spec-id europa.dispatcher.start-kernel
  */
 
-import { beforeEach, describe, it } from "@std/testing/bdd";
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
+import {
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "@std/assert";
 import { buildDispatcher } from "../../../denops/europa/main.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
 import type { MockHost } from "../../fixtures/mock-host.ts";
+import {
+  makeMockKernel,
+  type MockKernelHandle,
+} from "../../fixtures/mock-kernel.ts";
+import { EuropaKernelError } from "../../../denops/europa/kernel/errors.ts";
 
 const FIXTURE_PATH = new URL(
   "../../golden/ipynb/edit-target.ipynb",
@@ -1043,3 +1054,151 @@ describe("changeCellType dispatcher", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// startKernel dispatcher (europa.dispatcher.start-kernel)
+// ---------------------------------------------------------------------------
+
+// sanitizeResources/sanitizeOps: real WebSocket connections are cleaned up in
+// afterEach via mk.close() — they remain open across the per-test sanitize window.
+describe(
+  "startKernel dispatcher",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    const KERNEL_BUFNR = 77;
+    let kernelHost: MockHost;
+    let currentMockKernel: MockKernelHandle | null = null;
+
+    beforeEach(() => {
+      kernelHost = mockVim();
+      currentMockKernel = null;
+    });
+
+    afterEach(async () => {
+      await currentMockKernel?.close();
+      currentMockKernel = null;
+    });
+
+    function setKernelConfig(url: string, token: string): void {
+      kernelHost.setEval(`get(g:, 'europa_use_subprocess', v:true)`, false);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_url', "http://localhost:8888")`,
+        url,
+      );
+      kernelHost.setEval(`get(g:, 'europa_jupyter_token', "")`, token);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_ws_subprotocol', "default")`,
+        "default",
+      );
+    }
+
+    it("(a) does not throw UnimplementedError for valid args", async () => {
+      // Phase 2 had a stub throwing UnimplementedError — that must be gone.
+      // startKernel catches internal failures via echomError and returns void.
+      const dispatcher = buildDispatcher(kernelHost);
+      let threwUnimplemented = false;
+      try {
+        await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+      } catch (e) {
+        if ((e as Error).name === "UnimplementedError") {
+          threwUnimplemented = true;
+        }
+      }
+      assertEquals(
+        threwUnimplemented,
+        false,
+        "startKernel must not throw UnimplementedError after Phase 3.2 wire-up",
+      );
+    });
+
+    it(
+      "(b) happy path emits no error when kernel is reachable",
+      // Integration test: keeps a real WebSocket open until afterEach closes the server.
+      { sanitizeResources: false, sanitizeOps: false },
+      async () => {
+        currentMockKernel = makeMockKernel();
+        setKernelConfig(currentMockKernel.url, currentMockKernel.token);
+
+        const dispatcher = buildDispatcher(kernelHost);
+        // Register the session so sessionStore.update actually persists kernelRuntime.
+        await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+        kernelHost.calls = [];
+
+        await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+
+        const errorCmds = kernelHost.cmdsMatching("echohl ErrorMsg");
+        assertEquals(
+          errorCmds.length,
+          0,
+          "no error message must be emitted when the kernel connects successfully",
+        );
+      },
+    );
+
+    it("(c) error path emits echomError and does not throw when kernel is unreachable", async () => {
+      // Port 1 is not accessible — client.start() will throw CONNECTION_REFUSED.
+      setKernelConfig("http://127.0.0.1:1", "sometoken");
+
+      const dispatcher = buildDispatcher(kernelHost);
+      kernelHost.calls = [];
+
+      // Must not throw — errors are swallowed and routed to :messages.
+      await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+
+      const errorCmds = kernelHost.cmdsMatching("echohl ErrorMsg");
+      assertEquals(
+        errorCmds.length > 0,
+        true,
+        "an error message must be emitted to :messages when the kernel is unreachable",
+      );
+      assertStringIncludes(
+        String(errorCmds[0]?.args[0]),
+        "startKernel failed",
+        "the error message must include 'startKernel failed'",
+      );
+    });
+
+    it(
+      "(d) omitted kernelName uses g:europa_default_kernel",
+      { sanitizeResources: false, sanitizeOps: false },
+      async () => {
+        currentMockKernel = makeMockKernel();
+        kernelHost.setEval(
+          `get(g:, 'europa_default_kernel', "python3")`,
+          "python3",
+        );
+        setKernelConfig(currentMockKernel.url, currentMockKernel.token);
+
+        const dispatcher = buildDispatcher(kernelHost);
+        await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+        kernelHost.calls = [];
+
+        // No kernelName arg — dispatcher must fall back to g:europa_default_kernel.
+        await dispatcher.startKernel(KERNEL_BUFNR);
+
+        const errorCmds = kernelHost.cmdsMatching("echohl ErrorMsg");
+        assertEquals(
+          errorCmds.length,
+          0,
+          "omitted kernelName must use g:europa_default_kernel and succeed",
+        );
+      },
+    );
+
+    it("(e) negative bufnr throws EuropaKernelError INVALID_ARGS", async () => {
+      const dispatcher = buildDispatcher(kernelHost);
+      await assertRejects(
+        () => dispatcher.startKernel(-1, "python3"),
+        EuropaKernelError,
+      );
+    });
+
+    it("(e) non-numeric bufnr throws EuropaKernelError INVALID_ARGS", async () => {
+      const dispatcher = buildDispatcher(kernelHost);
+      await assertRejects(
+        () => dispatcher.startKernel("not-a-number", "python3"),
+        EuropaKernelError,
+      );
+    });
+  },
+);

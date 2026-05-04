@@ -70,6 +70,9 @@ import {
   updateCellSource,
 } from "./notebook/cell.ts";
 import { SessionStore } from "./session/state.ts";
+import { createKernelClient } from "./kernel/client.ts";
+import { EuropaKernelError } from "./kernel/errors.ts";
+import { ServerPool } from "./kernel/server-pool.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
 export class UnimplementedError extends Error {
@@ -126,6 +129,7 @@ async function echomError(denops: Denops, reason: string): Promise<void> {
  */
 export function buildDispatcher(denops: Denops): EuropaDispatcher {
   const sessionStore = new SessionStore();
+  const serverPool = new ServerPool();
 
   /**
    * Refuse a structural mutation when the cell's scratch edit buffer has
@@ -1157,9 +1161,49 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       return Promise.resolve(lineToCellId(plan.cellRanges, ln));
     },
 
-    // Phase 3.2: kernel lifecycle stubs (wired, not yet implemented)
-    startKernel(_bufnr: unknown, _kernelName?: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("startKernel"));
+    // Phase 3.2: kernel lifecycle methods
+    /**
+     * Starts a kernel for the given viewer buffer.
+     *
+     * @spec-id europa.dispatcher.start-kernel
+     */
+    async startKernel(bufnr: unknown, kernelName?: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 0) {
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `startKernel: invalid bufnr '${bufnr}'`,
+        );
+      }
+      if (
+        kernelName !== undefined && kernelName !== null && kernelName !== ""
+      ) {
+        if (typeof kernelName !== "string" && typeof kernelName !== "number") {
+          throw new EuropaKernelError(
+            "INVALID_ARGS",
+            `startKernel: kernelName must be a string`,
+          );
+        }
+      }
+
+      const config = await loadConfig(denops);
+      const kn = (kernelName != null && String(kernelName).length > 0)
+        ? String(kernelName)
+        : config.default_kernel;
+
+      const client = createKernelClient(denops, config, serverPool);
+      try {
+        const runtime = await client.start({ kernelName: kn, cwd: Deno.cwd() });
+        sessionStore.update(bn, { kernelRuntime: runtime });
+      } catch (e) {
+        const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
+        await echomError(
+          denops,
+          `startKernel failed${code}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      }
     },
     shutdownKernel(_bufnr: unknown): Promise<void> {
       return Promise.resolve();
