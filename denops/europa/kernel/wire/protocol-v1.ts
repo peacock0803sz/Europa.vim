@@ -76,7 +76,7 @@ export function encodeV1(msg: KernelMessage, channel = "shell"): Uint8Array {
  * @spec-id europa.kernel.wire-v1.binary-buffers
  */
 export function decodeV1(buf: Uint8Array): KernelMessage {
-  if (buf.byteLength < 16) {
+  if (buf.byteLength < 8) {
     throw new TypeError("v1 frame too short to contain offset header");
   }
 
