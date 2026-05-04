@@ -43,7 +43,7 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
     {
       key: "jupyter_ws_subprotocol",
       gvar: "jupyter_ws_subprotocol",
-      def: "default",
+      def: "auto",
     },
     { key: "default_kernel", gvar: "default_kernel", def: "python3" },
     { key: "auto_start_kernel", gvar: "auto_start_kernel", def: false },

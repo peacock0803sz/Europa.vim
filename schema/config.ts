@@ -23,7 +23,7 @@ export const EuropaConfigSchema = Type.Object({
     Type.Literal("default"),
     Type.Literal("v1"),
     Type.Literal("auto"),
-  ], { default: "default" }),
+  ], { default: "auto" }),
   default_kernel: Type.String({ default: "python3" }),
   auto_start_kernel: Type.Boolean({ default: false }),
   jupyter_executable: Type.String({ default: "" }),
