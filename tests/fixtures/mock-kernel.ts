@@ -187,9 +187,10 @@ export function makeMockKernel(
 ): MockKernelHandle {
   const token = crypto.randomUUID().replaceAll("-", "");
 
+  // The token-suffixed subprotocol carries auth; the bare form would let a
+  // tokenless client negotiate successfully and mask TOKEN_MISSING regressions.
   const acceptProtos = opts.acceptSubprotocols ?? [
     V1_SUBPROTOCOL,
-    `v1.token.websocket.jupyter.org`,
     `v1.token.websocket.jupyter.org.${token}`,
   ];
 
