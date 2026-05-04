@@ -275,9 +275,11 @@ export function makeMockKernel(
         return new Response("Subprotocol rejected", { status: 426 });
       }
 
-      const negotiated = opts.rejectSubprotocol
-        ? undefined
-        : requestedProtos.find((p) => acceptProtos.includes(p));
+      const negotiated = requestedProtos.find((p) => acceptProtos.includes(p));
+
+      if (requestedProtos.length > 0 && negotiated === undefined) {
+        return new Response("Subprotocol rejected", { status: 426 });
+      }
 
       const { socket, response } = Deno.upgradeWebSocket(req, {
         protocol: negotiated,
