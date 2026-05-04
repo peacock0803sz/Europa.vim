@@ -87,6 +87,14 @@ export function decodeV1(buf: Uint8Array): KernelMessage {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const offsetCount = view.getUint32(0, true);
 
+  if (buf.byteLength < 4 + offsetCount * 4) {
+    throw new TypeError(
+      `v1 frame too short: need ${
+        4 + offsetCount * 4
+      } bytes for ${offsetCount} offsets, got ${buf.byteLength}`,
+    );
+  }
+
   const offsets: number[] = [];
   for (let i = 0; i < offsetCount; i++) {
     offsets.push(view.getUint32(4 + i * 4, true));
