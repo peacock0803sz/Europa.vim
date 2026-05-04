@@ -214,7 +214,8 @@ describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase
    * Verifies that Phase 3.2 kernel lifecycle methods are present and that
    * TypeBox argument validation works for valid and invalid inputs.
    *
-   * Tests are failing until Phase 3 (US1/US2) wires up the implementations.
+   * The non-INVALID_ARGS assertions pass with the current dispatcher stubs
+   * and will keep passing once US1/US2 wires up the real implementations.
    */
   const PHASE32_METHODS = [
     "startKernel",
