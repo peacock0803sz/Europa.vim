@@ -145,6 +145,17 @@ function! europa#change_cell_type(type) abort
         \                    [l:bufnr, l:cell_id, a:type]) })
 endfunction
 
+" Start (or reconnect to) the kernel for the current buffer.
+" name: kernel name to start; falls back to g:europa_default_kernel when empty.
+function! europa#start_kernel(name) abort
+  let l:name = empty(a:name)
+        \ ? get(g:, 'europa_default_kernel', 'python3')
+        \ : a:name
+  let l:bufnr = bufnr('%')
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'startKernel', [l:bufnr, l:name]) })
+endfunction
+
 " Returns the cell id at the cursor.
 " In a scratch edit buffer, reads b:europa_cell_id directly.
 " Otherwise, makes a synchronous RPC to lineToCellId.

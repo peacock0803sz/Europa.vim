@@ -32,3 +32,6 @@ command! -nargs=0 EuropaJoinCell
 
 command! -nargs=1 EuropaCellType
       \ call europa#change_cell_type(<f-args>)
+
+command! -nargs=? EuropaStartKernel
+      \ call europa#start_kernel(<q-args>)
