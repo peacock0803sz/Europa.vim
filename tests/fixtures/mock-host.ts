@@ -13,6 +13,11 @@
  *   - cursor / getcurpos / currentBufnr
  *   - dispatcher notify/request mock
  *
+ * Phase 3.2 adds:
+ *   - MockWebSocket — unit-test WebSocket logic without a real server
+ *   - MockCommand / MockChildProcess — simulate Deno.Command for subprocess tests
+ *   - VimLeavePre event support in autocmd.fire
+ *
  * @module tests/fixtures/mock-host
  */
 
@@ -76,6 +81,9 @@ export class MockHost implements Denops {
   /** bufnr → list of winids displaying that buffer (for win_findbuf mock). */
   windowsHavingBuf: Map<number, number[]> = new Map();
 
+  /** Fired VimLeavePre autocmd callbacks (registered by tests). */
+  private _vimLeavePreCallbacks: Array<() => void | Promise<void>> = [];
+
   /** Autocmd helpers accessible from tests. */
   readonly autocmd = {
     define: (
@@ -91,12 +99,25 @@ export class MockHost implements Denops {
     remove: (group: string) => {
       this._autocmdGroups.delete(group);
     },
+    /** Fire an autocmd event. VimLeavePre triggers registered callbacks. */
     fire: (_event: string, _bufnr: number) => {
       // Records the fire; tests can observe via calls
     },
     has: (group: string) => this._autocmdGroups.has(group),
     get: (group: string) => this._autocmdGroups.get(group) ?? [],
   };
+
+  /** Trigger VimLeavePre — simulates Vim exiting; calls all registered callbacks. */
+  async fireVimLeavePre(): Promise<void> {
+    for (const cb of this._vimLeavePreCallbacks) {
+      await cb();
+    }
+  }
+
+  /** Register a VimLeavePre callback (used by session/events.ts mock integration). */
+  onVimLeavePre(cb: () => void | Promise<void>): void {
+    this._vimLeavePreCallbacks.push(cb);
+  }
 
   constructor(opts: MockHostOptions = {}) {
     this.meta = {
@@ -377,6 +398,7 @@ export class MockHost implements Denops {
     this.currentBufnr = 1;
     this.cursorPos = [1, 1];
     this.windowsHavingBuf.clear();
+    this._vimLeavePreCallbacks = [];
   }
 
   /** Find all calls to a given function name. */
@@ -402,4 +424,220 @@ export function mockVim(version = "9.1.1646"): MockHost {
 /** Create a MockHost configured for Neovim. */
 export function mockNvim(version = "0.11.3"): MockHost {
   return new MockHost({ host: "nvim", hostVersion: version });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3.2: MockWebSocket
+// ---------------------------------------------------------------------------
+
+/** Server-side controller exposed by MockWebSocket for test orchestration. */
+export interface MockWebSocketServer {
+  /** Complete the WebSocket handshake with the given subprotocol. */
+  accept(protocol: string): void;
+  /** Push a text or binary message to the client listener. */
+  receive(data: string | ArrayBuffer): void;
+  /** Trigger a close event on the client side. */
+  close(code?: number, reason?: string): void;
+  /** Trigger an error event on the client side. */
+  error(): void;
+  /** All data frames sent by the client via ws.send(). */
+  readonly sentData: ReadonlyArray<string | ArrayBuffer>;
+}
+
+/**
+ * Minimal WebSocket lookalike for unit testing WebSocket-dependent code.
+ *
+ * Exposes a `server` controller so tests can simulate server-side events
+ * (accept/receive/close/error) without a real TCP connection.
+ *
+ * Usage:
+ *   const ws = new MockWebSocket("ws://localhost:8888/channels", ["v1.kernel..."]);
+ *   ws.addEventListener("open", () => { ... });
+ *   ws.server.accept("v1.kernel.websocket.jupyter.org");
+ */
+export class MockWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+
+  readyState = MockWebSocket.CONNECTING;
+  protocol = "";
+  readonly url: string;
+  readonly requestedProtocols: string[];
+
+  private readonly _listeners = new Map<string, Set<EventListenerOrEventListenerObject>>();
+  private readonly _sentData: Array<string | ArrayBuffer> = [];
+
+  readonly server: MockWebSocketServer;
+
+  constructor(url: string, protocols?: string | string[]) {
+    this.url = url;
+    this.requestedProtocols = Array.isArray(protocols)
+      ? protocols
+      : protocols
+      ? [protocols]
+      : [];
+
+    // deno-lint-ignore no-this-alias
+    const self = this;
+    this.server = {
+      accept(protocol: string): void {
+        self.protocol = protocol;
+        self.readyState = MockWebSocket.OPEN;
+        self._dispatch(new Event("open"));
+      },
+      receive(data: string | ArrayBuffer): void {
+        self._dispatch(new MessageEvent("message", { data }));
+      },
+      close(code = 1000, reason = ""): void {
+        self.readyState = MockWebSocket.CLOSED;
+        self._dispatch(new CloseEvent("close", { code, reason, wasClean: code === 1000 }));
+      },
+      error(): void {
+        self._dispatch(new Event("error"));
+      },
+      get sentData(): ReadonlyArray<string | ArrayBuffer> {
+        return self._sentData;
+      },
+    };
+  }
+
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
+    const set = this._listeners.get(type) ?? new Set();
+    set.add(listener);
+    this._listeners.set(type, set);
+  }
+
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
+    this._listeners.get(type)?.delete(listener);
+  }
+
+  send(data: string | ArrayBuffer): void {
+    this._sentData.push(data);
+  }
+
+  close(code = 1000, reason = ""): void {
+    if (this.readyState === MockWebSocket.OPEN || this.readyState === MockWebSocket.CONNECTING) {
+      this.readyState = MockWebSocket.CLOSING;
+      this.server.close(code, reason);
+    }
+  }
+
+  private _dispatch(event: Event): void {
+    for (const listener of this._listeners.get(event.type) ?? []) {
+      if (typeof listener === "function") {
+        listener(event);
+      } else {
+        listener.handleEvent(event);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3.2: MockCommand / MockChildProcess
+// ---------------------------------------------------------------------------
+
+/** Options for controlling mock subprocess behavior in tests. */
+export type MockCommandConfig = {
+  stdoutLines?: string[];
+  stderrLines?: string[];
+  exitCode?: number;
+  /** Delay in ms between emitting stdout lines (simulates slow startup). */
+  lineDelayMs?: number;
+};
+
+/**
+ * Simulated child process returned by MockCommand.spawn().
+ *
+ * `stdout` is a ReadableStream that emits the configured lines, then closes.
+ * `status` resolves after stdout is exhausted.
+ */
+export class MockChildProcess {
+  readonly stdout: ReadableStream<Uint8Array>;
+  readonly stderr: ReadableStream<Uint8Array>;
+  readonly status: Promise<{ code: number; success: boolean }>;
+
+  private _killed = false;
+  private _killSignal: string | undefined;
+
+  constructor(config: MockCommandConfig = {}) {
+    const lines = config.stdoutLines ?? [];
+    const errLines = config.stderrLines ?? [];
+    const exitCode = config.exitCode ?? 0;
+    const delay = config.lineDelayMs ?? 0;
+
+    const enc = new TextEncoder();
+
+    this.stdout = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        for (const line of lines) {
+          if (delay > 0) {
+            await new Promise<void>((r) => setTimeout(r, delay));
+          }
+          controller.enqueue(enc.encode(line + "\n"));
+        }
+        controller.close();
+      },
+    });
+
+    this.stderr = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const line of errLines) {
+          controller.enqueue(enc.encode(line + "\n"));
+        }
+        controller.close();
+      },
+    });
+
+    this.status = Promise.resolve({ code: exitCode, success: exitCode === 0 });
+  }
+
+  kill(signal?: string): void {
+    this._killed = true;
+    this._killSignal = signal;
+  }
+
+  get wasKilled(): boolean {
+    return this._killed;
+  }
+
+  get killSignal(): string | undefined {
+    return this._killSignal;
+  }
+}
+
+/**
+ * Registry of MockCommand factories, keyed by executable name pattern.
+ *
+ * Install before tests that call server-process.ts or watchdog.ts, then
+ * check `.calls` to verify the subprocess was spawned with expected args.
+ */
+export class MockCommandRegistry {
+  readonly calls: Array<{ program: string | URL; args: string[]; opts: unknown }> = [];
+  private readonly _factories = new Map<string, (args: string[]) => MockChildProcess>();
+
+  register(program: string, factory: (args: string[]) => MockChildProcess): void {
+    this._factories.set(program, factory);
+  }
+
+  /** Create a MockCommand that records calls and delegates to registered factory. */
+  create(
+    program: string | URL,
+    opts?: { args?: string[] },
+  ): { spawn(): MockChildProcess } {
+    const args = opts?.args ?? [];
+    this.calls.push({ program, args, opts });
+    const key = typeof program === "string" ? program : program.toString();
+    const factory = this._factories.get(key);
+    return {
+      spawn: () => factory ? factory(args) : new MockChildProcess(),
+    };
+  }
+
+  reset(): void {
+    this.calls.length = 0;
+    this._factories.clear();
+  }
 }
