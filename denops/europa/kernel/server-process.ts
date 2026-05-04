@@ -262,6 +262,7 @@ export async function spawnJupyterServer(
   // so reading only stdout would always time out.
   const ac = new AbortController();
   const timeoutId = setTimeout(() => ac.abort(), timeoutMs);
+  opts.signal?.addEventListener("abort", () => ac.abort(), { once: true });
 
   const result = await new Promise<{ port: number; url: string } | null>(
     (resolve) => {
