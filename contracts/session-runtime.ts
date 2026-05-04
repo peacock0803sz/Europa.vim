@@ -5,8 +5,8 @@
  * Constitution I) because the `WebSocket` and `AbortController` types cannot
  * be expressed in TypeBox. See DESIGN.md §4.4.
  *
- * The canonical `SessionRuntime` for storage is defined in
- * `denops/europa/session/state.ts`. This file re-exports for external consumers.
+ * `SessionRuntime` is canonically defined here and re-exported by
+ * `denops/europa/session/state.ts` for in-process consumers.
  *
  * @module contracts/session-runtime
  */
