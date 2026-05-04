@@ -4,7 +4,7 @@ This document covers contributor mechanics: development setup, the `deno task` p
 
 ## 1. Introduction
 
-Europa.vim is a denops-based Vim/Neovim plugin for viewing — and eventually editing — Jupyter `.ipynb` notebooks. It targets Vim 9.1.1646+ and Neovim 0.11.3+, and runs every TypeScript file under Deno.
+Europa.vim is a denops-based Vim/Neovim plugin that orbits Jupyter for viewing — and eventually editing — `.ipynb` notebooks. It targets Vim 9.1.1646+ and Neovim 0.11.3+, runs every TypeScript file under Deno, and keeps the host Python-free. The plugin connects to Jupyter via REST + WebSocket (Phase 3) and ZeroMQ (Phase 4, opt-in), with `.ipynb` as the wire format.
 
 A three-tier Source-of-Truth model governs the project. TypeBox schemas under `schema/` are the SoT for data shape, BDD specs under `tests/spec/` for behavior, and TSDoc plus the hand-written guide chapters for documentation. Inferred TS types, JSON Schema, and `doc/europa.txt` are recomputed from the upper tiers and are never hand-edited.
 

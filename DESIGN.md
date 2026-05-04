@@ -2541,3 +2541,50 @@ The plugin does not install any Python packages. Only spawn the user's existing 
 - jszmq: <https://github.com/zeromq/jszmq>
 - deno.land/x/zmq: <https://deno.land/x/zmq>
 - Deno Node compatibility (Node-API addons): <https://docs.deno.com/runtime/fundamentals/node/>
+
+## 13. Voice and Copy
+
+External-facing language about Europa.vim follows a fixed metaphor and vocabulary so that README, vimdoc, GitHub repo metadata, and release/SNS posts stay coherent. Keep this section in sync whenever any of those surfaces are edited.
+
+### 13.1 Tagline
+
+> Your Vim/Neovim becomes a moon of Jupyter.
+
+Three devices carry the meaning:
+
+1. `Your` puts the reader's editor on stage as the subject.
+2. `becomes` frames Europa.vim as a transformation of an editor the reader already has, not a new thing to learn.
+3. `a moon of Jupyter` is a double pun: Europa is the second moon of Jupiter, and the Project Jupyter notebook system shares its name with the planet.
+
+### 13.2 Per-surface copy
+
+| Surface | Copy |
+| --- | --- |
+| README eyecatch image (under H1) | Tagline `Your Vim/Neovim becomes a moon of Jupyter.` (rendered as part of the eyecatch image, not as body text) |
+| README body (under eyecatch) | Sub-tagline `A Vim/Neovim plugin that orbits Jupyter — running on Deno, no Python on the host, .ipynb as a first-class citizen.` + doc pointer `For details, see :help europa.` (linked to `./doc/europa.txt`) |
+| GitHub repo About | `A Vim/Neovim plugin that orbits Jupyter — Deno-powered, .ipynb-native.` |
+| OG description | `Your Vim/Neovim becomes a moon of Jupyter. Europa.vim is a Deno-powered Vim/Neovim plugin that opens .ipynb natively — no Python on the host.` |
+| vimdoc Introduction (`doc/sources/01-introduction.txt`) | `Europa.vim turns your Vim/Neovim into a moon of Jupyter: a quiet orbit around .ipynb notebooks, viewed directly inside the editor. It runs on Deno via denops.vim, gives identical behaviour on both hosts, and keeps the host Python-free — no pip install of plugin dependencies required.` (phase-adapted for Phase 2; revisit when kernel connection lands in Phase 3) |
+| README "Why Europa?" | `Europa is the second moon of Jupiter — icy, quiet, and always close. Europa.vim is the same idea for your Vim/Neovim: a plugin that puts it in orbit around a Jupyter kernel, without dragging Python into the host or asking you to leave :edit. Notebooks stay .ipynb. Your Vim/Neovim stays your Vim/Neovim.` |
+| Quick Start | `Open a notebook. Stay in orbit.` (alt: `:edit notebook.ipynb — and your Vim/Neovim is in orbit.`) |
+| CONTRIBUTING | `Europa.vim is a Deno-based Vim/Neovim plugin that connects to Jupyter via REST + WebSocket (Phase 3) and ZeroMQ (Phase 4, opt-in). .ipynb is the wire format; the host stays Python-free.` |
+| Release / SNS (a) | `Europa.vim is out. Your Vim/Neovim is now a moon of Jupyter.` |
+| Release / SNS (b) | `One small plugin for Vim/Neovim, one new moon for Jupyter — Europa.vim.` (Apollo 11 quote homage; `small` is intentional, see the exception in 13.3) |
+| Release / SNS (c) | `Open .ipynb in Vim/Neovim. Stay in orbit. — Europa.vim` |
+
+### 13.3 Vocabulary rules
+
+| Concept | Use | Avoid |
+| --- | --- | --- |
+| Plugin name | `Europa.vim` (with `.vim`) | `Europa` alone, except inside the moon metaphor |
+| Target editor | `Vim/Neovim` (always paired) | `editor`, `(Neo)vim`, lowercase `vim`, `Neovim only` |
+| Metaphor axis | `moon`, `orbit`, `Jupyter`, `icy` (Why Europa? only) | `satellite`, `world`, `circle` |
+| Subject of tagline-style sentences | `Your Vim/Neovim` / `your Vim/Neovim` | `the editor`, `your editor` |
+| Differentiators | `Deno-powered`, `no Python on the host`, `.ipynb`-native, `first-class citizen` | `Python-less`, `pure Deno` |
+| Words for code volume or weight | (do not use) | `small`, `thin`, `lightweight`, `tiny`, `minimal` |
+
+The last row exists because the codebase is not actually small; using these adjectives would mislead readers about the implementation scale.
+
+#### Exception
+
+The Release / SNS variant `One small plugin for Vim/Neovim, one new moon for Jupyter` is a deliberate homage to Neil Armstrong's Apollo 11 quote. The word `small` is preserved as part of the fixed quote and does not violate the rule above. Do not introduce other instances of `small` based on this exception.
