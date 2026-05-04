@@ -40,11 +40,9 @@ export type KernelErrorCode = typeof KERNEL_ERROR_CODES[number];
 export class EuropaKernelError extends Error {
   override readonly name = "EuropaKernelError";
   readonly code: KernelErrorCode;
-  override readonly cause: unknown;
 
   constructor(code: KernelErrorCode, message: string, cause?: unknown) {
-    super(message);
+    super(message, { cause });
     this.code = code;
-    this.cause = cause;
   }
 }
