@@ -38,3 +38,6 @@ command! -nargs=? EuropaStartKernel
 
 command! -nargs=0 EuropaShutdownKernel
       \ call europa#shutdown_kernel()
+
+command! -nargs=0 EuropaKernelStatus
+      \ call europa#kernel_status()
