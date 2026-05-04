@@ -10,7 +10,7 @@
  *
  * Note: SIGKILL is POSIX-only. On Windows this test is skipped automatically
  * because Deno.kill with SIGKILL is not available. The CI matrix marks Windows
- * jobs as informational for this reason (e2e-workflow.md).
+ * jobs as informational for this reason (CONTRIBUTING.md §10).
  *
  * @spec-id europa.conformance.orphan-prevention.parent-sigkill
  */
@@ -21,9 +21,10 @@ import { delay } from "@std/async/delay";
 import { join } from "@std/path/join";
 import { ensureJupyter, JupyterMissingError } from "./setup.ts";
 
+let jupyterExec = "";
 let jupyterPresent = true;
 try {
-  await ensureJupyter();
+  jupyterExec = await ensureJupyter();
 } catch (e) {
   if (e instanceof JupyterMissingError) {
     jupyterPresent = false;
@@ -78,11 +79,6 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
   it("watchdog detects fake-parent SIGKILL and kills jupyter within 15s", async () => {
     if (!jupyterPresent || isWindows) return;
 
-    const jupyterExec = new TextDecoder().decode(
-      (await new Deno.Command("which", { args: ["jupyter"], stdout: "piped" })
-        .output()).stdout,
-    ).trim();
-
     const token = crypto.randomUUID().replace(/-/g, "");
     // Pick a free port.
     const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
@@ -123,18 +119,29 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
     const reader = watchdogProc.stderr.getReader();
     const dec = new TextDecoder();
     let buf = "";
-    const startDeadline = Date.now() + 30_000;
     let jupyterStarted = false;
-    while (Date.now() < startDeadline) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value);
-      if (STARTUP_RE.test(buf)) {
-        jupyterStarted = true;
-        break;
+
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), 30_000);
+    try {
+      while (!ac.signal.aborted) {
+        let chunk: ReadableStreamReadResult<Uint8Array>;
+        try {
+          chunk = await reader.read();
+        } catch {
+          break;
+        }
+        if (chunk.done) break;
+        buf += dec.decode(chunk.value);
+        if (STARTUP_RE.test(buf)) {
+          jupyterStarted = true;
+          break;
+        }
       }
+    } finally {
+      clearTimeout(tid);
+      reader.releaseLock();
     }
-    reader.releaseLock();
     watchdogProc.stderr.cancel().catch(() => {});
 
     if (!jupyterStarted) {
