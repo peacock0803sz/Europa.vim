@@ -149,10 +149,10 @@ describe("conformance: abort race — during kernel_info wait (SC-010a)", () => 
       const elapsed = Date.now() - t0;
 
       assert(threw, "start() should reject when aborted");
-      // Abort propagation should resolve very fast.
+      // SC-010a: abort must resolve within 100ms.
       assert(
-        elapsed < 1000,
-        `abort during kernel_info took ${elapsed}ms, expected < 1000ms`,
+        elapsed < 100,
+        `abort during kernel_info took ${elapsed}ms, expected < 100ms`,
       );
     } finally {
       await server.stop();
