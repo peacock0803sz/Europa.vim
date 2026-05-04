@@ -87,7 +87,7 @@ export function decodeV1Mock(buf: Uint8Array): MockKernelMessage {
   const offsetCount = view.getUint32(0, true);
 
   const offsets: number[] = [];
-  for (let i = 0; i <= offsetCount; i++) {
+  for (let i = 0; i < offsetCount; i++) {
     offsets.push(view.getUint32((i + 1) * 4, true));
   }
 
@@ -95,9 +95,10 @@ export function decodeV1Mock(buf: Uint8Array): MockKernelMessage {
     return buf.slice(offsets[idx], offsets[idx + 1]);
   }
 
-  // channel(0), header(1), parent_header(2), metadata(3), content(4), buffers(5+)
+  // channel(0), header(1), parent_header(2), metadata(3), content(4), buffers(5+).
+  // The last offset (offsetCount - 1) is the sentinel marking end-of-data.
   const buffers: Uint8Array[] = [];
-  for (let i = 5; i < offsetCount; i++) {
+  for (let i = 5; i < offsetCount - 1; i++) {
     buffers.push(slice(i));
   }
 
