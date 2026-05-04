@@ -88,7 +88,7 @@ export function decodeV1(buf: Uint8Array): KernelMessage {
   const offsetCount = view.getUint32(0, true);
 
   const offsets: number[] = [];
-  for (let i = 0; i <= offsetCount; i++) {
+  for (let i = 0; i < offsetCount; i++) {
     offsets.push(view.getUint32(4 + i * 4, true));
   }
 
