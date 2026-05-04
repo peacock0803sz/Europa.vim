@@ -131,13 +131,18 @@ describe("detectJupyterExecutable — priority 4: VIRTUAL_ENV", () => {
       if (!isWin) await Deno.chmod(path, 0o755);
 
       const cleanDir = await Deno.makeTempDir({ prefix: "europa_clean_" });
+      const savedVenv = Deno.env.get("VIRTUAL_ENV");
       try {
         Deno.env.set("VIRTUAL_ENV", venvRoot);
         const config = { ...BASE_CONFIG, jupyter_executable: "" };
         const result = await detectJupyterExecutable(cleanDir, config);
         assertStringIncludes(result, venvRoot);
       } finally {
-        Deno.env.delete("VIRTUAL_ENV");
+        if (savedVenv !== undefined) {
+          Deno.env.set("VIRTUAL_ENV", savedVenv);
+        } else {
+          Deno.env.delete("VIRTUAL_ENV");
+        }
         await Deno.remove(cleanDir, { recursive: true });
       }
     } finally {
