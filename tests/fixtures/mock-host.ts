@@ -99,9 +99,14 @@ export class MockHost implements Denops {
     remove: (group: string) => {
       this._autocmdGroups.delete(group);
     },
-    /** Fire an autocmd event. VimLeavePre triggers registered callbacks. */
-    fire: (_event: string, _bufnr: number) => {
-      // Records the fire; tests can observe via calls
+    /**
+     * Fire an autocmd event. VimLeavePre dispatches every callback registered
+     * via onVimLeavePre(); other events are currently no-ops.
+     */
+    fire: async (event: string, _bufnr: number): Promise<void> => {
+      if (event === "VimLeavePre") {
+        await this.fireVimLeavePre();
+      }
     },
     has: (group: string) => this._autocmdGroups.has(group),
     get: (group: string) => this._autocmdGroups.get(group) ?? [],
