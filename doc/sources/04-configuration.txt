@@ -88,7 +88,7 @@ CONNECTION OPTIONS~
 
 *g:europa_jupyter_ws_subprotocol*
 	WebSocket subprotocol negotiation mode.
-	Type: string  Default: `'default'`
+	Type: string  Default: `'auto'`
 
 	`'default'`	Text JSON subprotocol only (widest compatibility).
 	`'v1'`		Binary v1 subprotocol only (offset-table frame layout).
