@@ -70,6 +70,16 @@ CONNECTION OPTIONS~
 	`v:false`	Attach mode. Europa connects to the URL given by
 			|g:europa_jupyter_url|.  A token must be set via
 			|g:europa_jupyter_token| or `$JUPYTER_TOKEN`.
+			Europa never kills the external server on shutdown;
+			only the WebSocket and REST session are cleaned up.
+
+	Example — attach to an existing server started externally: >
+		" In terminal A:
+		"   jupyter server --port=9999 --ServerApp.token=mytoken
+		let g:europa_use_subprocess = v:false
+		let g:europa_jupyter_url = 'http://localhost:9999'
+		let g:europa_jupyter_token = 'mytoken'
+<
 
 *g:europa_jupyter_url*
 	Base URL of the Jupyter server used in attach mode
