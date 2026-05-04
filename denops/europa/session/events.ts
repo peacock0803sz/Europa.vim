@@ -21,7 +21,9 @@ import type { Denops } from "@denops/std";
  * Register Europa autocmds into the `europa_ipynb` group.
  *
  * Both `BufUnload` and `BufWipeout` are registered for `*.ipynb` so that
- * the `cleanup` dispatcher is called on all exit paths.
+ * the `cleanup` dispatcher is called on all exit paths. `VimLeavePre` is
+ * also registered to call `atexit` so that all kernels are shut down when
+ * the user quits Vim (FR-022, SC-005).
  *
  * @param host - Denops instance for issuing Vim commands.
  * @spec-id europa.session.events.bufreadcmd
@@ -29,6 +31,7 @@ import type { Denops } from "@denops/std";
  * @spec-id europa.session.events.cleanup
  * @spec-id europa.session.events.bufunload-cleanup
  * @spec-id europa.session.events.bufwipeout-cleanup
+ * @spec-id europa.session.events.vimleavepre-cleanup
  */
 export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd("augroup europa_ipynb");
@@ -48,6 +51,9 @@ export async function setupAutocmds(host: Denops): Promise<void> {
   );
   await host.cmd(
     "autocmd BufWipeout *.ipynb call europa#cleanup(str2nr(expand('<abuf>')))",
+  );
+  await host.cmd(
+    "autocmd VimLeavePre * call denops#notify('europa', 'atexit', [])",
   );
   await host.cmd("augroup END");
 }

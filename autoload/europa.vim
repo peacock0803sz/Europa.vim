@@ -156,6 +156,46 @@ function! europa#start_kernel(name, ...) abort
         \ { -> denops#notify('europa', 'startKernel', [l:bufnr, l:name]) })
 endfunction
 
+" Shut down the kernel attached to the current buffer.
+function! europa#shutdown_kernel() abort
+  let l:bufnr = bufnr('%')
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'shutdownKernel', [l:bufnr]) })
+endfunction
+
+" Display kernel connection status for the current buffer via :messages.
+" Prints info, WebSocket state, reconnect progress, and server refcount.
+" When no kernel is attached, prints a startup guidance message instead.
+function! europa#kernel_status() abort
+  let l:bufnr = bufnr('%')
+  call denops#plugin#wait_async('europa', { ->
+        \ s:show_kernel_status(l:bufnr) })
+endfunction
+
+function! s:show_kernel_status(bufnr) abort
+  let l:report = denops#request('europa', 'kernelStatus', [a:bufnr])
+  if type(l:report) != v:t_dict || l:report.info is v:null
+    echom 'Europa: No kernel attached to this buffer. Use :EuropaStartKernel to start one.'
+    return
+  endif
+  let l:info = l:report.info
+  let l:lines = []
+  call add(l:lines, 'Kernel: ' . l:info.kernelName . ' (' . l:info.kernelId . ')')
+  call add(l:lines, 'State:  ' . l:info.state . ' | WS: ' . l:report.wsState)
+  if has_key(l:report, 'reconnect') && type(l:report.reconnect) == v:t_dict
+    call add(l:lines, 'Reconnect: ' . l:report.reconnect.retry . '/' . l:report.reconnect.max)
+  endif
+  if has_key(l:info, 'languageInfo') && type(l:info.languageInfo) == v:t_dict
+    call add(l:lines, 'Language: ' . l:info.languageInfo.name . ' ' . l:info.languageInfo.version)
+  endif
+  if has_key(l:report, 'serverRefcount')
+    call add(l:lines, 'Server refcount: ' . l:report.serverRefcount)
+  endif
+  for l:line in l:lines
+    echom 'Europa: ' . l:line
+  endfor
+endfunction
+
 " Returns the cell id at the cursor.
 " In a scratch edit buffer, reads b:europa_cell_id directly.
 " Otherwise, makes a synchronous RPC to lineToCellId.

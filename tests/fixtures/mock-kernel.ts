@@ -44,7 +44,7 @@ const DEC = new TextDecoder();
 /**
  * Encode a KernelMessage in the v1 binary offset-table format.
  *
- * Frame layout: [offset_count(uint32 LE), offsets[](uint32 LE × n), channel, header, parent_header, metadata, content, ...buffers]
+ * Frame layout: [offset_count(uint64 LE), offsets[](uint64 LE × n), channel, header, parent_header, metadata, content, ...buffers]
  * offset_count = 6 + buffers.length (channel + 4 JSON parts + sentinel)
  */
 export function encodeV1Mock(msg: MockKernelMessage, channel = "shell"): Uint8Array {
@@ -58,7 +58,7 @@ export function encodeV1Mock(msg: MockKernelMessage, channel = "shell"): Uint8Ar
   ];
 
   const offsetCount = parts.length + 1; // parts + sentinel
-  const headerBytes = (offsetCount + 1) * 4; // offset_count field + offsets array
+  const headerBytes = 8 + offsetCount * 8; // offset_count field + offsets array
 
   let totalSize = headerBytes;
   for (const p of parts) totalSize += p.byteLength;
@@ -66,15 +66,15 @@ export function encodeV1Mock(msg: MockKernelMessage, channel = "shell"): Uint8Ar
   const buf = new Uint8Array(totalSize);
   const view = new DataView(buf.buffer);
 
-  view.setUint32(0, offsetCount, true); // offset_count LE
+  view.setBigUint64(0, BigInt(offsetCount), true);
 
   let cursor = headerBytes;
   for (let i = 0; i < parts.length; i++) {
-    view.setUint32((i + 1) * 4, cursor, true); // offset[i] LE
+    view.setBigUint64(8 + i * 8, BigInt(cursor), true);
     buf.set(parts[i], cursor);
     cursor += parts[i].byteLength;
   }
-  view.setUint32(offsetCount * 4, cursor, true); // sentinel
+  view.setBigUint64(8 + parts.length * 8, BigInt(cursor), true); // sentinel
 
   return buf;
 }
@@ -84,11 +84,11 @@ export function encodeV1Mock(msg: MockKernelMessage, channel = "shell"): Uint8Ar
  */
 export function decodeV1Mock(buf: Uint8Array): MockKernelMessage {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const offsetCount = view.getUint32(0, true);
+  const offsetCount = Number(view.getBigUint64(0, true));
 
   const offsets: number[] = [];
   for (let i = 0; i < offsetCount; i++) {
-    offsets.push(view.getUint32((i + 1) * 4, true));
+    offsets.push(Number(view.getBigUint64(8 + i * 8, true)));
   }
 
   function slice(idx: number): Uint8Array {
@@ -165,6 +165,8 @@ export type MockKernelHandle = {
   url: string;
   /** Random token for Authorization header / subprotocol. */
   token: string;
+  /** Session IDs for which DELETE /api/sessions/<sid> was received. */
+  deletedSessions: string[];
   /** Stop the server and clean up. */
   close(): Promise<void>;
 };
@@ -196,6 +198,7 @@ export function makeMockKernel(
 
   const kernelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
+  const deletedSessions: string[] = [];
 
   const kernelInfoReply: Record<string, unknown> = opts.kernelInfoReply ?? {
     status: "ok",
@@ -232,6 +235,8 @@ export function makeMockKernel(
 
     // DELETE /api/sessions/:sid
     if (req.method === "DELETE" && path.startsWith("/api/sessions/")) {
+      const sid = path.slice("/api/sessions/".length);
+      deletedSessions.push(sid);
       return new Response(null, { status: 204 });
     }
 
@@ -361,6 +366,7 @@ export function makeMockKernel(
   return {
     url: serverUrl,
     token,
+    deletedSessions,
     async close(): Promise<void> {
       await serverController?.shutdown();
     },

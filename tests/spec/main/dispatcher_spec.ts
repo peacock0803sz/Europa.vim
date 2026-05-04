@@ -12,6 +12,8 @@
  * @spec-id europa.dispatcher.close-cell-edit
  * @spec-id europa.dispatcher.change-cell-type
  * @spec-id europa.dispatcher.start-kernel
+ * @spec-id europa.dispatcher.shutdown-kernel
+ * @spec-id europa.dispatcher.kernel-status
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
@@ -1201,5 +1203,248 @@ describe(
         EuropaKernelError,
       );
     });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// shutdownKernel dispatcher (europa.dispatcher.shutdown-kernel)
+// ---------------------------------------------------------------------------
+
+describe(
+  "shutdownKernel dispatcher",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    const KERNEL_BUFNR = 78;
+    let kernelHost: MockHost;
+    let currentMockKernel: MockKernelHandle | null = null;
+
+    beforeEach(() => {
+      kernelHost = mockVim();
+      currentMockKernel = null;
+    });
+
+    afterEach(async () => {
+      await currentMockKernel?.close();
+      currentMockKernel = null;
+    });
+
+    function setKernelConfig(url: string, token: string): void {
+      kernelHost.setEval(`get(g:, 'europa_use_subprocess', v:true)`, false);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_url', "http://localhost:8888")`,
+        url,
+      );
+      kernelHost.setEval(`get(g:, 'europa_jupyter_token', "")`, token);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_ws_subprotocol', "default")`,
+        "default",
+      );
+    }
+
+    it("(a) is a no-op when no kernelRuntime is attached", async () => {
+      const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+    });
+
+    it("(b) shuts down an active kernel and issues DELETE /api/sessions", async () => {
+      currentMockKernel = makeMockKernel();
+      const mk = currentMockKernel;
+      setKernelConfig(mk.url, mk.token);
+      const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+      await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+      assertEquals(
+        mk.deletedSessions.length,
+        0,
+        "no DELETE before shutdown",
+      );
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+      assertNotEquals(
+        mk.deletedSessions.length,
+        0,
+        "DELETE must be issued after shutdownKernel",
+      );
+    });
+
+    it("(c) idempotent: second shutdownKernel on same buffer is a no-op", async () => {
+      currentMockKernel = makeMockKernel();
+      const mk = currentMockKernel;
+      setKernelConfig(mk.url, mk.token);
+      const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+      await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+      const deletionCountAfterFirst = mk.deletedSessions.length;
+      await dispatcher.shutdownKernel(KERNEL_BUFNR);
+      assertEquals(
+        mk.deletedSessions.length,
+        deletionCountAfterFirst,
+        "second shutdownKernel must not issue additional DELETE",
+      );
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// kernelStatus dispatcher (europa.dispatcher.kernel-status)
+// ---------------------------------------------------------------------------
+
+describe(
+  "kernelStatus dispatcher",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    const KERNEL_BUFNR = 79;
+    let kernelHost: MockHost;
+    let currentMockKernel: MockKernelHandle | null = null;
+
+    beforeEach(() => {
+      kernelHost = mockVim();
+      currentMockKernel = null;
+    });
+
+    afterEach(async () => {
+      await currentMockKernel?.close();
+      currentMockKernel = null;
+    });
+
+    function setKernelConfig(url: string, token: string): void {
+      kernelHost.setEval(`get(g:, 'europa_use_subprocess', v:true)`, false);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_url', "http://localhost:8888")`,
+        url,
+      );
+      kernelHost.setEval(`get(g:, 'europa_jupyter_token', "")`, token);
+      kernelHost.setEval(
+        `get(g:, 'europa_jupyter_ws_subprotocol', "default")`,
+        "default",
+      );
+    }
+
+    it("(a) returns {info: null, wsState: 'NONE'} when no kernel is attached", async () => {
+      const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+
+      const report = await dispatcher.kernelStatus(KERNEL_BUFNR);
+
+      assertEquals(
+        report.info,
+        null,
+        "info must be null when no kernel attached",
+      );
+      assertEquals(
+        report.wsState,
+        "NONE",
+        "wsState must be NONE when no kernel attached",
+      );
+      assertEquals(
+        report.reconnect,
+        undefined,
+        "reconnect must be absent when no kernel",
+      );
+      assertEquals(
+        report.uptimeSeconds,
+        undefined,
+        "uptimeSeconds must be absent when no kernel",
+      );
+      assertEquals(
+        report.serverRefcount,
+        undefined,
+        "serverRefcount must be absent when no kernel",
+      );
+    });
+
+    it(
+      "(b) returns populated report with wsState='OPEN' when kernel is connected",
+      { sanitizeResources: false, sanitizeOps: false },
+      async () => {
+        currentMockKernel = makeMockKernel();
+        setKernelConfig(currentMockKernel.url, currentMockKernel.token);
+
+        const dispatcher = buildDispatcher(kernelHost);
+        await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+        await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+
+        const report = await dispatcher.kernelStatus(KERNEL_BUFNR);
+
+        assertNotEquals(
+          report.info,
+          null,
+          "info must be populated after successful connection",
+        );
+        assertEquals(
+          report.wsState,
+          "OPEN",
+          "wsState must be OPEN after successful connection",
+        );
+        assertEquals(
+          report.reconnect,
+          undefined,
+          "reconnect must be absent when not reconnecting",
+        );
+        assertEquals(
+          typeof report.serverRefcount,
+          "number",
+          "serverRefcount must be present after connection",
+        );
+      },
+    );
+
+    it(
+      "(c) returns {info: null, wsState: 'NONE'} after kernel is shut down",
+      { sanitizeResources: false, sanitizeOps: false },
+      async () => {
+        currentMockKernel = makeMockKernel();
+        setKernelConfig(currentMockKernel.url, currentMockKernel.token);
+
+        const dispatcher = buildDispatcher(kernelHost);
+        await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+        await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+        await dispatcher.shutdownKernel(KERNEL_BUFNR);
+
+        const report = await dispatcher.kernelStatus(KERNEL_BUFNR);
+
+        assertEquals(report.info, null, "info must be null after shutdown");
+        assertEquals(
+          report.wsState,
+          "NONE",
+          "wsState must be NONE after shutdown",
+        );
+      },
+    );
+
+    it("(d) does not throw when no session is open for the buffer", async () => {
+      const dispatcher = buildDispatcher(kernelHost);
+
+      const report = await dispatcher.kernelStatus(KERNEL_BUFNR);
+
+      assertEquals(report.info, null, "info must be null when no session");
+      assertEquals(
+        report.wsState,
+        "NONE",
+        "wsState must be NONE when no session",
+      );
+    });
+
+    it(
+      "(e) serverRefcount is present and matches active pool entry",
+      { sanitizeResources: false, sanitizeOps: false },
+      async () => {
+        currentMockKernel = makeMockKernel();
+        setKernelConfig(currentMockKernel.url, currentMockKernel.token);
+
+        const dispatcher = buildDispatcher(kernelHost);
+        await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
+        await dispatcher.startKernel(KERNEL_BUFNR, "python3");
+
+        const report = await dispatcher.kernelStatus(KERNEL_BUFNR);
+
+        assertEquals(
+          report.serverRefcount,
+          1,
+          "serverRefcount must be 1 with one active connection",
+        );
+      },
+    );
   },
 );
