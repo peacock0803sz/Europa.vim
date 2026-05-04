@@ -156,6 +156,13 @@ function! europa#start_kernel(name, ...) abort
         \ { -> denops#notify('europa', 'startKernel', [l:bufnr, l:name]) })
 endfunction
 
+" Shut down the kernel attached to the current buffer.
+function! europa#shutdown_kernel() abort
+  let l:bufnr = bufnr('%')
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'shutdownKernel', [l:bufnr]) })
+endfunction
+
 " Returns the cell id at the cursor.
 " In a scratch edit buffer, reads b:europa_cell_id directly.
 " Otherwise, makes a synchronous RPC to lineToCellId.
