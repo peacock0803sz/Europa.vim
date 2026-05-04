@@ -1,0 +1,135 @@
+==============================================================================
+KERNEL CONNECTION					*europa-kernel*
+
+Phase 3.2 adds the ability to start and interact with a Jupyter kernel
+directly from Vim / Neovim.  A Jupyter Server subprocess is managed
+automatically, or Europa can connect to an existing server.
+
+The three entry-point commands are |:EuropaStartKernel|,
+|:EuropaShutdownKernel|, and |:EuropaKernelStatus|.  They are documented in
+|europa-commands|; this chapter explains the underlying mechanics.
+
+KERNEL LIFECYCLE					*europa-kernel-lifecycle*
+
+`:EuropaStartKernel` follows this sequence:
+
+  1. Resolve the Jupyter executable (|europa-kernel-detection|).
+  2. Acquire a server handle from the server pool (|europa-kernel-server-share|).
+     - Subprocess mode: spawn `jupyter server` wrapped by the watchdog.
+     - Attach mode: reuse the URL in |g:europa_jupyter_url|.
+  3. POST `/api/sessions` to create a kernel session.
+  4. Open a WebSocket to `/api/kernels/{id}/channels` with subprotocol
+     negotiation (|europa-kernel-subprotocol|).
+  5. Exchange `kernel_info_request` / `kernel_info_reply` to confirm the
+     kernel is ready.  The reply populates the language and banner fields
+     visible in |:EuropaKernelStatus|.
+
+Once started, the kernel is stored in the buffer's `kernelRuntime` slot.
+Shutting down (`:EuropaShutdownKernel`, `:bwipeout`, or `VimLeavePre`)
+follows the reverse order: abort pending ops → WebSocket close(1000) →
+DELETE `/api/sessions` → release server pool handle.
+
+SERVER SHARING (Q1)					*europa-kernel-server-share*
+
+A single `jupyter server` process can host multiple kernels.  Europa
+exploits this by keeping one server per working directory (or per remote
+URL): the first buffer that calls `:EuropaStartKernel` spawns the server;
+subsequent buffers with the same key reuse it, incrementing a reference
+count.  The server is terminated only when the last reference is released.
+
+This means two `.ipynb` buffers in the same project share one server PID
+but each get their own `kernel_id`.  `:EuropaKernelStatus` shows both the
+shared PID and the per-buffer kernel ID.
+
+ABORT AND RECONNECT (Q2, Q3)				*europa-kernel-reconnect*
+
+Every pending asynchronous operation (WebSocket open, `kernel_info_reply`
+wait, reconnect backoff sleep) is associated with the buffer's
+`AbortController`.  A single `abort()` call — fired by `:EuropaShutdownKernel`
+or by `:bwipeout` — cancels all outstanding work within 100 ms (SC-010a).
+
+When the WebSocket closes unexpectedly, Europa enters a reconnection loop
+using exponential backoff.  Three Vim variables control the policy:
+
+  |g:europa_ws_reconnect_max_retries|
+  |g:europa_ws_reconnect_initial_interval_ms|
+  |g:europa_ws_reconnect_multiplier|
+
+See |europa-configuration| for the valid ranges and defaults.
+
+PYTHON ENVIRONMENT DETECTION (DESIGN.md §6.5)		*europa-kernel-detection*
+
+Europa tries the following sources in order to locate the `jupyter`
+executable:
+
+  1. |g:europa_jupyter_executable| (explicit override).
+  2. `.venv/bin/jupyter` in the current working directory.
+  3. `venv/bin/jupyter` in the current working directory.
+  4. `$VIRTUAL_ENV/bin/jupyter`.
+  5. `$CONDA_PREFIX/bin/jupyter`.
+  6. `jupyter` resolved from `$PATH`.
+
+Set `g:europa_python_env_detect = 'disabled'` to skip steps 2–5 and use
+only the explicit override or `$PATH`.  On Windows the `bin` sub-directory
+is replaced by `Scripts` and the executable name is `jupyter.exe`.
+
+SUBPROTOCOL NEGOTIATION (DESIGN.md §6.2)		*europa-kernel-subprotocol*
+
+Europa follows the JupyterLab three-stage fallback when connecting the
+WebSocket:
+
+  1. `v1.kernel.websocket.jupyter.org`  (binary Jupyter wire protocol v1)
+  2. `v1.token.websocket.jupyter.org`
+  3. `v1.token.websocket.jupyter.org.{TOKEN}`  (token in subprotocol)
+
+The token is also appended as `?token=...` in the WebSocket URL so that
+servers which do not parse the subprotocol still accept the connection.
+
+Use |g:europa_jupyter_ws_subprotocol| to force a specific protocol:
+  - `'auto'`    — try the three-stage fallback (default)
+  - `'v1'`      — force binary v1 subprotocol only
+  - `'default'` — force the text JSON single-frame format
+
+ORPHAN PREVENTION (Q4, SC-005a)				*europa-kernel-watchdog*
+
+When Europa spawns `jupyter server`, it wraps it in a watchdog Deno script.
+The watchdog polls the parent process PID every second.  If Vim is killed
+with SIGKILL (or otherwise exits abnormally without running `VimLeavePre`),
+the watchdog detects the parent's disappearance and sends SIGTERM to the
+Jupyter server, followed by SIGKILL after 5 seconds.  The entire cleanup
+completes within 15 seconds of the parent death (SC-005a).
+
+EXTERNAL SERVER (ATTACH) MODE				*europa-kernel-external*
+
+Set `g:europa_use_subprocess = v:false` to skip the subprocess spawn and
+connect to an existing Jupyter Server:
+
+  1. Set |g:europa_jupyter_url| to the server's base URL.
+  2. Set |g:europa_jupyter_token| (or export `$JUPYTER_TOKEN`).
+  3. Run `:EuropaStartKernel {name}`.
+
+In this mode `:EuropaShutdownKernel` sends only the session DELETE request;
+the external server process is left running.
+
+CONFORMANCE TESTING (Q5)				*europa-kernel-conformance*
+
+`tests/conformance/` contains end-to-end tests that run against a real
+`jupyter server` installation.  They are excluded from `deno task check`
+(the fast main CI gate) and executed instead via `deno task test:conformance`
+or the `.github/workflows/e2e.yml` matrix workflow.
+
+Prerequisites: `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`
+
+If `jupyter` is not in `$PATH`, the suite exits with a clear error message.
+
+PHASE 3.3+ SCOPE					*europa-kernel-future*
+
+The following features are planned for Phase 3.3 and later.  They are not
+available in the current release:
+
+  - `:EuropaRun` / `:EuropaRunAll` — cell execution against the kernel.
+  - `:EuropaInterruptKernel` / `:EuropaRestartKernel` — kernel management.
+  - iopub stream output rendered inline into the viewer buffer.
+  - ZMQ connection mode for low-latency local kernels (Phase 4).
+
+vim:tw=78:ts=8:noet:ft=help:norl:
