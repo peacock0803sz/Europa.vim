@@ -109,9 +109,9 @@ export class MockHost implements Denops {
 
   /** Trigger VimLeavePre — simulates Vim exiting; calls all registered callbacks. */
   async fireVimLeavePre(): Promise<void> {
-    for (const cb of this._vimLeavePreCallbacks) {
-      await cb();
-    }
+    // Real Vim runs every VimLeavePre autocmd regardless of individual failures.
+    // Mirror that: don't short-circuit when one callback rejects.
+    await Promise.allSettled(this._vimLeavePreCallbacks.map((cb) => cb()));
   }
 
   /** Register a VimLeavePre callback (used by session/events.ts mock integration). */
