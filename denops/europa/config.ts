@@ -64,6 +64,21 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
     { key: "lazy_padding", gvar: "lazy_padding", def: 10 },
     { key: "auto_save", gvar: "auto_save", def: false },
     { key: "use_subprocess", gvar: "use_subprocess", def: true },
+    {
+      key: "wsReconnectMaxRetries",
+      gvar: "ws_reconnect_max_retries",
+      def: 5,
+    },
+    {
+      key: "wsReconnectInitialIntervalMs",
+      gvar: "ws_reconnect_initial_interval_ms",
+      def: 1000,
+    },
+    {
+      key: "wsReconnectMultiplier",
+      gvar: "ws_reconnect_multiplier",
+      def: 2.0,
+    },
   ];
 
 /**
