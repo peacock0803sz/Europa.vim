@@ -20,12 +20,24 @@ import type { KernelInfo, KernelState } from "../../../schema/session.ts";
 import type { KernelMessage } from "../../../schema/message.ts";
 import { buildAuthHeader, buildSubprotocols, resolveToken } from "./auth.ts";
 import { EuropaKernelError } from "./errors.ts";
-import { makeRemoteServerKey, ServerPool } from "./server-pool.ts";
+import {
+  makeLocalServerKey,
+  makeRemoteServerKey,
+  ServerPool,
+} from "./server-pool.ts";
+import {
+  detectJupyterExecutable,
+  spawnJupyterServer,
+} from "./server-process.ts";
 import { decodeV1, encodeV1 } from "./wire/protocol-v1.ts";
 import { decodeDefault, encodeDefault } from "./wire/protocol-default.ts";
 
 type ServerClientOptions = {
   kernelInfoTimeoutMs?: number;
+  /** Test seam: override jupyter executable detection. */
+  detectExecutable?: typeof detectJupyterExecutable;
+  /** Test seam: override jupyter subprocess spawn. */
+  spawnServer?: typeof spawnJupyterServer;
 };
 
 type ConnectResult = {
@@ -47,6 +59,8 @@ export class ServerKernelClient implements KernelClient {
   private readonly config: EuropaConfig;
   private readonly pool: ServerPool;
   private readonly kernelInfoTimeoutMs: number;
+  private readonly detectExecutable: typeof detectJupyterExecutable;
+  private readonly spawnServer: typeof spawnJupyterServer;
 
   private _state: "idle" | "connected" | "disconnected" = "idle";
   private _serverKey: string | null = null;
@@ -54,6 +68,7 @@ export class ServerKernelClient implements KernelClient {
   private _socket: WebSocket | null = null;
   private _abort: AbortController | null = null;
   private _token: string | null = null;
+  private _baseUrl: string | null = null;
   private _messageHandlers = new Set<(msg: KernelMessage) => void>();
 
   constructor(
@@ -66,6 +81,8 @@ export class ServerKernelClient implements KernelClient {
     this.config = config;
     this.pool = pool;
     this.kernelInfoTimeoutMs = opts?.kernelInfoTimeoutMs ?? 30_000;
+    this.detectExecutable = opts?.detectExecutable ?? detectJupyterExecutable;
+    this.spawnServer = opts?.spawnServer ?? spawnJupyterServer;
   }
 
   /**
@@ -91,20 +108,37 @@ export class ServerKernelClient implements KernelClient {
       this.config.use_subprocess,
     );
 
-    const serverKey = makeRemoteServerKey(this.config.jupyter_url);
-    const baseUrl = this.config.jupyter_url.replace(/\/+$/, "");
+    let serverKey: string;
+    let baseUrl: string;
 
-    const url = new URL(baseUrl);
-    const port = url.port
-      ? parseInt(url.port, 10)
-      : (url.protocol === "https:" ? 443 : 80);
-
-    await this.pool.acquire(serverKey, () =>
-      Promise.resolve({
-        port,
-        token,
-        url: baseUrl,
-      }));
+    if (this.config.use_subprocess) {
+      const cwd = opts.cwd ?? Deno.cwd();
+      const executable = await this.detectExecutable(cwd, this.config);
+      serverKey = await makeLocalServerKey(executable);
+      const handle = await this.pool.acquire(
+        serverKey,
+        () =>
+          this.spawnServer(executable, {
+            token,
+            cwd,
+            signal: opts.signal,
+          }),
+      );
+      baseUrl = handle.url.replace(/\/+$/, "");
+    } else {
+      serverKey = makeRemoteServerKey(this.config.jupyter_url);
+      baseUrl = this.config.jupyter_url.replace(/\/+$/, "");
+      const url = new URL(baseUrl);
+      const port = url.port
+        ? parseInt(url.port, 10)
+        : (url.protocol === "https:" ? 443 : 80);
+      await this.pool.acquire(serverKey, () =>
+        Promise.resolve({
+          port,
+          token,
+          url: baseUrl,
+        }));
+    }
 
     let sessionData: { id: string; kernel: { id: string } };
     try {
@@ -145,9 +179,13 @@ export class ServerKernelClient implements KernelClient {
       : abort.signal;
 
     const subprotocols = buildSubprotocols(this.config, token);
+    // jupyter_server selects only `v1.kernel.websocket.jupyter.org` from
+    // subprotocols and does NOT parse token-suffixed subprotocols for auth.
+    // Browser/Deno WebSocket cannot set the Authorization header either, so
+    // the token must ride in the query string.
     const wsUrl = `${
       baseUrl.replace(/^http/, "ws")
-    }/api/kernels/${kernelId}/channels`;
+    }/api/kernels/${kernelId}/channels?token=${encodeURIComponent(token)}`;
 
     let wsResult: ConnectResult;
     try {
@@ -186,6 +224,7 @@ export class ServerKernelClient implements KernelClient {
     this._socket = socket;
     this._abort = abort;
     this._token = token;
+    this._baseUrl = baseUrl;
     this._state = "connected";
 
     socket.addEventListener("message", (e) => {
@@ -223,11 +262,13 @@ export class ServerKernelClient implements KernelClient {
     const socket = this._socket;
     const abort = this._abort;
     const token = this._token;
+    const baseUrl = this._baseUrl;
     this._serverKey = null;
     this._sessionId = null;
     this._socket = null;
     this._abort = null;
     this._token = null;
+    this._baseUrl = null;
 
     abort?.abort();
 
@@ -235,8 +276,7 @@ export class ServerKernelClient implements KernelClient {
       socket.close(1000, "shutdown");
     }
 
-    if (serverKey && sessionId) {
-      const baseUrl = this.config.jupyter_url.replace(/\/+$/, "");
+    if (serverKey && sessionId && baseUrl) {
       try {
         await fetch(`${baseUrl}/api/sessions/${sessionId}`, {
           method: "DELETE",

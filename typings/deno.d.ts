@@ -75,6 +75,22 @@ declare namespace Deno {
     }>;
   }
 
+  // Network
+  interface NetAddr {
+    transport: "tcp" | "udp";
+    hostname: string;
+    port: number;
+  }
+  interface Listener {
+    readonly addr: NetAddr;
+    close(): void;
+  }
+  function listen(options: {
+    port: number;
+    hostname?: string;
+    transport?: "tcp";
+  }): Listener;
+
   class Command {
     constructor(
       cmd: string,

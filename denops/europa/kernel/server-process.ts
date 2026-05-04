@@ -39,6 +39,68 @@ const PATH_FIND_CMD = isWindows ? "where" : "which";
 const STARTUP_PATTERN =
   /http(?:s?):\/\/[^\s]+:(\d+)(?:\/[^\s]*)?(?:\?token=([^\s]+))?/;
 
+async function waitForHttpReady(
+  url: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(url, { method: "HEAD", redirect: "manual" });
+      try {
+        await r.body?.cancel();
+      } catch { /* ignore */ }
+      return true;
+    } catch {
+      await new Promise((res) => setTimeout(res, 50));
+    }
+  }
+  return false;
+}
+
+function pickFreePort(): number {
+  const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  return port;
+}
+
+async function findStartupLine(
+  stream: ReadableStream<Uint8Array>,
+  abortSignal: AbortSignal,
+): Promise<{ port: number; url: string } | null> {
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  const onAbort = () => {
+    reader.cancel().catch(() => {});
+  };
+  abortSignal.addEventListener("abort", onAbort, { once: true });
+  try {
+    while (true) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch {
+        return null;
+      }
+      if (chunk.done) return null;
+      buf += dec.decode(chunk.value);
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const m = line.match(STARTUP_PATTERN);
+        if (m) {
+          const port = parseInt(m[1], 10);
+          return { port, url: `http://127.0.0.1:${port}` };
+        }
+      }
+    }
+  } finally {
+    abortSignal.removeEventListener("abort", onAbort);
+  }
+}
+
 /**
  * Resolve the Jupyter executable path using the 6-priority detection chain.
  *
@@ -150,7 +212,10 @@ export async function spawnJupyterServer(
   executable: string,
   opts: SpawnOptions,
 ): Promise<ServerSpawnResult> {
-  const port = opts.port ?? 0;
+  // jupyter_server logs --port=0 literally as ":0" instead of the actual
+  // OS-assigned port, which would defeat our STARTUP_PATTERN parser. So we
+  // pre-bind to grab a free port, then close and pass it explicitly.
+  const port = opts.port ?? pickFreePort();
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const cwd = opts.cwd ?? Deno.cwd();
 
@@ -164,8 +229,13 @@ export async function spawnJupyterServer(
 
   // Spawn via watchdog for orphan prevention (Q4)
   const watchdogPath = new URL("./watchdog.ts", import.meta.url).pathname;
+  // Anchor config discovery to denops/europa/deno.json so the watchdog can
+  // resolve its JSR imports regardless of the user's CWD.
+  const watchdogConfig = new URL("../deno.json", import.meta.url).pathname;
   const watchdogArgs = [
     "run",
+    "--config",
+    watchdogConfig,
     "--allow-run",
     "--allow-read",
     "--allow-env",
@@ -187,40 +257,39 @@ export async function spawnJupyterServer(
     stdin: "null",
   }).spawn();
 
-  // Tail stdout for the startup log
-  const reader = child.stdout.getReader();
-  const dec = new TextDecoder();
-  let resolvedPort = 0;
-  let resolvedUrl = "";
+  // Tail BOTH stdout and stderr for the startup log. jupyter_server logs
+  // its "Server is listening on http://..." banner to stderr by default,
+  // so reading only stdout would always time out.
+  const ac = new AbortController();
+  const timeoutId = setTimeout(() => ac.abort(), timeoutMs);
 
-  const timeoutId = setTimeout(() => {
-    reader.cancel();
-  }, timeoutMs);
-
-  let logBuffer = "";
-  outer:
-  while (true) {
-    let chunk: ReadableStreamReadResult<Uint8Array>;
-    try {
-      chunk = await reader.read();
-    } catch {
-      break;
-    }
-    if (chunk.done) break;
-    logBuffer += dec.decode(chunk.value);
-    const lines = logBuffer.split("\n");
-    logBuffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const m = line.match(STARTUP_PATTERN);
-      if (m) {
-        resolvedPort = parseInt(m[1], 10);
-        resolvedUrl = `http://127.0.0.1:${resolvedPort}`;
-        break outer;
-      }
-    }
-  }
+  const result = await new Promise<{ port: number; url: string } | null>(
+    (resolve) => {
+      let pending = 2;
+      let settled = false;
+      const settle = (val: { port: number; url: string } | null) => {
+        if (settled) return;
+        if (val) {
+          settled = true;
+          ac.abort();
+          resolve(val);
+          return;
+        }
+        pending--;
+        if (pending === 0 && !settled) {
+          settled = true;
+          resolve(null);
+        }
+      };
+      findStartupLine(child.stdout, ac.signal).then(settle);
+      findStartupLine(child.stderr, ac.signal).then(settle);
+    },
+  );
 
   clearTimeout(timeoutId);
+
+  const resolvedPort = result?.port ?? 0;
+  const resolvedUrl = result?.url ?? "";
 
   if (resolvedPort === 0) {
     // Kill the child since we couldn't parse the startup log
@@ -233,6 +302,21 @@ export async function spawnJupyterServer(
       "SPAWN_TIMEOUT",
       `Jupyter server did not start within ${timeoutMs}ms. ` +
         "Ensure jupyter-server >= 2.15 is installed.",
+    );
+  }
+
+  // jupyter logs the URL banner BEFORE the HTTP listener is actually
+  // accepting connections (banner is emitted from _announce_to_logs, the
+  // listener starts inside the subsequent IOLoop.start()). Wait briefly
+  // for the port to accept HTTP so the caller's first fetch doesn't race.
+  const ready = await waitForHttpReady(resolvedUrl, 5000);
+  if (!ready) {
+    try {
+      child.kill("SIGTERM");
+    } catch { /* ignore */ }
+    throw new EuropaKernelError(
+      "SPAWN_TIMEOUT",
+      `Jupyter server bound but did not accept HTTP within 5s at ${resolvedUrl}`,
     );
   }
 
