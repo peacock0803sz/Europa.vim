@@ -1193,7 +1193,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
 
       const client = createKernelClient(denops, config, serverPool);
       try {
-        const runtime = await client.start({ kernelName: kn, cwd: Deno.cwd() });
+        const cwd = await denops.call("expand", `#${bn}:p:h`) as string;
+        const runtime = await client.start({ kernelName: kn, cwd });
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
         const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
