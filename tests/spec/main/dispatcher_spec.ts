@@ -1140,6 +1140,7 @@ describe(
       setKernelConfig("http://127.0.0.1:1", "sometoken");
 
       const dispatcher = buildDispatcher(kernelHost);
+      await dispatcher.open(KERNEL_BUFNR, FIXTURE_PATH);
       kernelHost.calls = [];
 
       // Must not throw — errors are swallowed and routed to :messages.

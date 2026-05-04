@@ -1186,6 +1186,13 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
       }
 
+      if (!sessionStore.get(bn)) {
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `startKernel: bufnr ${bn} has no open notebook session`,
+        );
+      }
+
       const config = await loadConfig(denops);
       const kn = (kernelName != null && String(kernelName).length > 0)
         ? String(kernelName)

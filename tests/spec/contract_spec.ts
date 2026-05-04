@@ -22,6 +22,11 @@ import { parseNotebook } from "../../denops/europa/notebook/parse.ts";
 import { loadConfig } from "../../denops/europa/config.ts";
 import { detectCapabilities } from "../../denops/europa/capabilities.ts";
 
+const FIXTURE_PATH = new URL(
+  "../golden/ipynb/edit-target.ipynb",
+  import.meta.url,
+).pathname;
+
 const MINIMAL_NB = JSON.stringify({
   nbformat: 4,
   nbformat_minor: 5,
@@ -241,6 +246,7 @@ describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase
     const { buildDispatcher } = await import("../../denops/europa/main.ts");
     const denops = mockVim();
     const d = buildDispatcher(denops);
+    await d.open(1, FIXTURE_PATH);
     let threwInvalidArgs = false;
     try {
       await d.startKernel(1, "python3");
