@@ -18,6 +18,7 @@ import type {
 import type { EuropaConfig } from "../../../schema/config.ts";
 import type { KernelInfo, KernelState } from "../../../schema/session.ts";
 import type { KernelMessage } from "../../../schema/message.ts";
+import { delay } from "@std/async/delay";
 import { buildAuthHeader, buildSubprotocols, resolveToken } from "./auth.ts";
 import { EuropaKernelError } from "./errors.ts";
 import {
@@ -70,6 +71,9 @@ export class ServerKernelClient implements KernelClient {
   private _token: string | null = null;
   private _baseUrl: string | null = null;
   private _messageHandlers = new Set<(msg: KernelMessage) => void>();
+  private _wsUrl: string | null = null;
+  private _subprotocols: string[] = [];
+  private _runtime: KernelRuntime | null = null;
 
   constructor(
     denops: Denops,
@@ -225,23 +229,23 @@ export class ServerKernelClient implements KernelClient {
     this._abort = abort;
     this._token = token;
     this._baseUrl = baseUrl;
+    this._wsUrl = wsUrl;
+    this._subprotocols = subprotocols;
     this._state = "connected";
 
-    socket.addEventListener("message", (e) => {
-      let msg: KernelMessage;
-      try {
-        if (e.data instanceof ArrayBuffer) {
-          msg = decodeV1(new Uint8Array(e.data));
-        } else {
-          msg = decodeDefault(e.data as string);
-        }
-      } catch {
-        return;
-      }
-      for (const handler of this._messageHandlers) handler(msg);
-    });
+    this._attachMessageListener(socket);
 
-    return { client: this, serverKey, info, socket, abort };
+    const runtime: KernelRuntime = {
+      client: this,
+      serverKey,
+      info,
+      socket,
+      abort,
+    };
+    this._runtime = runtime;
+    this._attachReconnectLoop(socket);
+
+    return runtime;
   }
 
   /**
@@ -269,6 +273,9 @@ export class ServerKernelClient implements KernelClient {
     this._abort = null;
     this._token = null;
     this._baseUrl = null;
+    this._wsUrl = null;
+    this._subprotocols = [];
+    this._runtime = null;
 
     abort?.abort();
 
@@ -303,9 +310,91 @@ export class ServerKernelClient implements KernelClient {
     };
   }
 
+  private _attachMessageListener(socket: WebSocket): void {
+    socket.addEventListener("message", (e) => {
+      let msg: KernelMessage;
+      try {
+        if (e.data instanceof ArrayBuffer) {
+          msg = decodeV1(new Uint8Array(e.data));
+        } else {
+          msg = decodeDefault(e.data as string);
+        }
+      } catch {
+        return;
+      }
+      for (const handler of this._messageHandlers) handler(msg);
+    });
+  }
+
+  private _attachReconnectLoop(socket: WebSocket): void {
+    socket.addEventListener("close", (ev) => {
+      if (ev.code === 1000 || !this._runtime) return;
+      this._runReconnectLoop();
+    }, { once: true });
+  }
+
+  /**
+   * Exponential-backoff reconnection loop driven by config options.
+   *
+   * Mutates the retained KernelRuntime reference so kernelStatus() can
+   * observe reconnect progress without a SessionStore update.
+   *
+   * @spec-id europa.kernel.server-client.reconnection
+   */
+  private async _runReconnectLoop(): Promise<void> {
+    const runtime = this._runtime;
+    if (!runtime) return;
+
+    const max = this.config.wsReconnectMaxRetries;
+    const signal = runtime.abort.signal;
+
+    if (max === 0) {
+      runtime.info.state = "disconnected";
+      return;
+    }
+
+    runtime.info.state = "reconnecting";
+
+    for (let attempt = 1; attempt <= max; attempt++) {
+      if (signal.aborted) break;
+
+      runtime.reconnect = { retry: attempt, max };
+
+      const waitMs = this.config.wsReconnectInitialIntervalMs *
+        Math.pow(this.config.wsReconnectMultiplier, attempt - 1);
+
+      try {
+        await delay(waitMs, { signal });
+      } catch {
+        break;
+      }
+
+      if (signal.aborted) break;
+
+      try {
+        const result = await this._connectWS(
+          this._wsUrl!,
+          this._subprotocols,
+          signal,
+        );
+        runtime.socket = result.socket;
+        runtime.info.state = "idle";
+        delete runtime.reconnect;
+        this._socket = result.socket;
+        this._attachMessageListener(result.socket);
+        this._attachReconnectLoop(result.socket);
+        return;
+      } catch {
+        // continue to next attempt
+      }
+    }
+
+    runtime.info.state = "disconnected";
+    delete runtime.reconnect;
+  }
+
   /**
    * @spec-id europa.kernel.server-client.abort-race
-   * @spec-id europa.kernel.server-client.reconnection
    */
   private _connectWS(
     wsUrl: string,
