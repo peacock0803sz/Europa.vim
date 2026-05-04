@@ -1,3 +1,5 @@
+name: e2e
+
 on:
   pull_request:
     paths:
@@ -30,6 +32,7 @@ permissions:
 
 jobs:
   test:
+    name: e2e
     strategy:
       fail-fast: false
       matrix:
