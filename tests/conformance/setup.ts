@@ -43,29 +43,24 @@ export async function ensureJupyter(): Promise<string> {
 
 /**
  * Return a random token string suitable for a test jupyter server.
- * Uses crypto.randomUUID() for uniqueness without @std/uuid import.
  */
 function randomToken(): string {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
-/**
- * Pick a free TCP port by letting the OS assign one and immediately releasing
- * the listener.
- */
-function pickFreePort(): number {
-  const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
-  const port = (listener.addr as Deno.NetAddr).port;
-  listener.close();
-  return port;
-}
-
-const STARTUP_RE = /http(?:s?):\/\/[^\s]+:(\d+)/;
+// Matches the port in lines like:
+//   http://127.0.0.1:PORT/?token=...
+//   http://localhost:PORT/?token=...
+const STARTUP_RE = /https?:\/\/\S+?:(\d+)\//;
 
 /**
  * Spawn a real `jupyter server` on a free port with the given token. Waits
- * until the server emits its startup URL line on stderr, then returns the
- * connection details. Times out after `timeoutMs` milliseconds.
+ * until the server emits its startup URL line on stderr, then polls the HTTP
+ * endpoint until it accepts connections. Times out after `timeoutMs` ms.
+ *
+ * Uses `--port=0` so the OS assigns a free port without a TOCTOU race.
+ * Uses a single AbortController for the read-loop deadline so no timer
+ * objects are leaked between iterations (Deno sanitizer safe).
  *
  * @throws Error if the server does not start within `timeoutMs`
  */
@@ -73,13 +68,12 @@ export async function spawnConformanceServer(
   opts: { timeoutMs?: number } = {},
 ): Promise<ConformanceServer> {
   const token = randomToken();
-  const port = pickFreePort();
   const timeoutMs = opts.timeoutMs ?? 30_000;
 
   const proc = new Deno.Command("jupyter", {
     args: [
       "server",
-      `--port=${port}`,
+      "--port=0", // let the OS assign a free port — no TOCTOU race
       `--ServerApp.token=${token}`,
       "--no-browser",
       "--ServerApp.open_browser=False",
@@ -88,40 +82,64 @@ export async function spawnConformanceServer(
     stderr: "piped",
   }).spawn();
 
-  // Wait for startup log line on stderr.
+  // Read stderr until the startup URL line appears, using a single timeout.
   const reader = proc.stderr.getReader();
   const dec = new TextDecoder();
   let buf = "";
-  const deadline = Date.now() + timeoutMs;
+  let port = 0;
   let started = false;
 
-  while (Date.now() < deadline) {
-    const { done, value } = await Promise.race([
-      reader.read(),
-      new Promise<ReadableStreamReadResult<Uint8Array>>((_, rej) =>
-        setTimeout(() => rej(new Error("timeout")), deadline - Date.now())
-      ).catch(() => ({ done: true, value: undefined })),
-    ]);
-    if (done) break;
-    buf += dec.decode(value);
-    if (STARTUP_RE.test(buf)) {
-      started = true;
-      break;
+  const ac = new AbortController();
+  const tid = setTimeout(() => ac.abort(), timeoutMs);
+
+  try {
+    while (!ac.signal.aborted) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch {
+        break;
+      }
+      if (chunk.done) break;
+      buf += dec.decode(chunk.value);
+      const m = STARTUP_RE.exec(buf);
+      if (m) {
+        port = parseInt(m[1], 10);
+        started = true;
+        break;
+      }
     }
+  } finally {
+    clearTimeout(tid);
+    reader.releaseLock();
   }
 
-  reader.releaseLock();
-
   if (!started) {
-    proc.kill("SIGTERM");
+    try {
+      proc.kill("SIGTERM");
+    } catch { /* already dead */ }
     await proc.status;
     throw new Error(`jupyter server did not start within ${timeoutMs}ms`);
   }
 
   const url = `http://127.0.0.1:${port}`;
 
-  // Drain remaining stderr in background so the process doesn't block.
+  // Drain remaining stderr so the process does not block on a full pipe.
   proc.stderr.cancel().catch(() => {});
+
+  // jupyter logs the URL slightly before binding the TCP socket.
+  // Poll until the server accepts HTTP connections to avoid "Connection refused".
+  const readyDeadline = Date.now() + 5_000;
+  while (Date.now() < readyDeadline) {
+    try {
+      const resp = await fetch(`${url}/api`, {
+        signal: AbortSignal.timeout(500),
+      });
+      await resp.body?.cancel();
+      if (resp.status < 500) break; // 200 OK or 403 (auth required) = server is up
+    } catch { /* not ready yet, retry */ }
+    await new Promise<void>((r) => setTimeout(r, 100));
+  }
 
   return {
     url,
