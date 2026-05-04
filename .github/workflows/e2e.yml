@@ -60,6 +60,6 @@ jobs:
           key: ${{ runner.os }}-deno-${{ hashFiles('deno.lock') }}
 
       - name: Run conformance tests
-        run: deno task test:conformance --shuffle --retry 2
+        run: deno task test:conformance --shuffle
         env:
           NO_COLOR: '1'
