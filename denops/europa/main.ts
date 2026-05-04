@@ -1181,7 +1181,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         if (typeof kernelName !== "string" && typeof kernelName !== "number") {
           throw new EuropaKernelError(
             "INVALID_ARGS",
-            `startKernel: kernelName must be a string`,
+            `startKernel: kernelName must be a string or number`,
           );
         }
       }
