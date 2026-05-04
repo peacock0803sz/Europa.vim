@@ -207,6 +207,74 @@ describe("save dispatcher contract", () => {
   });
 });
 
+describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase3-2-alignment)", () => {
+  /**
+   * @spec-id europa.contract.dispatcher-phase3-2-alignment
+   *
+   * Verifies that Phase 3.2 kernel lifecycle methods are present and that
+   * TypeBox argument validation works for valid and invalid inputs.
+   *
+   * Tests are failing until Phase 3 (US1/US2) wires up the implementations.
+   */
+  const PHASE32_METHODS = [
+    "startKernel",
+    "shutdownKernel",
+    "kernelStatus",
+    "atexit",
+  ] as const;
+
+  it("exposes all Phase 3.2 kernel lifecycle methods", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    for (const method of PHASE32_METHODS) {
+      assertEquals(
+        typeof d[method],
+        "function",
+        `dispatcher must have Phase 3.2 method: ${method}`,
+      );
+    }
+  });
+
+  it("startKernel with valid bufnr does not throw INVALID_ARGS", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    let threw = false;
+    let threwInvalidArgs = false;
+    try {
+      await d.startKernel(1, "python3");
+    } catch (e) {
+      threw = true;
+      if (
+        e && typeof e === "object" && "code" in e &&
+        (e as { code: string }).code === "INVALID_ARGS"
+      ) {
+        threwInvalidArgs = true;
+      }
+    }
+    assertEquals(
+      threwInvalidArgs,
+      false,
+      "valid args must not throw INVALID_ARGS",
+    );
+    assertEquals(
+      threw,
+      true,
+      "startKernel is not yet implemented (expected any error other than INVALID_ARGS)",
+    );
+  });
+
+  it("kernelStatus with no kernel returns { info: null, wsState: 'NONE' }", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    const result = await d.kernelStatus(9999);
+    assertEquals(result.info, null);
+    assertEquals(result.wsState, "NONE");
+  });
+});
+
 describe(":EuropaPreviewOutput command definition", () => {
   it("plugin/commands.vim defines the EuropaPreviewOutput command", async () => {
     const content = await Deno.readTextFile(

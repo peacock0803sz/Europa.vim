@@ -42,6 +42,7 @@
 
 import type { Denops } from "@denops/std";
 import type { EuropaDispatcher } from "../../contracts/dispatcher.ts";
+import type { KernelStatusReport } from "../../schema/session.ts";
 import { decodeBase64 } from "@std/encoding/base64";
 import { defineHighlights } from "./view/highlight.ts";
 import { loadConfig } from "./config.ts";
@@ -121,6 +122,7 @@ async function echomError(denops: Denops, reason: string): Promise<void> {
  * @spec-id europa.dispatcher.preview-output
  * @spec-id europa.commands.preview-output
  * @spec-id europa.contract.dispatcher-phase3-1-alignment
+ * @spec-id europa.contract.dispatcher-phase3-2-alignment
  */
 export function buildDispatcher(denops: Denops): EuropaDispatcher {
   const sessionStore = new SessionStore();
@@ -1155,15 +1157,26 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       return Promise.resolve(lineToCellId(plan.cellRanges, ln));
     },
 
-    // Phase 3 remaining / Phase 4 — not yet implemented
+    // Phase 3.2: kernel lifecycle stubs (wired, not yet implemented)
+    startKernel(_bufnr: unknown, _kernelName?: unknown): Promise<void> {
+      return Promise.reject(new UnimplementedError("startKernel"));
+    },
+    shutdownKernel(_bufnr: unknown): Promise<void> {
+      return Promise.resolve();
+    },
+    kernelStatus(_bufnr: unknown): Promise<KernelStatusReport> {
+      return Promise.resolve({ info: null, wsState: "NONE" });
+    },
+    atexit(): Promise<void> {
+      return Promise.resolve();
+    },
+
+    // Phase 3.3+ remaining / Phase 4 — not yet implemented
     runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("runCell"));
     },
     runAll(_bufnr: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("runAll"));
-    },
-    startKernel(_bufnr: unknown, _name: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("startKernel"));
     },
     restartKernel(_bufnr: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("restartKernel"));

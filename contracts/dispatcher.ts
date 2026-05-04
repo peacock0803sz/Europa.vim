@@ -10,10 +10,14 @@
  *   saveCellEdit / closeCellEdit / lineToCellId.
  * Phase 3.1 declares (stubbed with UnimplementedError until later phases):
  *   moveCell / splitCell / joinCell / editCell / changeCellType.
+ * Phase 3.2 implements: startKernel / shutdownKernel / kernelStatus / atexit.
  * Phase 3+ remaining methods are declared here so the type is stable across phases.
  *
  * @module contracts/dispatcher
+ * @spec-id europa.contract.dispatcher-phase3-2-alignment
  */
+
+import type { KernelStatusReport } from "../schema/session.ts";
 
 /**
  * RPC interface registered as `denops.dispatcher` in `main.ts`.
@@ -75,10 +79,44 @@ export type EuropaDispatcher = {
    */
   lineToCellId(bufnr: unknown, line: unknown): Promise<string | null>;
 
-  // Phase 3 remaining / Phase 4 (throw UnimplementedError)
+  // Phase 3.2: kernel lifecycle methods
+  /**
+   * Starts a kernel for the given viewer buffer.
+   *
+   * @param bufnr - viewer buffer number
+   * @param kernelName - kernel spec name (default = g:europa_default_kernel)
+   * @throws EuropaKernelError on handshake failure
+   * @spec-id europa.dispatcher.start-kernel
+   */
+  startKernel(bufnr: unknown, kernelName?: unknown): Promise<void>;
+
+  /**
+   * Shuts down the kernel attached to the given viewer buffer.
+   * Idempotent: no-op if no kernel is attached.
+   *
+   * @spec-id europa.dispatcher.shutdown-kernel
+   */
+  shutdownKernel(bufnr: unknown): Promise<void>;
+
+  /**
+   * Returns the current kernel status for the given viewer buffer.
+   * Returns { info: null, wsState: 'NONE' } if no kernel is attached.
+   *
+   * @spec-id europa.dispatcher.kernel-status
+   */
+  kernelStatus(bufnr: unknown): Promise<KernelStatusReport>;
+
+  /**
+   * Shuts down all kernel connections and kills remaining server processes.
+   * Called from VimLeavePre autocmd.
+   *
+   * @spec-id europa.dispatcher.atexit
+   */
+  atexit(): Promise<void>;
+
+  // Phase 3.3+ remaining (throw UnimplementedError)
   runCell(bufnr: unknown, cellId: unknown): Promise<void>;
   runAll(bufnr: unknown): Promise<void>;
-  startKernel(bufnr: unknown, name: unknown): Promise<void>;
   restartKernel(bufnr: unknown): Promise<void>;
   interruptKernel(bufnr: unknown): Promise<void>;
 
