@@ -304,7 +304,9 @@ export function makeMockKernel(
         }
 
         if (opts.closeAfterOpen) {
-          socket.close(1006, "unexpected close");
+          // 1006 is reserved by RFC 6455 and may not be sent in a Close frame;
+          // 1011 (Server Error) lets WebSocket impls send it without throwing.
+          socket.close(1011, "unexpected close");
           return;
         }
 
