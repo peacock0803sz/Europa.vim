@@ -495,6 +495,62 @@ describe("ServerKernelClient.start — external attach (US5 SC-014)", () => {
       await mk.close();
     }
   });
+
+  it("pool handle has no kill function (no subprocess spawned)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+        use_subprocess: false,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+      // Invariant: external attach handle has no kill (no subprocess was spawned)
+      const handles = pool.snapshot();
+      assertEquals(handles.length, 1);
+      assertEquals(handles[0].kill, undefined);
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("TOKEN_MISSING when no token is set for external attach", async () => {
+    const pool = new ServerPool();
+    const config = {
+      ...BASE_CONFIG,
+      jupyter_token: "",
+      use_subprocess: false,
+    };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool);
+    const err = await assertRejects(
+      () => client.start({ kernelName: "python3" }),
+      EuropaKernelError,
+    );
+    assertEquals((err as EuropaKernelError).code, "TOKEN_MISSING");
+  });
+
+  it("CONNECTION_REFUSED for unreachable external server", async () => {
+    const pool = new ServerPool();
+    const config = {
+      ...BASE_CONFIG,
+      jupyter_url: "http://127.0.0.1:1",
+      jupyter_token: "sometoken",
+      use_subprocess: false,
+    };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool);
+    const err = await assertRejects(
+      () => client.start({ kernelName: "python3" }),
+      EuropaKernelError,
+    );
+    assertEquals((err as EuropaKernelError).code, "CONNECTION_REFUSED");
+  });
 });
 
 describe("ServerKernelClient.start — subprocess spawn mode (US1 AC#1)", () => {
