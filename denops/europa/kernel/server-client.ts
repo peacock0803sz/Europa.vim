@@ -542,6 +542,7 @@ export class ServerKernelClient implements KernelClient {
 
         ws.addEventListener("message", onMessage);
 
+        const clientSession = crypto.randomUUID();
         const sendInfoRequest = () => {
           if (ws.readyState !== WebSocket.OPEN) return;
           const req: KernelMessage = {
@@ -549,7 +550,7 @@ export class ServerKernelClient implements KernelClient {
               msg_id: crypto.randomUUID(),
               msg_type: "kernel_info_request",
               username: "europa",
-              session: crypto.randomUUID(),
+              session: clientSession,
               date: new Date().toISOString(),
               version: "5.3",
             },
