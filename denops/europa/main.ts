@@ -1381,6 +1381,17 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
+      if (kr.cellStates.get(cellId) === "queued") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Cell is already queued.",
+            )
+          }`,
+        );
+        return;
+      }
+
       // Snapshot source at call time (Q-edit / FR-002)
       const code = codeCell.source;
 
