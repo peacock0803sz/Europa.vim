@@ -15,7 +15,11 @@
  * @spec-id europa.dispatcher.shutdown-kernel
  * @spec-id europa.dispatcher.kernel-status
  * @spec-id europa.dispatcher.run-cell
- * @spec-id europa.dispatcher.run-cell-busy-reject
+ * @spec-id europa.dispatcher.run-cell-queued-on-busy
+ * @spec-id europa.dispatcher.run-all
+ * @spec-id europa.dispatcher.cancel-cell
+ * @spec-id europa.dispatcher.interrupt-kernel
+ * @spec-id europa.kernel.interrupt.idle-no-op
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
@@ -1459,6 +1463,7 @@ describe(
 const CODE_CELL_1 = "018f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3b";
 const MARKDOWN_CELL = "028f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3c";
 const CODE_CELL_3 = "038f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3d";
+const CODE_CELL_5 = "058f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3f";
 
 describe(
   "runCell dispatcher",
@@ -1766,6 +1771,387 @@ describe(
           busyMsgs.length > 0,
           true,
           "must show 'Kernel is busy' message for cell 3",
+        );
+      },
+    );
+
+    it(
+      "(k) queued cell + idle kernel → runCell redispatches without double-enqueue",
+      async () => {
+        currentMk = makeMockKernel();
+        setRunConfig(currentMk.url, currentMk.token);
+        const dispatcher = buildDispatcher(runHost);
+        await startKernelForRun(dispatcher);
+
+        // cell1 executes (busy), cell3 queued via FR-008
+        await Promise.allSettled([
+          dispatcher.runCell(RUN_BUFNR, CODE_CELL_1),
+          dispatcher.runCell(RUN_BUFNR, CODE_CELL_3),
+        ]);
+        assertEquals(
+          currentMk.executeRequestCalls.length,
+          1,
+          "only cell1 executed so far — cell3 is queued",
+        );
+
+        // kernel is now idle; cell3 is still in pendingRequests as 'queued'
+        // runCell must redispatch the existing entry, not create a second one
+        await dispatcher.runCell(RUN_BUFNR, CODE_CELL_3);
+
+        assertEquals(
+          currentMk.executeRequestCalls.length,
+          2,
+          "cell3 executes exactly once — no double-enqueue from redispatch",
+        );
+      },
+    );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// runAll + cancelCell dispatcher (T028)
+// ---------------------------------------------------------------------------
+
+describe(
+  "runAll + cancelCell dispatcher",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    const RUN2_BUFNR = 89;
+    let run2Host: MockHost;
+    let currentMk2: MockKernelHandle | null = null;
+
+    beforeEach(() => {
+      run2Host = mockVim();
+      currentMk2 = null;
+    });
+
+    afterEach(async () => {
+      await currentMk2?.close();
+      currentMk2 = null;
+    });
+
+    function setRun2Config(url: string, token: string): void {
+      run2Host.setEval(`get(g:, 'europa_use_subprocess', v:true)`, false);
+      run2Host.setEval(
+        `get(g:, 'europa_jupyter_url', "http://localhost:8888")`,
+        url,
+      );
+      run2Host.setEval(`get(g:, 'europa_jupyter_token', "")`, token);
+      run2Host.setEval(
+        `get(g:, 'europa_jupyter_ws_subprotocol', "default")`,
+        "default",
+      );
+    }
+
+    async function startKernelForRun2(
+      dispatcher: ReturnType<typeof buildDispatcher>,
+    ): Promise<void> {
+      await dispatcher.open(RUN2_BUFNR, FIXTURE_PATH);
+      await dispatcher.startKernel(RUN2_BUFNR, "python3");
+      run2Host.calls = [];
+    }
+
+    it(
+      "(a) happy path: 3 code cells execute, 2 non-code skipped → completion message",
+      async () => {
+        currentMk2 = makeMockKernel();
+        setRun2Config(currentMk2.url, currentMk2.token);
+        const dispatcher = buildDispatcher(run2Host);
+        await startKernelForRun2(dispatcher);
+
+        await dispatcher.runAll(RUN2_BUFNR);
+
+        assertEquals(
+          currentMk2.executeRequestCalls.length,
+          3,
+          "exactly 3 execute_requests for 3 code cells",
+        );
+        const completionMsgs = run2Host.cmdsMatching("Ran 3 code cells");
+        assertEquals(
+          completionMsgs.length > 0,
+          true,
+          "must show 'Ran 3 code cells' completion message",
+        );
+        const skippedMsgs = run2Host.cmdsMatching("skipped 2 markdown");
+        assertEquals(
+          skippedMsgs.length > 0,
+          true,
+          "must mention 2 skipped non-code cells",
+        );
+      },
+    );
+
+    it(
+      "(b) error stop: cell errors → 'Run all stopped at cell N/M due to error'",
+      async () => {
+        currentMk2 = makeMockKernel({
+          executeScript: {
+            replies: [
+              {
+                msg_type: "error",
+                content: {
+                  ename: "ZeroDivisionError",
+                  evalue: "division by zero",
+                  traceback: ["ZeroDivisionError: division by zero"],
+                },
+              },
+            ],
+            executeReply: {
+              status: "error",
+              execution_count: 1,
+              ename: "ZeroDivisionError",
+              evalue: "division by zero",
+              traceback: [],
+            },
+          },
+        });
+        setRun2Config(currentMk2.url, currentMk2.token);
+        const dispatcher = buildDispatcher(run2Host);
+        await startKernelForRun2(dispatcher);
+
+        await dispatcher.runAll(RUN2_BUFNR);
+
+        assertEquals(
+          currentMk2.executeRequestCalls.length,
+          1,
+          "stops after first error — only 1 execute_request sent",
+        );
+        const stopMsgs = run2Host.cmdsMatching("stopped at cell");
+        assertEquals(
+          stopMsgs.length > 0,
+          true,
+          "must show error stop message",
+        );
+      },
+    );
+
+    describe(
+      "cancelCell",
+      { sanitizeResources: false, sanitizeOps: false },
+      () => {
+        it(
+          "(d1) queued cell → 'Cancelled queued cell'",
+          async () => {
+            currentMk2 = makeMockKernel({
+              executeScript: { replies: [] },
+            });
+            setRun2Config(currentMk2.url, currentMk2.token);
+            const dispatcher = buildDispatcher(run2Host);
+            await startKernelForRun2(dispatcher);
+
+            // cell1 starts executing (busy), cell3 gets queued via FR-008
+            await Promise.allSettled([
+              dispatcher.runCell(RUN2_BUFNR, CODE_CELL_1),
+              dispatcher.runCell(RUN2_BUFNR, CODE_CELL_3),
+            ]);
+            // cell3 is now in pendingRequests with state='queued'
+
+            run2Host.calls = [];
+            await dispatcher.cancelCell(RUN2_BUFNR, CODE_CELL_3);
+
+            const msgs = run2Host.cmdsMatching("Cancelled queued cell");
+            assertEquals(
+              msgs.length > 0,
+              true,
+              "must show 'Cancelled queued cell'",
+            );
+          },
+        );
+
+        it(
+          "(d2) sent (running) cell → 'Cell is already running'",
+          async () => {
+            currentMk2 = makeMockKernel({
+              executeScript: { replies: [] },
+            });
+            setRun2Config(currentMk2.url, currentMk2.token);
+            const dispatcher = buildDispatcher(run2Host);
+            await startKernelForRun2(dispatcher);
+
+            // cancelCell for cell1 while cell1 is executing (state='sent')
+            await Promise.allSettled([
+              dispatcher.runCell(RUN2_BUFNR, CODE_CELL_1),
+              dispatcher.cancelCell(RUN2_BUFNR, CODE_CELL_1),
+            ]);
+
+            const msgs = run2Host.cmdsMatching("Cell is already running");
+            assertEquals(
+              msgs.length > 0,
+              true,
+              "must show 'Cell is already running' for sent cell",
+            );
+          },
+        );
+
+        it(
+          "(d3) idle cell (completed) → 'Cell is not queued'",
+          async () => {
+            currentMk2 = makeMockKernel();
+            setRun2Config(currentMk2.url, currentMk2.token);
+            const dispatcher = buildDispatcher(run2Host);
+            await startKernelForRun2(dispatcher);
+
+            await dispatcher.runCell(RUN2_BUFNR, CODE_CELL_1);
+            run2Host.calls = [];
+            await dispatcher.cancelCell(RUN2_BUFNR, CODE_CELL_1);
+
+            const msgs = run2Host.cmdsMatching("Cell is not queued");
+            assertEquals(
+              msgs.length > 0,
+              true,
+              "must show 'Cell is not queued (state=idle)'",
+            );
+          },
+        );
+
+        it(
+          "(d4) nonexistent cellId → 'No cell at cursor'",
+          async () => {
+            currentMk2 = makeMockKernel();
+            setRun2Config(currentMk2.url, currentMk2.token);
+            const dispatcher = buildDispatcher(run2Host);
+            await startKernelForRun2(dispatcher);
+
+            await dispatcher.cancelCell(RUN2_BUFNR, "nonexistent-cell-id");
+
+            const msgs = run2Host.cmdsMatching("No cell at cursor");
+            assertEquals(
+              msgs.length > 0,
+              true,
+              "must show 'No cell at cursor' for unknown cellId",
+            );
+          },
+        );
+      },
+    );
+
+    it(
+      "(e) cancel-mid-runAll: cell3 cancelled while queued, cell5 continues",
+      async () => {
+        currentMk2 = makeMockKernel();
+        setRun2Config(currentMk2.url, currentMk2.token);
+        const dispatcher = buildDispatcher(run2Host);
+        await startKernelForRun2(dispatcher);
+
+        // Start runAll without awaiting — Phase 1 pre-enqueues all code cells,
+        // Phase 2 starts executing cell1 and hits its first await inside kernelExecute.
+        // At that point cell3 (CODE_CELL_3) and cell5 (CODE_CELL_5) are still in
+        // 'queued' state and cancellable.
+        const runAllP = dispatcher.runAll(RUN2_BUFNR);
+        await dispatcher.cancelCell(RUN2_BUFNR, CODE_CELL_3);
+        await runAllP;
+
+        // cell1 and cell5 (CODE_CELL_5) executed; cell3 was skipped (cancelled)
+        assertEquals(
+          currentMk2.executeRequestCalls.length,
+          2,
+          `${CODE_CELL_5}: cell1 and cell5 execute; cell3 skipped (cancelled)`,
+        );
+        const ranMsgs = run2Host.cmdsMatching("Ran 2 code cells");
+        assertEquals(
+          ranMsgs.length > 0,
+          true,
+          "must show 'Ran 2 code cells'",
+        );
+        const cancelledMsgs = run2Host.cmdsMatching("1 cancelled");
+        assertEquals(
+          cancelledMsgs.length > 0,
+          true,
+          "must mention 1 cancelled cell",
+        );
+      },
+    );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// interruptKernel dispatcher (T035)
+// ---------------------------------------------------------------------------
+
+describe(
+  "interruptKernel dispatcher",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    const INT_BUFNR = 90;
+    let intHost: MockHost;
+    let currentMkInt: MockKernelHandle | null = null;
+
+    beforeEach(() => {
+      intHost = mockVim();
+      currentMkInt = null;
+    });
+
+    afterEach(async () => {
+      await currentMkInt?.close();
+      currentMkInt = null;
+    });
+
+    function setIntConfig(url: string, token: string): void {
+      intHost.setEval(`get(g:, 'europa_use_subprocess', v:true)`, false);
+      intHost.setEval(
+        `get(g:, 'europa_jupyter_url', "http://localhost:8888")`,
+        url,
+      );
+      intHost.setEval(`get(g:, 'europa_jupyter_token', "")`, token);
+      intHost.setEval(
+        `get(g:, 'europa_jupyter_ws_subprotocol', "default")`,
+        "default",
+      );
+    }
+
+    async function startKernelForInt(
+      dispatcher: ReturnType<typeof buildDispatcher>,
+    ): Promise<void> {
+      await dispatcher.open(INT_BUFNR, FIXTURE_PATH);
+      await dispatcher.startKernel(INT_BUFNR, "python3");
+      intHost.calls = [];
+    }
+
+    it(
+      "(a) idle kernel → 'Kernel is idle' info + REST sent + 'Interrupt sent'",
+      async () => {
+        currentMkInt = makeMockKernel();
+        setIntConfig(currentMkInt.url, currentMkInt.token);
+        const dispatcher = buildDispatcher(intHost);
+        await startKernelForInt(dispatcher);
+
+        await dispatcher.interruptKernel(INT_BUFNR);
+
+        // REST interrupt must be sent even in idle state (FR-010)
+        assertEquals(
+          currentMkInt.interruptCallTimestamps.length,
+          1,
+          "exactly 1 REST interrupt call expected",
+        );
+        const idleMsgs = intHost.cmdsMatching("Kernel is idle");
+        assertEquals(
+          idleMsgs.length > 0,
+          true,
+          "must show 'Kernel is idle' info message",
+        );
+        const sentMsgs = intHost.cmdsMatching("Interrupt sent");
+        assertEquals(
+          sentMsgs.length > 0,
+          true,
+          "must show 'Interrupt sent' after successful REST call",
+        );
+      },
+    );
+
+    it(
+      "(b) no kernel attached → 'No kernel attached' message, no REST",
+      async () => {
+        const dispatcher = buildDispatcher(intHost);
+        await dispatcher.open(INT_BUFNR, FIXTURE_PATH);
+        intHost.calls = [];
+
+        await dispatcher.interruptKernel(INT_BUFNR);
+
+        const msgs = intHost.cmdsMatching("No kernel attached");
+        assertEquals(
+          msgs.length > 0,
+          true,
+          "must show 'No kernel attached'",
         );
       },
     );

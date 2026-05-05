@@ -2,7 +2,7 @@
  * BDD specs for lint-no-default-mappings.ts.
  *
  * Verifies that plugin/mappings.vim contains only `<Plug>(europa-*)` lhs
- * values and defines all 9 required mappings.
+ * values and defines all 12 required mappings.
  *
  * @spec-id europa.lint.no-default-mappings
  */
@@ -45,7 +45,7 @@ describe("lint: plugin/mappings.vim — no default key mappings", () => {
     );
   });
 
-  it("defines all 9 required <Plug>(europa-*) mappings", async () => {
+  it("defines all 12 required <Plug>(europa-*) mappings", async () => {
     const content = await Deno.readTextFile(MAPPINGS_FILE);
     const required = [
       "<Plug>(europa-insert-code)",
@@ -57,6 +57,9 @@ describe("lint: plugin/mappings.vim — no default key mappings", () => {
       "<Plug>(europa-edit-cell)",
       "<Plug>(europa-split-cell)",
       "<Plug>(europa-join-cell)",
+      "<Plug>(europa-run-cell)",
+      "<Plug>(europa-run-all)",
+      "<Plug>(europa-cancel-cell)",
     ];
     for (const plug of required) {
       assertEquals(

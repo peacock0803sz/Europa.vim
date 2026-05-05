@@ -33,6 +33,7 @@ import {
 import { decodeV1, encodeV1 } from "./wire/protocol-v1.ts";
 import { decodeDefault, encodeDefault } from "./wire/protocol-default.ts";
 import { execute as executeImpl } from "./execute.ts";
+import { interrupt as interruptImpl } from "./interrupt.ts";
 
 type ServerClientOptions = {
   kernelInfoTimeoutMs?: number;
@@ -633,13 +634,16 @@ export class ServerKernelClient implements KernelClient {
   /**
    * Send REST POST /api/kernels/{kid}/interrupt.
    *
-   * Stub: full impl in T036/T037 (US3).
+   * Delegates to kernel/interrupt.ts. The dispatcher layer (main.ts) owns
+   * the idle-guard and reconnect-guard routing.
    */
   interrupt(): Promise<void> {
-    // Implemented in T036/T037 (US3)
-    return Promise.reject(
-      new Error("interrupt: not yet implemented (Phase 3.3 US3)"),
-    );
+    if (!this._runtime || !this._baseUrl || !this._token) {
+      return Promise.reject(
+        new Error("interrupt: client not connected — call start() first"),
+      );
+    }
+    return interruptImpl(this._runtime, this._baseUrl, this._token);
   }
 
   /**
