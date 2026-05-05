@@ -46,6 +46,7 @@ import type { KernelStatusReport } from "../../schema/session.ts";
 import { decodeBase64 } from "@std/encoding/base64";
 import { defineHighlights } from "./view/highlight.ts";
 import { loadConfig } from "./config.ts";
+import type { EuropaConfig } from "../../schema/config.ts";
 import { detectCapabilities } from "./capabilities.ts";
 import { setupAutocmds } from "./session/events.ts";
 import { parseNotebook } from "./notebook/parse.ts";
@@ -110,6 +111,15 @@ async function echomError(denops: Denops, reason: string): Promise<void> {
       vimSingleQuote(`Europa: ${reason}`)
     } | echohl None`,
   );
+}
+
+function renderPlanOpts(config: EuropaConfig) {
+  return {
+    maxOutputLines: config.max_output_lines,
+    cellBorderChars: config.cell_border_chars,
+    cellBorderPadding: config.cell_border_padding,
+    cellBorderAlign: config.cell_border_align,
+  };
 }
 
 /**
@@ -240,9 +250,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const notebook = await parseNotebook(content);
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(notebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(notebook, caps, renderPlanOpts(config));
       sessionStore.add({
         id: crypto.randomUUID(),
         bufnr: bufnrNum,
@@ -482,9 +490,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
       sessionStore.update(bn, {
         notebook: newNotebook,
         cellMap: plan.cellMap,
@@ -561,9 +567,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
       sessionStore.update(bn, {
         notebook: newNotebook,
         cellMap: plan.cellMap,
@@ -644,9 +648,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
       sessionStore.update(bn, {
         notebook: newNotebook,
         cellMap: plan.cellMap,
@@ -777,9 +779,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
       sessionStore.update(viewerBufnr, {
         notebook: newNotebook,
         cellMap: plan.cellMap,
@@ -884,9 +884,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
       sessionStore.update(bn, {
         notebook: newNotebook,
         cellMap: plan.cellMap,
@@ -1046,9 +1044,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
       sessionStore.update(bn, {
         notebook: newNotebook,
         cellMap: plan.cellMap,
@@ -1124,9 +1120,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, {
-        maxOutputLines: config.max_output_lines,
-      });
+      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
       sessionStore.update(lookup.viewerBufnr, {
         notebook: newNotebook,
         cellMap: plan.cellMap,

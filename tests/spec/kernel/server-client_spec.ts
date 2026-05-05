@@ -39,6 +39,8 @@ const BASE_CONFIG: EuropaConfig = {
   mime_priority: ["image/png", "text/plain"],
   max_output_lines: 100,
   cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
+  cell_border_padding: 4,
+  cell_border_align: "left" as const,
   lazy_padding: 10,
   auto_save: false,
   use_subprocess: false, // attach mode for unit tests

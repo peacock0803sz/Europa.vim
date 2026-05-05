@@ -1,6 +1,8 @@
 /**
  * Behavioral contract for cell boundary markers.
  *
+ * NOTE: unused in Phase 2 real-line border path; reserved for a possible virtual-line revival.
+ *
  * `CellMarker` is a hand-written interface (whitelist exception to Constitution I)
  * because the factory pattern with `Promise<MarkerId>` return types cannot be
  * expressed as a TypeBox schema. See DESIGN.md §3.7.3.
