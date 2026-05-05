@@ -4,6 +4,7 @@
  * @spec-id europa.render.builder.assemble
  * @spec-id europa.render.builder.cell-ranges
  * @spec-id europa.render.builder.empty-notebook-guidance
+ * @spec-id europa.render.builder.cell-borders
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertExists } from "@std/assert";
@@ -189,10 +190,10 @@ describe("buildRenderPlan", () => {
         metadata: {},
       }]);
       const plan = buildRenderPlan(nb, defaultCaps);
-      // The header line is emitted first, so startLine should match it
       assertEquals(plan.cellRanges[0].startLine, 0);
-      // plan.lines[0] is the header "## [code] cell-x"
-      assertEquals(plan.lines[0].includes("cell-x"), true);
+      // plan.lines[0] is the head border for an unexecuted code cell
+      assertEquals(plan.lines[0].startsWith("╭"), true);
+      assertEquals(plan.lines[0].includes("In ["), true);
     });
 
     it("empty notebook returns cellRanges=[] and 8 guidance lines", () => {
@@ -226,9 +227,157 @@ describe("buildRenderPlan", () => {
       const plan = buildRenderPlan(nb, defaultCaps);
       const r0 = plan.cellRanges[0];
       const r1 = plan.cellRanges[1];
-      // startLine of each range points to the header line
-      assertEquals(plan.lines[r0.startLine].includes("first"), true);
-      assertEquals(plan.lines[r1.startLine].includes("second"), true);
+      // startLine of each range points to the head border line
+      assertEquals(plan.lines[r0.startLine].startsWith("╭"), true);
+      assertEquals(plan.lines[r1.startLine].startsWith("╭"), true);
+    });
+  });
+
+  describe("cell border rendering (europa.render.builder.cell-borders)", () => {
+    it("head border uses default chars for an executed code cell", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "c1",
+        source: "",
+        execution_count: 3,
+        outputs: [],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.lines[0], "╭ In [3] ────────╮");
+    });
+
+    it("head border uses In [ ] for an unexecuted code cell", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "c1",
+        source: "",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.lines[0], "╭ In [ ] ────────╮");
+    });
+
+    it("head border shows Md for markdown cells", () => {
+      const nb = makeNotebook([{
+        cell_type: "markdown",
+        id: "m1",
+        source: "# Hi",
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.lines[0], "╭ Md ────────╮");
+    });
+
+    it("head border shows Raw for raw cells", () => {
+      const nb = makeNotebook([{
+        cell_type: "raw",
+        id: "r1",
+        source: "data",
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.lines[0], "╭ Raw ────────╮");
+    });
+
+    it("code cell with outputs has both head and mid border", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "c1",
+        source: "x = 1",
+        execution_count: 1,
+        outputs: [{ output_type: "stream", name: "stdout", text: "hi\n" }],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.lines[0].startsWith("╭"), true);
+      const mid = plan.lines.find((l) => l.startsWith("╰"));
+      assertEquals(mid !== undefined, true);
+      // head and mid borders must have the same total width
+      assertEquals(plan.lines[0].length, mid!.length);
+    });
+
+    it("code cell without outputs has no mid border", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "c1",
+        source: "x = 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      const hasMid = plan.lines.some((l) => l.startsWith("╰"));
+      assertEquals(hasMid, false);
+    });
+
+    it("custom cellBorderChars propagate into the border lines", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "c1",
+        source: "x",
+        execution_count: 1,
+        outputs: [{ output_type: "stream", name: "stdout", text: "ok\n" }],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps, {
+        cellBorderChars: ["┌", "═", "┐", "└", "┘"],
+      });
+      assertEquals(plan.lines[0].startsWith("┌"), true);
+      assertEquals(plan.lines[0].endsWith("┐"), true);
+      const mid = plan.lines.find((l) => l.startsWith("└"));
+      assertEquals(mid !== undefined, true);
+      assertEquals(mid!.endsWith("┘"), true);
+    });
+
+    it("custom cellBorderPadding changes the fill width (left align)", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "c1",
+        source: "",
+        execution_count: 2,
+        outputs: [],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps, { cellBorderPadding: 2 });
+      assertEquals(plan.lines[0], "╭ In [2] ────╮");
+    });
+
+    it("cellBorderPadding=0 produces borders with no fill", () => {
+      const nb = makeNotebook([{
+        cell_type: "markdown",
+        id: "m1",
+        source: "",
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps, { cellBorderPadding: 0 });
+      assertEquals(plan.lines[0], "╭ Md ╮");
+    });
+
+    it("cellBorderAlign=center places label in the middle", () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "c1",
+        source: "",
+        execution_count: 3,
+        outputs: [],
+        metadata: {},
+      }]);
+      const plan = buildRenderPlan(nb, defaultCaps, {
+        cellBorderAlign: "center",
+      });
+      assertEquals(plan.lines[0], "╭──── In [3] ────╮");
+    });
+
+    it("empty notebook has no border characters", () => {
+      const nb = makeNotebook([]);
+      const plan = buildRenderPlan(nb, defaultCaps);
+      const hasBorder = plan.lines.some(
+        (l) => l.startsWith("╭") || l.startsWith("╰"),
+      );
+      assertEquals(hasBorder, false);
     });
   });
 
@@ -263,11 +412,10 @@ describe("buildRenderPlan", () => {
         maxOutputLines: 4,
       });
       const cell = plan.cellMap[0];
-      // Cell layout for `source: ""`: header (1 line; source is falsy so no
-      // source lines are emitted) + output lines. Skip the header to inspect
-      // outputs.
+      // Cell layout for `source: ""`: head border (1 line) + mid border (1 line)
+      // + output lines. Skip both structural lines to inspect outputs.
       const outputLines = plan.lines.slice(
-        cell.bufLineStart + 1,
+        cell.bufLineStart + 2,
         cell.bufLineEnd,
       );
       assertEquals(outputLines.length, 4);
@@ -305,7 +453,7 @@ describe("buildRenderPlan", () => {
         maxOutputLines: 20,
       });
       const cm = plan.cellMap[0];
-      const outputLines = plan.lines.slice(cm.bufLineStart + 1, cm.bufLineEnd);
+      const outputLines = plan.lines.slice(cm.bufLineStart + 2, cm.bufLineEnd);
       assertEquals(outputLines.length, 20);
       // Summary mentions 60 - 19 = 41 missing lines
       assertEquals(
