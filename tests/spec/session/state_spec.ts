@@ -183,6 +183,9 @@ function makeKernelRuntime(): KernelRuntime {
     },
     socket: {} as WebSocket,
     abort: new AbortController(),
+    pendingRequests: new Map(),
+    execState: "idle",
+    cellStates: new Map(),
   };
 }
 
@@ -272,5 +275,120 @@ describe("SessionStore — byKernel", () => {
     store.update(44, { kernelRuntime: kr44 });
     const results = store.byKernel("kernel-test-id");
     assertEquals(results.length, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3.3: pendingRequests / execState / cellStates augment
+// @spec-id europa.session.state.pending-requests-set
+// @spec-id europa.session.state.pending-requests-remove
+// @spec-id europa.session.state.exec-state-transition
+// @spec-id europa.session.state.cell-states-update
+// ---------------------------------------------------------------------------
+
+describe("KernelRuntime — pendingRequests Map", () => {
+  it("pendingRequests Map.set / Map.get roundtrip", () => {
+    const kr = makeKernelRuntime();
+    const entry = {
+      msgId: "msg-1",
+      bufnr: 1,
+      cellId: "cell-a",
+      state: "queued" as const,
+      enqueuedAt: Date.now(),
+      sentAt: null,
+    };
+    kr.pendingRequests.set("msg-1", entry);
+    assertEquals(kr.pendingRequests.get("msg-1"), entry);
+  });
+
+  it("pendingRequests Map.delete removes the entry", () => {
+    const kr = makeKernelRuntime();
+    kr.pendingRequests.set("msg-2", {
+      msgId: "msg-2",
+      bufnr: 1,
+      cellId: "cell-b",
+      state: "queued",
+      enqueuedAt: Date.now(),
+      sentAt: null,
+    });
+    kr.pendingRequests.delete("msg-2");
+    assertEquals(kr.pendingRequests.has("msg-2"), false);
+  });
+
+  it("remove KernelRuntime from session destroys all 3 fields", () => {
+    store = new SessionStore();
+    store.add(makeSession(50));
+    const kr = makeKernelRuntime();
+    kr.pendingRequests.set("msg-x", {
+      msgId: "msg-x",
+      bufnr: 50,
+      cellId: "cell-x",
+      state: "queued",
+      enqueuedAt: Date.now(),
+      sentAt: null,
+    });
+    kr.execState = "busy";
+    kr.cellStates.set("cell-x", "busy");
+    store.update(50, { kernelRuntime: kr });
+    store.update(50, { kernelRuntime: undefined });
+    assertEquals(store.get(50)?.kernelRuntime, undefined);
+  });
+});
+
+describe("KernelRuntime — execState transitions", () => {
+  it("initial execState is idle", () => {
+    const kr = makeKernelRuntime();
+    assertEquals(kr.execState, "idle");
+  });
+
+  it("execState can transition idle → busy → idle", () => {
+    const kr = makeKernelRuntime();
+    kr.execState = "busy";
+    assertEquals(kr.execState, "busy");
+    kr.execState = "idle";
+    assertEquals(kr.execState, "idle");
+  });
+
+  it("execState can transition to restarting", () => {
+    const kr = makeKernelRuntime();
+    kr.execState = "restarting";
+    assertEquals(kr.execState, "restarting");
+  });
+
+  it("execState can transition to disconnected", () => {
+    const kr = makeKernelRuntime();
+    kr.execState = "disconnected";
+    assertEquals(kr.execState, "disconnected");
+  });
+
+  it("execState can transition to queued (runAll pre-enqueue phase)", () => {
+    const kr = makeKernelRuntime();
+    kr.execState = "queued";
+    assertEquals(kr.execState, "queued");
+  });
+});
+
+describe("KernelRuntime — cellStates Map", () => {
+  it("cellStates per-cellId are independent", () => {
+    const kr = makeKernelRuntime();
+    kr.cellStates.set("cell-1", "queued");
+    kr.cellStates.set("cell-2", "busy");
+    assertEquals(kr.cellStates.get("cell-1"), "queued");
+    assertEquals(kr.cellStates.get("cell-2"), "busy");
+  });
+
+  it("cellStates update for one cell does not affect others", () => {
+    const kr = makeKernelRuntime();
+    kr.cellStates.set("cell-a", "busy");
+    kr.cellStates.set("cell-b", "idle");
+    kr.cellStates.set("cell-a", "idle");
+    assertEquals(kr.cellStates.get("cell-a"), "idle");
+    assertEquals(kr.cellStates.get("cell-b"), "idle");
+  });
+
+  it("cellStates can be set to aborted", () => {
+    const kr = makeKernelRuntime();
+    kr.cellStates.set("cell-c", "aborted");
+    assertEquals(kr.cellStates.get("cell-c"), "aborted");
   });
 });

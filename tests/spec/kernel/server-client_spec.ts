@@ -47,6 +47,7 @@ const BASE_CONFIG: EuropaConfig = {
   wsReconnectMaxRetries: 5,
   wsReconnectInitialIntervalMs: 1000,
   wsReconnectMultiplier: 2.0,
+  kernelInfoTimeoutMs: 10000,
 };
 
 function makeMockDenops(vars: Record<string, unknown> = {}) {

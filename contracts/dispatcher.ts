@@ -114,11 +114,43 @@ export type EuropaDispatcher = {
    */
   atexit(): Promise<void>;
 
-  // Phase 3.3+ remaining (throw UnimplementedError)
+  /**
+   * Execute the cell at the given cellId on the attached kernel.
+   * Phase 3.3 dispatcher RPC (runCell).
+   * @spec-id europa.dispatcher.run-cell
+   */
   runCell(bufnr: unknown, cellId: unknown): Promise<void>;
+
+  /**
+   * Execute all code cells top-to-bottom, stopping on first error (Q2 default A).
+   * Phase 3.3 dispatcher RPC (runAll).
+   * @spec-id europa.dispatcher.run-all
+   */
   runAll(bufnr: unknown): Promise<void>;
-  restartKernel(bufnr: unknown): Promise<void>;
+
+  /**
+   * Send REST POST /api/kernels/{kid}/interrupt to the Jupyter server.
+   * Phase 3.3 dispatcher RPC (interruptKernel).
+   * @spec-id europa.dispatcher.interrupt-kernel
+   */
   interruptKernel(bufnr: unknown): Promise<void>;
+
+  /**
+   * Send REST POST /api/kernels/{kid}/restart, then re-open WebSocket
+   * and re-handshake via kernelInfo().
+   * Phase 3.3 dispatcher RPC (restartKernel).
+   * @spec-id europa.dispatcher.restart-kernel
+   */
+  restartKernel(bufnr: unknown): Promise<void>;
+
+  /**
+   * Drop the queued pendingRequests entry for the cell at cellId.
+   * No-op (with info message) if the cell is in any state other than 'queued'.
+   * No network message is sent regardless of outcome (Q-cancel design).
+   * Phase 3.3 dispatcher RPC (cancelCell).
+   * @spec-id europa.dispatcher.cancel-cell
+   */
+  cancelCell(bufnr: unknown, cellId: unknown): Promise<void>;
 
   // Phase 4: ZMQ attach
   attachKernel(connectionFile: unknown): Promise<void>;

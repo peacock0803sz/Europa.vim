@@ -38,6 +38,7 @@ const BASE_CONFIG: EuropaConfig = {
   wsReconnectMaxRetries: 5,
   wsReconnectInitialIntervalMs: 1000,
   wsReconnectMultiplier: 2.0,
+  kernelInfoTimeoutMs: 10000,
 };
 
 // Set up a temp directory with fake jupyter executables for detection tests

@@ -89,6 +89,40 @@ export const KernelStatusReportSchema = Type.Object({
 });
 export type KernelStatusReport = Static<typeof KernelStatusReportSchema>;
 
+// ---------------------------------------------------------------------------
+// Phase 3.3: pendingRequests / execState / cellStates (additive, SoT 1)
+// ---------------------------------------------------------------------------
+
+/** One in-flight execute request tracked by the pendingRequests Map. */
+export const PendingRequestEntrySchema = Type.Object({
+  msgId: Type.String(),
+  bufnr: Type.Integer({ minimum: 1 }),
+  cellId: Type.String(),
+  state: Type.Union([Type.Literal("queued"), Type.Literal("sent")]),
+  enqueuedAt: Type.Number(),
+  sentAt: Type.Union([Type.Number(), Type.Null()]),
+});
+export type PendingRequestEntry = Static<typeof PendingRequestEntrySchema>;
+
+/** Per-cell execution state (idle/queued/busy/aborted). */
+export const CellExecStateSchema = Type.Union([
+  Type.Literal("idle"),
+  Type.Literal("queued"),
+  Type.Literal("busy"),
+  Type.Literal("aborted"),
+]);
+export type CellExecState = Static<typeof CellExecStateSchema>;
+
+/** Kernel-level execution state (5 values). */
+export const KernelExecStateSchema = Type.Union([
+  Type.Literal("idle"),
+  Type.Literal("busy"),
+  Type.Literal("queued"),
+  Type.Literal("restarting"),
+  Type.Literal("disconnected"),
+]);
+export type KernelExecState = Static<typeof KernelExecStateSchema>;
+
 /** ServerPool handle — TypeBox SoT for the serializable subset of ServerHandle. */
 export const ServerHandleSchema = Type.Object({
   serverKey: Type.String(),

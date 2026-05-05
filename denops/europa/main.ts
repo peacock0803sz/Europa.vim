@@ -1313,18 +1313,83 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       await serverPool.killAll();
     },
 
-    // Phase 3.3+ remaining / Phase 4 — not yet implemented
+    // Phase 3.3+ — argument validation in place; full implementation in later tasks
+    // @spec-id europa.contract.dispatcher-phase3-3-alignment
     runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `runCell: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
+      if (typeof _cellId !== "string" || _cellId.length === 0) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `runCell: cellId must be a non-empty string`,
+          ),
+        );
+      }
       return Promise.reject(new UnimplementedError("runCell"));
     },
     runAll(_bufnr: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `runAll: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
       return Promise.reject(new UnimplementedError("runAll"));
     },
     restartKernel(_bufnr: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `restartKernel: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
       return Promise.reject(new UnimplementedError("restartKernel"));
     },
     interruptKernel(_bufnr: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `interruptKernel: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
       return Promise.reject(new UnimplementedError("interruptKernel"));
+    },
+    cancelCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `cancelCell: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
+      if (typeof _cellId !== "string" || _cellId.length === 0) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `cancelCell: cellId must be a non-empty string`,
+          ),
+        );
+      }
+      return Promise.reject(new UnimplementedError("cancelCell"));
     },
 
     // Phase 4: ZMQ attach
