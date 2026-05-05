@@ -42,6 +42,5 @@ command! -nargs=0 EuropaShutdownKernel
 command! -nargs=0 EuropaKernelStatus
       \ call europa#kernel_status()
 
-" Phase 3.3: kernel execution commands (-buffer scopes to .ipynb viewer)
-command! -buffer -nargs=0 EuropaRunCell
+command! -nargs=0 EuropaRunCell
       \ call europa#run_cell()
