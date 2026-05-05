@@ -1384,9 +1384,6 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       // Snapshot source at call time (Q-edit / FR-002)
       const code = codeCell.source;
 
-      // Clear outputs before execution
-      codeCell.outputs = [];
-
       const msgId = enqueue(kr, bn, cellId);
 
       if (kr.execState === "busy") {
@@ -1400,6 +1397,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
+      // Clear outputs only when we are actually about to send the request
+      codeCell.outputs = [];
       kr.execState = "busy";
       markSent(kr, msgId);
       try {
