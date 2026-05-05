@@ -146,6 +146,19 @@ export type MockKernelInfo = {
   connections: number;
 };
 
+/** Scripted reply set for a single execute_request in tests. */
+export type MockExecuteScript = {
+  /** The code to match (exact string). If omitted, matches any code. */
+  code?: string;
+  /**
+   * Sequence of iopub messages to emit, in order, before execute_reply.
+   * Each entry is { msg_type, content }.
+   */
+  replies: Array<{ msg_type: string; content: Record<string, unknown> }>;
+  /** execute_reply content. Defaults to { status: "ok", execution_count: 1 }. */
+  executeReply?: Record<string, unknown>;
+};
+
 /** Config for makeMockKernel(). */
 export type MockKernelOptions = {
   /** Subprotocols the server will accept (first matching wins). Default: all 3. */
@@ -158,6 +171,8 @@ export type MockKernelOptions = {
   replyDelayMs?: number;
   /** If true, close WebSocket unexpectedly after opening (for reconnection tests). */
   closeAfterOpen?: boolean;
+  /** Scripted replies for execute_request messages (Phase 3.3). */
+  executeScript?: MockExecuteScript;
 };
 
 export type MockKernelHandle = {
@@ -167,6 +182,12 @@ export type MockKernelHandle = {
   token: string;
   /** Session IDs for which DELETE /api/sessions/<sid> was received. */
   deletedSessions: string[];
+  /** REST interrupt call count (POST /api/kernels/:kid/interrupt). */
+  interruptCalls: number[];
+  /** All execute_request messages received over the WebSocket. */
+  executeRequestCalls: MockKernelMessage[];
+  /** All inbound wire messages received (diagnostic API). */
+  allWireMessages: MockKernelMessage[];
   /** Stop the server and clean up. */
   close(): Promise<void>;
 };
@@ -199,6 +220,10 @@ export function makeMockKernel(
   const kernelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
   const deletedSessions: string[] = [];
+  const interruptCalls: number[] = [];
+  const executeRequestCalls: MockKernelMessage[] = [];
+  const allWireMessages: MockKernelMessage[] = [];
+  let executionCount = 0;
 
   const kernelInfoReply: Record<string, unknown> = opts.kernelInfoReply ?? {
     status: "ok",
@@ -240,8 +265,12 @@ export function makeMockKernel(
       return new Response(null, { status: 204 });
     }
 
-    // GET /api/kernels/:kid
-    if (req.method === "GET" && path.startsWith("/api/kernels/") && !path.includes("/channels")) {
+    // GET /api/kernels/:kid (must be before POST /api/kernels/:kid/interrupt)
+    if (
+      req.method === "GET" && path.startsWith("/api/kernels/") &&
+      !path.includes("/channels") && !path.includes("/interrupt") &&
+      !path.includes("/restart")
+    ) {
       const meta: MockKernelInfo = {
         id: kernelId,
         name: "python3",
@@ -250,6 +279,24 @@ export function makeMockKernel(
         connections: 0,
       };
       return Response.json(meta);
+    }
+
+    // POST /api/kernels/:kid/interrupt → 204
+    if (req.method === "POST" && path.endsWith("/interrupt")) {
+      interruptCalls.push(Date.now());
+      return new Response(null, { status: 204 });
+    }
+
+    // POST /api/kernels/:kid/restart → 200 + kernel JSON
+    if (req.method === "POST" && path.endsWith("/restart")) {
+      const kernelJson = {
+        id: kernelId,
+        name: "python3",
+        last_activity: new Date().toISOString(),
+        execution_state: "idle",
+        connections: 0,
+      };
+      return Response.json(kernelJson, { status: 200 });
     }
 
     // GET /api/kernelspecs
@@ -297,6 +344,33 @@ export function makeMockKernel(
       const socketAbort = new AbortController();
       socket.onclose = () => { socketAbort.abort(); };
 
+      const sendMsg = (
+        msgType: string,
+        content: Record<string, unknown>,
+        parentHeader: Record<string, unknown>,
+        channel = "shell",
+      ) => {
+        const msg: MockKernelMessage = {
+          header: {
+            msg_id: crypto.randomUUID(),
+            msg_type: msgType,
+            username: "mock",
+            session: sessionId,
+            date: new Date().toISOString(),
+            version: "5.3",
+          },
+          parent_header: parentHeader,
+          metadata: {},
+          content,
+          buffers: [],
+        };
+        if (isV1) {
+          socket.send(encodeV1Mock(msg, channel));
+        } else {
+          socket.send(encodeDefaultMock(msg));
+        }
+      };
+
       socket.onmessage = async (event) => {
         let msg: MockKernelMessage;
         try {
@@ -306,6 +380,61 @@ export function makeMockKernel(
             msg = decodeDefaultMock(event.data as string);
           }
         } catch {
+          return;
+        }
+
+        // Diagnostic: record all inbound wire messages
+        allWireMessages.push(msg);
+
+        if (msg.header.msg_type === "execute_request") {
+          executeRequestCalls.push(msg);
+
+          const parent = msg.header as unknown as Record<string, unknown>;
+          executionCount++;
+          const execCount = executionCount;
+
+          // status:busy
+          sendMsg("status", { execution_state: "busy" }, parent, "iopub");
+
+          // execute_input echo
+          sendMsg(
+            "execute_input",
+            { code: msg.content["code"] ?? "", execution_count: execCount },
+            parent,
+            "iopub",
+          );
+
+          // Scripted replies (iopub messages before execute_reply)
+          if (opts.executeScript) {
+            const script = opts.executeScript;
+            for (const rep of script.replies) {
+              sendMsg(rep.msg_type, rep.content, parent, "iopub");
+            }
+            const replyContent = script.executeReply ?? {
+              status: "ok",
+              execution_count: execCount,
+              payload: [],
+              user_expressions: {},
+            };
+            // status:idle
+            sendMsg("status", { execution_state: "idle" }, parent, "iopub");
+            // execute_reply on shell
+            sendMsg("execute_reply", replyContent, parent, "shell");
+          } else {
+            // Default: minimal ok reply
+            sendMsg("status", { execution_state: "idle" }, parent, "iopub");
+            sendMsg(
+              "execute_reply",
+              {
+                status: "ok",
+                execution_count: execCount,
+                payload: [],
+                user_expressions: {},
+              },
+              parent,
+              "shell",
+            );
+          }
           return;
         }
 
@@ -326,26 +455,7 @@ export function makeMockKernel(
           return;
         }
 
-        const reply: MockKernelMessage = {
-          header: {
-            msg_id: crypto.randomUUID(),
-            msg_type: "kernel_info_reply",
-            username: "mock",
-            session: sessionId,
-            date: new Date().toISOString(),
-            version: "5.3",
-          },
-          parent_header: msg.header,
-          metadata: {},
-          content: kernelInfoReply,
-          buffers: [],
-        };
-
-        if (isV1) {
-          socket.send(encodeV1Mock(reply));
-        } else {
-          socket.send(encodeDefaultMock(reply));
-        }
+        sendMsg("kernel_info_reply", kernelInfoReply, msg.header as unknown as Record<string, unknown>, "shell");
       };
 
       return response;
@@ -367,6 +477,9 @@ export function makeMockKernel(
     url: serverUrl,
     token,
     deletedSessions,
+    interruptCalls,
+    executeRequestCalls,
+    allWireMessages,
     async close(): Promise<void> {
       await serverController?.shutdown();
     },
