@@ -61,6 +61,8 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
       gvar: "cell_border_chars",
       def: ["╭", "─", "╮", "╰", "╯"],
     },
+    { key: "cell_border_padding", gvar: "cell_border_padding", def: 4 },
+    { key: "cell_border_align", gvar: "cell_border_align", def: "left" },
     { key: "lazy_padding", gvar: "lazy_padding", def: 10 },
     { key: "auto_save", gvar: "auto_save", def: false },
     { key: "use_subprocess", gvar: "use_subprocess", def: true },
