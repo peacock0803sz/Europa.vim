@@ -135,11 +135,15 @@ export async function* execute(
 
       const msg = buffer.shift() ??
         await new Promise<KernelMessage>((resolve, reject) => {
-          resolveNext = resolve;
-
           const onAbort = () => {
             resolveNext = null;
             reject(new DOMException("Aborted", "AbortError"));
+          };
+          // Wrap resolve so the abort listener is removed on normal message
+          // arrival, preventing N-listener accumulation over long streams.
+          resolveNext = (m: KernelMessage) => {
+            opts?.signal?.removeEventListener("abort", onAbort);
+            resolve(m);
           };
           opts?.signal?.addEventListener("abort", onAbort, { once: true });
         });
