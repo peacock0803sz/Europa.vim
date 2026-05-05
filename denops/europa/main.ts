@@ -242,6 +242,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(notebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.add({
         id: crypto.randomUUID(),
@@ -484,6 +487,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.update(bn, {
         notebook: newNotebook,
@@ -563,6 +569,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.update(bn, {
         notebook: newNotebook,
@@ -646,6 +655,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.update(bn, {
         notebook: newNotebook,
@@ -779,6 +791,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.update(viewerBufnr, {
         notebook: newNotebook,
@@ -886,6 +901,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.update(bn, {
         notebook: newNotebook,
@@ -1048,6 +1066,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.update(bn, {
         notebook: newNotebook,
@@ -1126,6 +1147,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, {
         maxOutputLines: config.max_output_lines,
+        cellBorderChars: config.cell_border_chars,
+        cellBorderPadding: config.cell_border_padding,
+        cellBorderAlign: config.cell_border_align,
       });
       sessionStore.update(lookup.viewerBufnr, {
         notebook: newNotebook,
