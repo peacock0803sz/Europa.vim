@@ -216,6 +216,12 @@ function! europa#current_viewer_bufnr() abort
   return bufnr('%')
 endfunction
 
+function! europa#interrupt_kernel() abort
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'interruptKernel', [l:bufnr]) })
+endfunction
+
 function! europa#run_cell() abort
   let l:bufnr = europa#current_viewer_bufnr()
   let l:cell_id = europa#current_cell_id()
