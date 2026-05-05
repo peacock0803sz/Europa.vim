@@ -1774,6 +1774,37 @@ describe(
         );
       },
     );
+
+    it(
+      "(k) queued cell + idle kernel → runCell redispatches without double-enqueue",
+      async () => {
+        currentMk = makeMockKernel();
+        setRunConfig(currentMk.url, currentMk.token);
+        const dispatcher = buildDispatcher(runHost);
+        await startKernelForRun(dispatcher);
+
+        // cell1 executes (busy), cell3 queued via FR-008
+        await Promise.allSettled([
+          dispatcher.runCell(RUN_BUFNR, CODE_CELL_1),
+          dispatcher.runCell(RUN_BUFNR, CODE_CELL_3),
+        ]);
+        assertEquals(
+          currentMk.executeRequestCalls.length,
+          1,
+          "only cell1 executed so far — cell3 is queued",
+        );
+
+        // kernel is now idle; cell3 is still in pendingRequests as 'queued'
+        // runCell must redispatch the existing entry, not create a second one
+        await dispatcher.runCell(RUN_BUFNR, CODE_CELL_3);
+
+        assertEquals(
+          currentMk.executeRequestCalls.length,
+          2,
+          "cell3 executes exactly once — no double-enqueue from redispatch",
+        );
+      },
+    );
   },
 );
 
