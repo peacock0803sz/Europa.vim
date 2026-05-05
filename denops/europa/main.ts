@@ -1415,7 +1415,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       } finally {
         complete(kr, msgId);
         kr.execState = "idle";
-        // Re-render the notebook to reflect updated outputs
+        // Full re-render once execution completes (incremental rendering is Phase 5+)
         try {
           const config = await loadConfig(denops);
           const caps = await detectCapabilities(denops);
