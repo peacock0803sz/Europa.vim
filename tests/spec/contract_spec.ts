@@ -257,6 +257,12 @@ describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase
       ) {
         threwInvalidArgs = true;
       }
+    } finally {
+      try {
+        await d.shutdownKernel(1);
+      } catch {
+        // cleanup errors are non-fatal for this test
+      }
     }
     assertEquals(
       threwInvalidArgs,
@@ -272,6 +278,133 @@ describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase
     const result = await d.kernelStatus(9999);
     assertEquals(result.info, null);
     assertEquals(result.wsState, "NONE");
+  });
+});
+
+describe("Phase 3.3 dispatcher method presence (europa.contract.dispatcher-phase3-3-alignment)", () => {
+  /**
+   * @spec-id europa.contract.dispatcher-phase3-3-alignment
+   *
+   * Verifies that Phase 3.3 kernel control methods are present in the dispatcher
+   * produced by buildDispatcher. TypeBox argument validation: invalid args throw
+   * INVALID_ARGS, valid args do not.
+   */
+  const PHASE33_METHODS = [
+    "runCell",
+    "runAll",
+    "interruptKernel",
+    "restartKernel",
+    "cancelCell",
+  ] as const;
+
+  it("exposes all Phase 3.3 kernel control methods", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    for (const method of PHASE33_METHODS) {
+      assertEquals(
+        typeof d[method],
+        "function",
+        `dispatcher must have Phase 3.3 method: ${method}`,
+      );
+    }
+  });
+
+  it("runCell with string bufnr throws INVALID_ARGS", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    let threwInvalidArgs = false;
+    try {
+      await d.runCell("not-a-number", "cell-1");
+    } catch (e) {
+      if (
+        e && typeof e === "object" && "code" in e &&
+        (e as { code: string }).code === "INVALID_ARGS"
+      ) threwInvalidArgs = true;
+    }
+    assertEquals(
+      threwInvalidArgs,
+      true,
+      "string bufnr must throw INVALID_ARGS",
+    );
+  });
+
+  it("runCell with empty cellId throws INVALID_ARGS", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    let threwInvalidArgs = false;
+    try {
+      await d.runCell(1, "");
+    } catch (e) {
+      if (
+        e && typeof e === "object" && "code" in e &&
+        (e as { code: string }).code === "INVALID_ARGS"
+      ) threwInvalidArgs = true;
+    }
+    assertEquals(
+      threwInvalidArgs,
+      true,
+      "empty cellId must throw INVALID_ARGS",
+    );
+  });
+
+  it("runCell with valid args does not throw INVALID_ARGS", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    await d.open(1, FIXTURE_PATH);
+    let threwInvalidArgs = false;
+    try {
+      await d.runCell(1, "cell-x");
+    } catch (e) {
+      if (
+        e && typeof e === "object" && "code" in e &&
+        (e as { code: string }).code === "INVALID_ARGS"
+      ) threwInvalidArgs = true;
+    }
+    assertEquals(
+      threwInvalidArgs,
+      false,
+      "valid args must not throw INVALID_ARGS",
+    );
+  });
+
+  it("runAll with bufnr=0 throws INVALID_ARGS", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    let threwInvalidArgs = false;
+    try {
+      await d.runAll(0);
+    } catch (e) {
+      if (
+        e && typeof e === "object" && "code" in e &&
+        (e as { code: string }).code === "INVALID_ARGS"
+      ) threwInvalidArgs = true;
+    }
+    assertEquals(threwInvalidArgs, true, "bufnr=0 must throw INVALID_ARGS");
+  });
+
+  it("cancelCell with negative bufnr throws INVALID_ARGS", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    let threwInvalidArgs = false;
+    try {
+      await d.cancelCell(-1, "cell-x");
+    } catch (e) {
+      if (
+        e && typeof e === "object" && "code" in e &&
+        (e as { code: string }).code === "INVALID_ARGS"
+      ) threwInvalidArgs = true;
+    }
+    assertEquals(
+      threwInvalidArgs,
+      true,
+      "negative bufnr must throw INVALID_ARGS",
+    );
   });
 });
 

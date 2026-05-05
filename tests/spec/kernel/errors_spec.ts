@@ -73,7 +73,7 @@ describe("EuropaKernelError — cause chain", () => {
   });
 });
 
-describe("KernelErrorCode — 11 values", () => {
+describe("KernelErrorCode — Phase 3.2 codes (11 values)", () => {
   const EXPECTED_CODES: KernelErrorCode[] = [
     "JUPYTER_NOT_FOUND",
     "SPAWN_TIMEOUT",
@@ -88,11 +88,11 @@ describe("KernelErrorCode — 11 values", () => {
     "INVALID_ARGS",
   ];
 
-  it("KERNEL_ERROR_CODES exports all 11 codes", () => {
-    assertEquals(KERNEL_ERROR_CODES.length, 11);
+  it("KERNEL_ERROR_CODES exports all 16 codes (11 Phase 3.2 + 5 Phase 3.3)", () => {
+    assertEquals(KERNEL_ERROR_CODES.length, 16);
   });
 
-  it("all 11 expected codes are present", () => {
+  it("all 11 Phase 3.2 codes are present", () => {
     for (const code of EXPECTED_CODES) {
       assertEquals(
         KERNEL_ERROR_CODES.includes(code),
@@ -107,5 +107,81 @@ describe("KernelErrorCode — 11 values", () => {
       const err = new EuropaKernelError(code, `test ${code}`);
       assertEquals(err.code, code);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3.3: 5 new error codes
+// @spec-id europa.kernel.errors.code-classification-phase3-3
+// ---------------------------------------------------------------------------
+
+describe("KernelErrorCode — Phase 3.3 additions (16 values total)", () => {
+  const PHASE33_CODES: KernelErrorCode[] = [
+    "EXECUTE_TIMEOUT",
+    "EXECUTE_REENTRANT",
+    "INTERRUPT_REST_FAILED",
+    "RESTART_REST_FAILED",
+    "RESTART_HANDSHAKE_FAILED",
+  ];
+
+  it("KERNEL_ERROR_CODES exports all 16 codes after Phase 3.3", () => {
+    assertEquals(KERNEL_ERROR_CODES.length, 16);
+  });
+
+  it("all Phase 3.3 codes are present in KERNEL_ERROR_CODES", () => {
+    for (const code of PHASE33_CODES) {
+      assertEquals(
+        KERNEL_ERROR_CODES.includes(code),
+        true,
+        `Missing Phase 3.3 code: ${code}`,
+      );
+    }
+  });
+
+  it("each Phase 3.3 code can be used as EuropaKernelError.code", () => {
+    for (const code of PHASE33_CODES) {
+      const err = new EuropaKernelError(code, `test ${code}`);
+      assertEquals(err.code, code);
+    }
+  });
+
+  it("EXECUTE_TIMEOUT cause chain: error.cause instanceof DOMException for AbortError", () => {
+    const abort = new DOMException("signal aborted", "AbortError");
+    const err = new EuropaKernelError(
+      "EXECUTE_TIMEOUT",
+      "execute timed out",
+      abort,
+    );
+    assertInstanceOf(err.cause, DOMException);
+    assertEquals((err.cause as DOMException).name, "AbortError");
+  });
+
+  it("INTERRUPT_REST_FAILED wraps a network error in cause", () => {
+    const netErr = new TypeError("network error");
+    const err = new EuropaKernelError(
+      "INTERRUPT_REST_FAILED",
+      "interrupt failed",
+      netErr,
+    );
+    assertInstanceOf(err.cause, TypeError);
+  });
+
+  it("RESTART_REST_FAILED wraps a server error", () => {
+    const err = new EuropaKernelError(
+      "RESTART_REST_FAILED",
+      "server 500",
+      new Error("500"),
+    );
+    assertInstanceOf(err.cause, Error);
+  });
+
+  it("RESTART_HANDSHAKE_FAILED wraps a timeout", () => {
+    const timeout = new DOMException("timeout", "TimeoutError");
+    const err = new EuropaKernelError(
+      "RESTART_HANDSHAKE_FAILED",
+      "handshake timed out",
+      timeout,
+    );
+    assertInstanceOf(err.cause, DOMException);
   });
 });

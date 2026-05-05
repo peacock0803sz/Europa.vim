@@ -52,3 +52,92 @@ export type Header = Static<typeof HeaderSchema>;
 export type KernelMessage = Static<typeof KernelMessageSchema>;
 export type LanguageInfo = Static<typeof LanguageInfoSchema>;
 export type KernelInfoReply = Static<typeof KernelInfoReplySchema>;
+
+// ---------------------------------------------------------------------------
+// Phase 3.3: per-msg_type content schemas (additive, SoT 1)
+// KernelMessageSchema.content is unchanged (Record<string, unknown>).
+// Use Value.Check(XxxContentSchema, msg.content) to narrow by msg_type.
+// ---------------------------------------------------------------------------
+
+/** execute_request content (R02: 6 fields fixed). */
+export const ExecuteRequestContentSchema = Type.Object({
+  code: Type.String(),
+  silent: Type.Literal(false),
+  store_history: Type.Literal(true),
+  user_expressions: Type.Record(Type.String(), Type.String()),
+  allow_stdin: Type.Literal(false),
+  stop_on_error: Type.Literal(true),
+});
+export type ExecuteRequestContent = Static<typeof ExecuteRequestContentSchema>;
+
+/** execute_reply content (3-state discriminated union). */
+export const ExecuteReplyContentSchema = Type.Union([
+  Type.Object({
+    status: Type.Literal("ok"),
+    execution_count: Type.Integer({ minimum: 1 }),
+    payload: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+    user_expressions: Type.Record(Type.String(), Type.Unknown()),
+  }),
+  Type.Object({
+    status: Type.Literal("error"),
+    execution_count: Type.Integer({ minimum: 1 }),
+    ename: Type.String(),
+    evalue: Type.String(),
+    traceback: Type.Array(Type.String()),
+  }),
+  Type.Object({
+    status: Type.Literal("aborted"),
+    execution_count: Type.Optional(Type.Integer({ minimum: 1 })),
+  }),
+]);
+export type ExecuteReplyContent = Static<typeof ExecuteReplyContentSchema>;
+
+/** iopub status message content. */
+export const StatusContentSchema = Type.Object({
+  execution_state: Type.Union([
+    Type.Literal("idle"),
+    Type.Literal("busy"),
+    Type.Literal("starting"),
+  ]),
+});
+export type StatusContent = Static<typeof StatusContentSchema>;
+
+/** iopub execute_input (echo) content. */
+export const ExecuteInputContentSchema = Type.Object({
+  code: Type.String(),
+  execution_count: Type.Integer({ minimum: 1 }),
+});
+export type ExecuteInputContent = Static<typeof ExecuteInputContentSchema>;
+
+/** iopub stream content. */
+export const StreamContentSchema = Type.Object({
+  name: Type.Union([Type.Literal("stdout"), Type.Literal("stderr")]),
+  text: Type.String(),
+});
+export type StreamContent = Static<typeof StreamContentSchema>;
+
+/** iopub display_data content. */
+export const DisplayDataContentSchema = Type.Object({
+  data: Type.Record(Type.String(), Type.Unknown()),
+  metadata: Type.Record(Type.String(), Type.Unknown()),
+  transient: Type.Optional(Type.Object({
+    display_id: Type.Optional(Type.String()),
+  })),
+});
+export type DisplayDataContent = Static<typeof DisplayDataContentSchema>;
+
+/** iopub execute_result content. */
+export const ExecuteResultContentSchema = Type.Object({
+  execution_count: Type.Integer({ minimum: 1 }),
+  data: Type.Record(Type.String(), Type.Unknown()),
+  metadata: Type.Record(Type.String(), Type.Unknown()),
+});
+export type ExecuteResultContent = Static<typeof ExecuteResultContentSchema>;
+
+/** iopub error content. */
+export const ErrorContentSchema = Type.Object({
+  ename: Type.String(),
+  evalue: Type.String(),
+  traceback: Type.Array(Type.String()),
+});
+export type ErrorContent = Static<typeof ErrorContentSchema>;

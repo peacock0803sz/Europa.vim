@@ -71,6 +71,14 @@ export const EuropaConfigSchema = Type.Object({
     minimum: 1.0,
     maximum: 4.0,
   }),
+
+  // Phase 3.3: kernel_info handshake timeout (R04)
+  // @spec-id europa.config.kernel-info-timeout-defaults
+  kernelInfoTimeoutMs: Type.Integer({
+    default: 10000,
+    minimum: 1000,
+    maximum: 60000,
+  }),
 });
 
 export type EuropaConfig = Static<typeof EuropaConfigSchema>;

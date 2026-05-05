@@ -112,6 +112,48 @@ describe("loadConfig — cell_border_padding validation", () => {
   });
 });
 
+describe("loadConfig — kernelInfoTimeoutMs defaults (europa.config.kernel-info-timeout-defaults)", () => {
+  /**
+   * @spec-id europa.config.kernel-info-timeout-defaults
+   *
+   * kernelInfoTimeoutMs must default to 10000, accept values in [1000, 60000],
+   * and reject values outside that range.
+   */
+  const TIMEOUT_EXPR = `get(g:, 'europa_kernel_info_timeout_ms', 10000)`;
+
+  it("defaults to 10000 ms when not set", async () => {
+    const denops = mockVim();
+    const config = await loadConfig(denops);
+    assertEquals(config.kernelInfoTimeoutMs, 10000);
+  });
+
+  it("accepts the minimum value 1000", async () => {
+    const denops = mockVim();
+    denops.setEval(TIMEOUT_EXPR, 1000);
+    const config = await loadConfig(denops);
+    assertEquals(config.kernelInfoTimeoutMs, 1000);
+  });
+
+  it("accepts the maximum value 60000", async () => {
+    const denops = mockVim();
+    denops.setEval(TIMEOUT_EXPR, 60000);
+    const config = await loadConfig(denops);
+    assertEquals(config.kernelInfoTimeoutMs, 60000);
+  });
+
+  it("rejects a value below minimum (999)", async () => {
+    const denops = mockVim();
+    denops.setEval(TIMEOUT_EXPR, 999);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+
+  it("rejects a value above maximum (60001)", async () => {
+    const denops = mockVim();
+    denops.setEval(TIMEOUT_EXPR, 60001);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+});
+
 describe("loadConfig — deprecated g:europa_use_default_mappings", () => {
   /**
    * @spec-id europa.config.deprecated-use-default-mappings

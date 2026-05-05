@@ -32,6 +32,19 @@ const AREA_ALLOWLIST = new Set([
   // Phase 3.2 additions
   "kernel",
   "conformance",
+  // Phase 3.3 additions (no new top-level areas; sub-areas below are governed by "kernel"
+  // and "contract" which are already allowlisted):
+  //   kernel.execute   — execute_request / iopub correlation / applyMessageToCell
+  //   kernel.interrupt — REST POST /interrupt (Q3 default C)
+  //   kernel.restart   — REST POST /restart + WebSocket re-open + kernel_info re-handshake
+  //   kernel.correlation — parent_header.msg_id filter + pendingRequests state machine
+  //   contract.dispatcher-phase3-3-alignment — runCell/runAll/interruptKernel/restartKernel/cancelCell TypeBox validation
+  // Additional topics under existing areas:
+  //   kernel.server-client.kernel-info-public — kernelInfo() DRY refactor (public method)
+  //   session.state.{pending-requests-set,pending-requests-remove,exec-state-transition,cell-states-update}
+  //   dispatcher.{run-cell,run-all,interrupt-kernel,restart-kernel,cancel-cell}
+  //   config.kernel-info-timeout-defaults
+  //   render.cell-exec-state-sign
 ]);
 
 type Occurrence = { id: string; file: string; line: number };

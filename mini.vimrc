@@ -19,4 +19,4 @@ let g:europa_cell_border_align='left'
 let g:europa_cell_border_padding=88
 let g:europa_lazy_padding=10
 
-let g:europa_jupyter_executable=s:here .. '/tests/golden/.venv/bin/jupyter'
+let g:europa_jupyter_executable=s:here .. '/tests/.venv/bin/jupyter'

@@ -38,6 +38,7 @@ const BASE_CONFIG: EuropaConfig = {
   wsReconnectMaxRetries: 5,
   wsReconnectInitialIntervalMs: 1000,
   wsReconnectMultiplier: 2.0,
+  kernelInfoTimeoutMs: 10000,
 };
 
 // Set up a temp directory with fake jupyter executables for detection tests
@@ -267,12 +268,19 @@ describe("detectJupyterExecutable — python_env_detect disabled", () => {
     // if `which jupyter` is in PATH, it finds it; otherwise falls through gracefully.
     try {
       const result = await detectJupyterExecutable(tmpDir, config);
-      // If jupyter is in PATH, result should NOT contain .venv
-      const hasVenv = result.includes(".venv") || result.includes("venv/");
-      assertEquals(hasVenv, false);
+      // The result must NOT be the cwd-relative .venv path — that would mean
+      // venv detection ran despite being disabled.  A PATH-found path that
+      // happens to contain ".venv" elsewhere (e.g. uv-managed venvs) is fine.
+      const hasVenvInCwd = result.startsWith(join(tmpDir, ".venv")) ||
+        result.startsWith(join(tmpDir, "venv"));
+      assertEquals(hasVenvInCwd, false);
     } catch (e) {
-      // JUPYTER_NOT_FOUND is acceptable when jupyter is not in PATH and detection disabled
-      assertEquals((e as EuropaKernelError).code, "JUPYTER_NOT_FOUND");
+      // JUPYTER_NOT_FOUND is acceptable when jupyter is not in PATH
+      if (e instanceof EuropaKernelError) {
+        assertEquals(e.code, "JUPYTER_NOT_FOUND");
+      } else {
+        throw e;
+      }
     }
   });
 });

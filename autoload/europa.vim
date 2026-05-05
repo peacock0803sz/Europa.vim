@@ -215,3 +215,14 @@ function! europa#current_viewer_bufnr() abort
   endif
   return bufnr('%')
 endfunction
+
+function! europa#run_cell() abort
+  let l:bufnr = europa#current_viewer_bufnr()
+  let l:cell_id = europa#current_cell_id()
+  if empty(l:cell_id)
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'runCell', [l:bufnr, l:cell_id]) })
+endfunction

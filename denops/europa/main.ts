@@ -74,6 +74,12 @@ import { SessionStore } from "./session/state.ts";
 import { createKernelClient } from "./kernel/client.ts";
 import { EuropaKernelError } from "./kernel/errors.ts";
 import { ServerPool } from "./kernel/server-pool.ts";
+import { complete, enqueue, markSent } from "./session/pending-requests.ts";
+import {
+  applyMessageToCell,
+  execute as kernelExecute,
+} from "./kernel/execute.ts";
+import type { CodeCell } from "../../schema/notebook.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
 export class UnimplementedError extends Error {
@@ -1313,18 +1319,173 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       await serverPool.killAll();
     },
 
-    // Phase 3.3+ remaining / Phase 4 — not yet implemented
-    runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("runCell"));
+    // @spec-id europa.contract.dispatcher-phase3-3-alignment
+    // @spec-id europa.dispatcher.run-cell
+    // @spec-id europa.dispatcher.run-cell-busy-reject
+    async runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `runCell: invalid bufnr '${_bufnr}'`,
+        );
+      }
+      if (typeof _cellId !== "string" || _cellId.length === 0) {
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `runCell: cellId must be a non-empty string`,
+        );
+      }
+      const cellId = _cellId;
+
+      const session = sessionStore.get(bn);
+      const kr = session?.kernelRuntime;
+      if (!kr) {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: No kernel attached. Use :EuropaStartKernel first.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      const cell = session!.notebook.cells.find((c) => c.id === cellId);
+      if (!cell) {
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: No cell at cursor")}`,
+        );
+        return;
+      }
+
+      if (cell.cell_type !== "code") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote("Europa: Cannot run a non-code cell (markdown/raw)")
+          }`,
+        );
+        return;
+      }
+
+      const codeCell = cell as CodeCell;
+
+      if (kr.cellStates.get(cellId) === "busy") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Cell is already running. Use :EuropaInterrupt first.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      if (kr.execState === "busy") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Kernel is busy. Wait for the current execution to finish.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      // Snapshot source at call time (Q-edit / FR-002)
+      const code = codeCell.source;
+
+      const msgId = enqueue(kr, bn, cellId);
+
+      // Clear outputs only when we are actually about to send the request
+      codeCell.outputs = [];
+      kr.execState = "busy";
+      markSent(kr, msgId);
+      try {
+        for await (const msg of kernelExecute(kr, code, { msgId })) {
+          applyMessageToCell(codeCell, msg);
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          kr.cellStates.set(cellId, "aborted");
+        } else {
+          const msg = e instanceof Error ? e.message : String(e);
+          await echomError(denops, `Execution error: ${msg}`);
+        }
+      } finally {
+        complete(kr, msgId);
+        kr.execState = "idle";
+        // Full re-render once execution completes (incremental rendering is Phase 5+)
+        try {
+          const config = await loadConfig(denops);
+          const caps = await detectCapabilities(denops);
+          const plan = buildRenderPlan(
+            session!.notebook,
+            caps,
+            renderPlanOpts(config),
+          );
+          sessionStore.setRenderPlan(bn, plan);
+          await applyRenderPlan(denops, bn, plan);
+        } catch {
+          // Re-render failure is non-fatal
+        }
+      }
     },
     runAll(_bufnr: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `runAll: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
       return Promise.reject(new UnimplementedError("runAll"));
     },
     restartKernel(_bufnr: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `restartKernel: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
       return Promise.reject(new UnimplementedError("restartKernel"));
     },
     interruptKernel(_bufnr: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `interruptKernel: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
       return Promise.reject(new UnimplementedError("interruptKernel"));
+    },
+    cancelCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `cancelCell: invalid bufnr '${_bufnr}'`,
+          ),
+        );
+      }
+      if (typeof _cellId !== "string" || _cellId.length === 0) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `cancelCell: cellId must be a non-empty string`,
+          ),
+        );
+      }
+      return Promise.reject(new UnimplementedError("cancelCell"));
     },
 
     // Phase 4: ZMQ attach

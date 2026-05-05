@@ -9,8 +9,13 @@
  * @spec-id europa.contract.kernel-client-interface
  */
 
-import type { KernelMessage } from "../schema/message.ts";
-import type { KernelInfo } from "../schema/session.ts";
+import type { KernelInfoReply, KernelMessage } from "../schema/message.ts";
+import type {
+  CellExecState,
+  KernelExecState,
+  KernelInfo,
+  PendingRequestEntry,
+} from "../schema/session.ts";
 
 /**
  * Runtime augment field bag returned by `KernelClient.start()`.
@@ -29,6 +34,10 @@ export interface KernelRuntime {
   socket: WebSocket;
   abort: AbortController;
   reconnect?: { retry: number; max: number };
+  // Phase 3.3 additions (data-model.md §2.4)
+  pendingRequests: Map<string, PendingRequestEntry>;
+  execState: KernelExecState;
+  cellStates: Map<string, CellExecState>;
 }
 
 /**
@@ -78,11 +87,36 @@ export interface KernelClient {
    */
   onMessage(handler: (msg: KernelMessage) => void): () => void;
 
-  // Phase 3.3+ reserved (not in Phase 3.2 interface):
-  // execute(code: string, opts?: ExecuteOptions): AsyncIterable<KernelMessage>
-  // kernelInfo(): Promise<KernelInfoReply>
+  /**
+   * Execute code on the kernel and yield each iopub/shell message.
+   *
+   * `opts.msgId` is the Jupyter msg_id to use (dispatcher-assigned UUID, FR-003).
+   * If omitted, execute() generates one internally via @std/uuid/v7.
+   */
+  execute(
+    code: string,
+    opts?: { signal?: AbortSignal; msgId?: string },
+  ): AsyncIterable<KernelMessage>;
+
+  /**
+   * Fetch kernel_info_reply from the kernel (single-shot, no retry, R04).
+   *
+   * Timeout controlled by g:europa_kernel_info_timeout_ms (default 10 000 ms).
+   */
+  kernelInfo(): Promise<KernelInfoReply>;
+
+  /**
+   * Send REST POST /api/kernels/{kid}/interrupt to the Jupyter server.
+   */
+  interrupt(): Promise<void>;
+
+  /**
+   * Restart kernel via REST POST /api/kernels/{kid}/restart,
+   * then re-open the WebSocket and re-handshake with kernelInfo().
+   */
+  restart(): Promise<void>;
+
+  // Phase 4+ reserved (not in Phase 3.3 interface):
   // complete(code: string, cursorPos: number): Promise<CompleteReply>
   // inspect(code: string, cursorPos: number, detail: 0 | 1): Promise<InspectReply>
-  // interrupt(): Promise<void>
-  // restart(): Promise<void>
 }

@@ -41,3 +41,6 @@ command! -nargs=0 EuropaShutdownKernel
 
 command! -nargs=0 EuropaKernelStatus
       \ call europa#kernel_status()
+
+command! -nargs=0 EuropaRunCell
+      \ call europa#run_cell()

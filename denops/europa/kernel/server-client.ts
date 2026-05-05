@@ -32,6 +32,7 @@ import {
 } from "./server-process.ts";
 import { decodeV1, encodeV1 } from "./wire/protocol-v1.ts";
 import { decodeDefault, encodeDefault } from "./wire/protocol-default.ts";
+import { execute as executeImpl } from "./execute.ts";
 
 type ServerClientOptions = {
   kernelInfoTimeoutMs?: number;
@@ -235,12 +236,18 @@ export class ServerKernelClient implements KernelClient {
 
     this._attachMessageListener(socket);
 
+    // @spec-id europa.session.state.exec-state-transition
+    // @spec-id europa.session.state.cell-states-update
     const runtime: KernelRuntime = {
       client: this,
       serverKey,
       info,
       socket,
       abort,
+      // Phase 3.3 additions (data-model.md §2.4)
+      pendingRequests: new Map(),
+      execState: "idle",
+      cellStates: new Map(),
     };
     this._runtime = runtime;
 
@@ -589,5 +596,61 @@ export class ServerKernelClient implements KernelClient {
         resendIntervalId = setInterval(sendInfoRequest, 1_000);
       });
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 3.3 stubs — full implementations added in Phase 3 US1/US3/US5/US4
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Execute code on the kernel and yield each iopub/shell message.
+   *
+   * Delegates to `kernel/execute.ts`. The opts.msgId must match the
+   * pendingRequests key (FR-003 shared UUID invariant).
+   */
+  execute(
+    code: string,
+    opts?: { signal?: AbortSignal; msgId?: string },
+  ): AsyncIterable<KernelMessage> {
+    if (!this._runtime) {
+      throw new Error("execute: client not connected — call start() first");
+    }
+    return executeImpl(this._runtime, code, opts);
+  }
+
+  /**
+   * Fetch kernel_info_reply (single-shot, no retry).
+   *
+   * Stub: DRY refactor into public method done in T052 (US5).
+   */
+  kernelInfo(): Promise<import("../../../schema/message.ts").KernelInfoReply> {
+    // Implemented in T052 (US5)
+    return Promise.reject(
+      new Error("kernelInfo: not yet public (Phase 3.3 US5)"),
+    );
+  }
+
+  /**
+   * Send REST POST /api/kernels/{kid}/interrupt.
+   *
+   * Stub: full impl in T036/T037 (US3).
+   */
+  interrupt(): Promise<void> {
+    // Implemented in T036/T037 (US3)
+    return Promise.reject(
+      new Error("interrupt: not yet implemented (Phase 3.3 US3)"),
+    );
+  }
+
+  /**
+   * Restart kernel via REST + WebSocket re-open + kernelInfo() handshake.
+   *
+   * Stub: full impl in T044/T045 (US4).
+   */
+  restart(): Promise<void> {
+    // Implemented in T044/T045 (US4)
+    return Promise.reject(
+      new Error("restart: not yet implemented (Phase 3.3 US4)"),
+    );
   }
 }

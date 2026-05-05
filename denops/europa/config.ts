@@ -81,6 +81,13 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
       gvar: "ws_reconnect_multiplier",
       def: 2.0,
     },
+    // Phase 3.3: kernel_info handshake timeout (R04)
+    // @spec-id europa.config.kernel-info-timeout-defaults
+    {
+      key: "kernelInfoTimeoutMs",
+      gvar: "kernel_info_timeout_ms",
+      def: 10000,
+    },
   ];
 
 /**
