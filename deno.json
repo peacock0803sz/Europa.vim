@@ -18,7 +18,7 @@
     "@sinclair/typebox": "npm:@sinclair/typebox@^0.34.49",
     "@std/assert": "jsr:@std/assert@^1.0.19",
     "@std/async": "jsr:@std/async@^1.0.0",
-    "@std/cli": "jsr:@std/cli@^1.0.0",
+    "@std/cli": "jsr:@std/cli@^1.0.29",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
     "@std/fs": "jsr:@std/fs@^1.0.0",
     "@std/path": "jsr:@std/path@^1.1.4",
