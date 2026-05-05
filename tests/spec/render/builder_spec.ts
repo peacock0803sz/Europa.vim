@@ -244,7 +244,7 @@ describe("buildRenderPlan", () => {
         metadata: {},
       }]);
       const plan = buildRenderPlan(nb, defaultCaps);
-      assertEquals(plan.lines[0], "╭ In [3] ────────╮");
+      assertEquals(plan.lines[0], "╭ In [3] ──────────╮");
     });
 
     it("head border uses In [ ] for an unexecuted code cell", () => {
@@ -257,7 +257,7 @@ describe("buildRenderPlan", () => {
         metadata: {},
       }]);
       const plan = buildRenderPlan(nb, defaultCaps);
-      assertEquals(plan.lines[0], "╭ In [ ] ────────╮");
+      assertEquals(plan.lines[0], "╭ In [ ] ──────────╮");
     });
 
     it("head border shows Md for markdown cells", () => {
@@ -268,7 +268,7 @@ describe("buildRenderPlan", () => {
         metadata: {},
       }]);
       const plan = buildRenderPlan(nb, defaultCaps);
-      assertEquals(plan.lines[0], "╭ Md ────────╮");
+      assertEquals(plan.lines[0], "╭ Md ──────────────╮");
     });
 
     it("head border shows Raw for raw cells", () => {
@@ -279,7 +279,7 @@ describe("buildRenderPlan", () => {
         metadata: {},
       }]);
       const plan = buildRenderPlan(nb, defaultCaps);
-      assertEquals(plan.lines[0], "╭ Raw ────────╮");
+      assertEquals(plan.lines[0], "╭ Raw ─────────────╮");
     });
 
     it("code cell with outputs has both head and mid border", () => {
@@ -342,7 +342,7 @@ describe("buildRenderPlan", () => {
         metadata: {},
       }]);
       const plan = buildRenderPlan(nb, defaultCaps, { cellBorderPadding: 2 });
-      assertEquals(plan.lines[0], "╭ In [2] ────╮");
+      assertEquals(plan.lines[0], "╭ In [2] ──────╮");
     });
 
     it("cellBorderPadding=0 produces borders with no fill", () => {
@@ -353,7 +353,7 @@ describe("buildRenderPlan", () => {
         metadata: {},
       }]);
       const plan = buildRenderPlan(nb, defaultCaps, { cellBorderPadding: 0 });
-      assertEquals(plan.lines[0], "╭ Md ╮");
+      assertEquals(plan.lines[0], "╭ Md ──────╮");
     });
 
     it("cellBorderAlign=center places label in the middle", () => {
@@ -368,7 +368,7 @@ describe("buildRenderPlan", () => {
       const plan = buildRenderPlan(nb, defaultCaps, {
         cellBorderAlign: "center",
       });
-      assertEquals(plan.lines[0], "╭──── In [3] ────╮");
+      assertEquals(plan.lines[0], "╭──── In [3] ──────╮");
     });
 
     it("empty notebook has no border characters", () => {

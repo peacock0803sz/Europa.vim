@@ -21,6 +21,9 @@ const DEFAULT_MAX_OUTPUT_LINES = 100;
 const DEFAULT_CELL_BORDER_CHARS = ["╭", "─", "╮", "╰", "╯"] as const;
 const DEFAULT_CELL_BORDER_PADDING = 4;
 const DEFAULT_CELL_BORDER_ALIGN = "left" as const;
+// Reference width = length of "Out [NN]" (8). Ensures all cell types produce
+// the same total border width regardless of label length differences.
+const BORDER_REF_LABEL_WIDTH = 8;
 
 function buildBorderLine(
   left: string,
@@ -52,7 +55,10 @@ function formatHeadBorder(
   } else {
     label = "Raw";
   }
-  const [lf, rf] = align === "left" ? [0, padding * 2] : [padding, padding];
+  const extraFill = Math.max(0, BORDER_REF_LABEL_WIDTH - label.length);
+  const [lf, rf] = align === "left"
+    ? [0, padding * 2 + extraFill]
+    : [padding, padding + extraFill];
   return buildBorderLine(tl, tr, h, label, lf, rf);
 }
 
@@ -66,12 +72,12 @@ function formatMidBorder(
   const bl = chars[3] ?? "╰";
   const br = chars[4] ?? "╯";
   const n = cell.cell_type === "code" ? (cell.execution_count ?? " ") : " ";
-  // "Out" is 1 char longer than "In": reduce right fill to keep same total width.
-  const excess = 1;
+  const label = `Out [${n}]`;
+  const extraFill = Math.max(0, BORDER_REF_LABEL_WIDTH - label.length);
   const [lf, rf] = align === "left"
-    ? [0, Math.max(0, padding * 2 - excess)]
-    : [padding, Math.max(0, padding - excess)];
-  return buildBorderLine(bl, br, h, `Out [${n}]`, lf, rf);
+    ? [0, padding * 2 + extraFill]
+    : [padding, padding + extraFill];
+  return buildBorderLine(bl, br, h, label, lf, rf);
 }
 
 /** Merge consecutive stream outputs of the same name (FR-012). */
