@@ -205,9 +205,10 @@ function appendCellOutputs(
  *
  * @param nb - Normalized notebook (all source fields are plain strings).
  * @param caps - Host capabilities used by `dispatchOutput`.
- * @param opts - Options including `maxOutputLines`, `mimePriority`, and
- *   `cellBorderChars`. The `Out` mid-border emitted between source and outputs
- *   is a structural line and is NOT counted against the `maxOutputLines` cap.
+ * @param opts - Options including `maxOutputLines`, `mimePriority`,
+ *   `cellBorderChars`, `cellBorderPadding`, and `cellBorderAlign`. The `Out`
+ *   mid-border emitted between source and outputs is a structural line and is
+ *   NOT counted against the `maxOutputLines` cap.
  * @returns A `RenderPlan` ready for `applyRenderPlan`.
  * @spec-id europa.render.builder.assemble
  * @spec-id europa.render.builder.cell-ranges
