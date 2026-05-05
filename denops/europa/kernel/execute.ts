@@ -129,9 +129,9 @@ export async function* execute(
   const encoded = runtime.info.subprotocol === "v1"
     ? new Uint8Array(encodeV1(envelope))
     : encodeDefault(envelope);
-  runtime.socket.send(encoded);
 
   try {
+    runtime.socket.send(encoded);
     while (!receivedReply || buffer.length > 0) {
       opts?.signal?.throwIfAborted();
 
