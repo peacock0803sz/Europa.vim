@@ -44,7 +44,7 @@ command! -nargs=0 EuropaKernelStatus
 
 command! -nargs=0 EuropaRunCell
       \ call europa#run_cell()
-command! -buffer -nargs=0 EuropaRunAll
+command! -nargs=0 EuropaRunAll
       \ call europa#run_all()
-command! -buffer -nargs=0 EuropaCancelCell
+command! -nargs=0 EuropaCancelCell
       \ call europa#cancel_cell()
