@@ -74,6 +74,12 @@ import { SessionStore } from "./session/state.ts";
 import { createKernelClient } from "./kernel/client.ts";
 import { EuropaKernelError } from "./kernel/errors.ts";
 import { ServerPool } from "./kernel/server-pool.ts";
+import { complete, enqueue, markSent } from "./session/pending-requests.ts";
+import {
+  applyMessageToCell,
+  execute as kernelExecute,
+} from "./kernel/execute.ts";
+import type { CodeCell } from "../../schema/notebook.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
 export class UnimplementedError extends Error {
@@ -1313,27 +1319,115 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       await serverPool.killAll();
     },
 
-    // Phase 3.3+ — argument validation in place; full implementation in later tasks
     // @spec-id europa.contract.dispatcher-phase3-3-alignment
-    runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
+    // @spec-id europa.dispatcher.run-cell
+    // @spec-id europa.dispatcher.run-cell-queued-on-busy
+    async runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       const bn = Number(_bufnr);
       if (!Number.isInteger(bn) || bn < 1) {
-        return Promise.reject(
-          new EuropaKernelError(
-            "INVALID_ARGS",
-            `runCell: invalid bufnr '${_bufnr}'`,
-          ),
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `runCell: invalid bufnr '${_bufnr}'`,
         );
       }
       if (typeof _cellId !== "string" || _cellId.length === 0) {
-        return Promise.reject(
-          new EuropaKernelError(
-            "INVALID_ARGS",
-            `runCell: cellId must be a non-empty string`,
-          ),
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `runCell: cellId must be a non-empty string`,
         );
       }
-      return Promise.reject(new UnimplementedError("runCell"));
+      const cellId = _cellId;
+
+      const session = sessionStore.get(bn);
+      const kr = session?.kernelRuntime;
+      if (!kr) {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: No kernel attached. Use :EuropaStartKernel first.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      const cell = session!.notebook.cells.find((c) => c.id === cellId);
+      if (!cell) {
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: No cell at cursor")}`,
+        );
+        return;
+      }
+
+      if (cell.cell_type !== "code") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote("Europa: Cannot run a non-code cell (markdown/raw)")
+          }`,
+        );
+        return;
+      }
+
+      const codeCell = cell as CodeCell;
+
+      if (kr.cellStates.get(cellId) === "busy") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Cell is already running. Use :EuropaInterrupt first.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      // Snapshot source at call time (Q-edit / FR-002)
+      const code = codeCell.source;
+
+      // Clear outputs before execution
+      codeCell.outputs = [];
+
+      const msgId = enqueue(kr, bn, cellId);
+
+      if (kr.execState === "busy") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Cell queued. Run :EuropaRunCell again after current execution finishes, or use :EuropaRunAll.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      kr.execState = "busy";
+      markSent(kr, msgId);
+      try {
+        for await (const msg of kernelExecute(kr, code, { msgId })) {
+          applyMessageToCell(codeCell, msg);
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          kr.cellStates.set(cellId, "aborted");
+        }
+      } finally {
+        complete(kr, msgId);
+        kr.execState = "idle";
+        // Re-render the notebook to reflect updated outputs
+        try {
+          const config = await loadConfig(denops);
+          const caps = await detectCapabilities(denops);
+          const plan = buildRenderPlan(
+            session!.notebook,
+            caps,
+            renderPlanOpts(config),
+          );
+          sessionStore.setRenderPlan(bn, plan);
+          await applyRenderPlan(denops, bn, plan);
+        } catch {
+          // Re-render failure is non-fatal
+        }
+      }
     },
     runAll(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
