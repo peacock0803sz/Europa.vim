@@ -6,7 +6,6 @@
     "github>Omochice/renovate-config:deno"
   ],
   "enabledManagers": [
-    "npm",
     "deno"
   ],
   "packageRules": [
