@@ -3,8 +3,6 @@
  *
  * @spec-id europa.kernel.interrupt.rest-204
  * @spec-id europa.kernel.interrupt.token-header
- * @spec-id europa.kernel.interrupt.idle-no-op
- * @spec-id europa.kernel.interrupt.reconnect-mid
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";

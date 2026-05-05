@@ -19,6 +19,7 @@
  * @spec-id europa.dispatcher.run-all
  * @spec-id europa.dispatcher.cancel-cell
  * @spec-id europa.dispatcher.interrupt-kernel
+ * @spec-id europa.kernel.interrupt.idle-no-op
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
