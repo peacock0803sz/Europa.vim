@@ -15,7 +15,10 @@
  * @spec-id europa.dispatcher.shutdown-kernel
  * @spec-id europa.dispatcher.kernel-status
  * @spec-id europa.dispatcher.run-cell
- * @spec-id europa.dispatcher.run-cell-busy-reject
+ * @spec-id europa.dispatcher.run-cell-queued-on-busy
+ * @spec-id europa.dispatcher.run-all
+ * @spec-id europa.dispatcher.cancel-cell
+ * @spec-id europa.dispatcher.interrupt-kernel
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";

@@ -74,7 +74,12 @@ import { SessionStore } from "./session/state.ts";
 import { createKernelClient } from "./kernel/client.ts";
 import { EuropaKernelError } from "./kernel/errors.ts";
 import { ServerPool } from "./kernel/server-pool.ts";
-import { complete, enqueue, markSent } from "./session/pending-requests.ts";
+import {
+  cancelQueued,
+  complete,
+  enqueue,
+  markSent,
+} from "./session/pending-requests.ts";
 import {
   applyMessageToCell,
   execute as kernelExecute,
@@ -1321,7 +1326,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
 
     // @spec-id europa.contract.dispatcher-phase3-3-alignment
     // @spec-id europa.dispatcher.run-cell
-    // @spec-id europa.dispatcher.run-cell-busy-reject
+    // @spec-id europa.dispatcher.run-cell-queued-on-busy
     async runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       const bn = Number(_bufnr);
       if (!Number.isInteger(bn) || bn < 1) {
@@ -1431,17 +1436,132 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
       }
     },
-    runAll(_bufnr: unknown): Promise<void> {
+    // @spec-id europa.dispatcher.run-all
+    async runAll(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
       if (!Number.isInteger(bn) || bn < 1) {
-        return Promise.reject(
-          new EuropaKernelError(
-            "INVALID_ARGS",
-            `runAll: invalid bufnr '${_bufnr}'`,
-          ),
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `runAll: invalid bufnr '${_bufnr}'`,
         );
       }
-      return Promise.reject(new UnimplementedError("runAll"));
+
+      const session = sessionStore.get(bn);
+      const kr = session?.kernelRuntime;
+      if (!kr) {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: No kernel attached. Use :EuropaStartKernel first.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      const allCells = session!.notebook.cells;
+      const codeCells = allCells.filter((c) => c.cell_type === "code");
+      const markdownSkipped = allCells.length - codeCells.length;
+
+      // Phase 1: pre-enqueue all code cells
+      const entries: Array<{ cell: typeof codeCells[0]; msgId: string }> = [];
+      for (const cell of codeCells) {
+        const msgId = enqueue(kr, bn, cell.id);
+        entries.push({ cell, msgId });
+      }
+
+      // Phase 2: sequential execution
+      kr.execState = "busy";
+      let completed = 0;
+      let cancelledSkipped = 0;
+      let errorStopped = false;
+      const totalCode = codeCells.length;
+
+      try {
+        for (const { cell, msgId } of entries) {
+          // Check if cancelled
+          if (!kr.pendingRequests.has(msgId)) {
+            cancelledSkipped++;
+            continue;
+          }
+
+          const codeCell = cell as CodeCell;
+          const code = codeCell.source;
+          codeCell.outputs = [];
+
+          markSent(kr, msgId);
+          let execStatus = "ok";
+          try {
+            for await (const msg of kernelExecute(kr, code, { msgId })) {
+              applyMessageToCell(codeCell, msg);
+              if (
+                msg.header.msg_type === "execute_reply" &&
+                (msg.content as { status?: string }).status
+              ) {
+                execStatus = (msg.content as { status: string }).status;
+              }
+            }
+          } catch {
+            execStatus = "error";
+          } finally {
+            complete(kr, msgId);
+          }
+
+          completed++;
+
+          if (execStatus === "error") {
+            // Q2: stop on error, cancel remaining queued
+            for (const remaining of entries) {
+              if (kr.pendingRequests.has(remaining.msgId)) {
+                kr.pendingRequests.delete(remaining.msgId);
+                kr.cellStates.set(remaining.cell.id, "idle");
+                cancelledSkipped++;
+              }
+            }
+            await denops.cmd(
+              `echom ${
+                vimSingleQuote(
+                  `Europa: Run all stopped at cell ${completed}/${totalCode} due to error`,
+                )
+              }`,
+            );
+            errorStopped = true;
+            break;
+          }
+        }
+      } finally {
+        kr.execState = "idle";
+        // Re-render after all cells executed
+        try {
+          const config = await loadConfig(denops);
+          const caps = await detectCapabilities(denops);
+          const plan = buildRenderPlan(
+            session!.notebook,
+            caps,
+            renderPlanOpts(config),
+          );
+          sessionStore.setRenderPlan(bn, plan);
+          await applyRenderPlan(denops, bn, plan);
+        } catch {
+          // Re-render failure is non-fatal
+        }
+      }
+
+      if (!errorStopped) {
+        const skipParts: string[] = [];
+        if (markdownSkipped > 0) skipParts.push(`${markdownSkipped} markdown`);
+        if (cancelledSkipped > 0) {
+          skipParts.push(`${cancelledSkipped} cancelled`);
+        }
+        const skipSuffix = skipParts.length > 0
+          ? ` (skipped ${skipParts.join(", ")})`
+          : "";
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(`Europa: Ran ${completed} code cells${skipSuffix}`)
+          }`,
+        );
+      }
     },
     restartKernel(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
@@ -1455,37 +1575,120 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
       return Promise.reject(new UnimplementedError("restartKernel"));
     },
-    interruptKernel(_bufnr: unknown): Promise<void> {
+    /**
+     * @spec-id europa.dispatcher.interrupt-kernel
+     * @spec-id europa.kernel.interrupt.idle-no-op
+     * @spec-id europa.kernel.interrupt.reconnect-mid
+     */
+    async interruptKernel(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
       if (!Number.isInteger(bn) || bn < 1) {
-        return Promise.reject(
-          new EuropaKernelError(
-            "INVALID_ARGS",
-            `interruptKernel: invalid bufnr '${_bufnr}'`,
-          ),
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `interruptKernel: invalid bufnr '${_bufnr}'`,
         );
       }
-      return Promise.reject(new UnimplementedError("interruptKernel"));
+
+      const session = sessionStore.get(bn);
+      const kr = session?.kernelRuntime;
+      if (!kr) {
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: No kernel attached.")}`,
+        );
+        return;
+      }
+
+      // FR-011: cannot interrupt during reconnect or restart
+      if (kr.execState === "restarting" || kr.reconnect) {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Cannot interrupt during reconnect, please wait",
+            )
+          }`,
+        );
+        return;
+      }
+
+      // FR-010: idle state — show info but still send REST (idempotent 204)
+      if (kr.execState === "idle") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote("Europa: Kernel is idle, nothing to interrupt")
+          }`,
+        );
+      }
+
+      try {
+        await kr.client.interrupt();
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: Interrupt sent")}`,
+        );
+      } catch (e) {
+        const msg = e instanceof EuropaKernelError ? e.message : String(e);
+        await denops.cmd(
+          `echom ${vimSingleQuote(`Europa: Interrupt failed: ${msg}`)}`,
+        );
+      }
     },
-    cancelCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
+    // @spec-id europa.dispatcher.cancel-cell
+    async cancelCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       const bn = Number(_bufnr);
       if (!Number.isInteger(bn) || bn < 1) {
-        return Promise.reject(
-          new EuropaKernelError(
-            "INVALID_ARGS",
-            `cancelCell: invalid bufnr '${_bufnr}'`,
-          ),
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `cancelCell: invalid bufnr '${_bufnr}'`,
         );
       }
       if (typeof _cellId !== "string" || _cellId.length === 0) {
-        return Promise.reject(
-          new EuropaKernelError(
-            "INVALID_ARGS",
-            `cancelCell: cellId must be a non-empty string`,
-          ),
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `cancelCell: cellId must be a non-empty string`,
         );
       }
-      return Promise.reject(new UnimplementedError("cancelCell"));
+      const cellId = _cellId;
+
+      const session = sessionStore.get(bn);
+      const kr = session?.kernelRuntime;
+      if (!kr) {
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: No kernel attached.")}`,
+        );
+        return;
+      }
+
+      if (cancelQueued(kr, cellId)) {
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: Cancelled queued cell")}`,
+        );
+        return;
+      }
+
+      // cancelQueued returned false — entry was not in 'queued' state
+      const state = kr.cellStates.get(cellId);
+      if (state === "busy") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Cell is already running. Use :EuropaInterrupt to stop.",
+            )
+          }`,
+        );
+        return;
+      }
+
+      // Check if cell exists in notebook
+      const cell = session!.notebook.cells.find((c) => c.id === cellId);
+      if (!cell) {
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: No cell at cursor")}`,
+        );
+        return;
+      }
+
+      await denops.cmd(
+        `echom ${vimSingleQuote("Europa: Cell is not queued (state=idle)")}`,
+      );
     },
 
     // Phase 4: ZMQ attach
