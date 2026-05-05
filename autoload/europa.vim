@@ -226,3 +226,22 @@ function! europa#run_cell() abort
   call denops#plugin#wait_async('europa',
         \ { -> denops#notify('europa', 'runCell', [l:bufnr, l:cell_id]) })
 endfunction
+
+" Execute all code cells in order from top to bottom.
+function! europa#run_all() abort
+  let l:bufnr = bufnr('%')
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'runAll', [l:bufnr]) })
+endfunction
+
+" Cancel a queued cell without sending a network message.
+function! europa#cancel_cell() abort
+  let l:bufnr = bufnr('%')
+  let l:cell_id = europa#current_cell_id()
+  if empty(l:cell_id)
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'cancelCell', [l:bufnr, l:cell_id]) })
+endfunction
