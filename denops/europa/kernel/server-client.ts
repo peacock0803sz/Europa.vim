@@ -243,6 +243,18 @@ export class ServerKernelClient implements KernelClient {
       abort,
     };
     this._runtime = runtime;
+
+    // SC-010a: abort propagation must reach kernel state within 100ms.
+    // Decoupled from the WS close event because Windows can delay the close
+    // (no TCP FIN when the peer process is killed) past the 100ms budget.
+    abort.signal.addEventListener("abort", () => {
+      const r = this._runtime;
+      if (r && r.info.state !== "disconnected") {
+        r.info.state = "disconnected";
+        delete r.reconnect;
+      }
+    }, { once: true });
+
     this._attachReconnectLoop(socket);
 
     return runtime;
@@ -329,6 +341,9 @@ export class ServerKernelClient implements KernelClient {
   private _attachReconnectLoop(socket: WebSocket): void {
     socket.addEventListener("close", (ev) => {
       if (ev.code === 1000 || !this._runtime) return;
+      // Abort listener already set state to "disconnected"; skip the loop to
+      // avoid a transient "reconnecting" flicker after teardown.
+      if (this._runtime.abort.signal.aborted) return;
       this._runReconnectLoop();
     }, { once: true });
   }
