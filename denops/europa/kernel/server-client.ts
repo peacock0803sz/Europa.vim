@@ -34,6 +34,7 @@ import { decodeV1, encodeV1 } from "./wire/protocol-v1.ts";
 import { decodeDefault, encodeDefault } from "./wire/protocol-default.ts";
 import { execute as executeImpl } from "./execute.ts";
 import { interrupt as interruptImpl } from "./interrupt.ts";
+import { restart as restartImpl } from "./restart.ts";
 
 type ServerClientOptions = {
   kernelInfoTimeoutMs?: number;
@@ -875,14 +876,29 @@ export class ServerKernelClient implements KernelClient {
   }
 
   /**
-   * Restart kernel via REST + WebSocket re-open + kernelInfo() handshake.
+   * Restart kernel via REST + WebSocket re-open + kernelInfo() re-handshake.
    *
-   * Stub: full impl in T044/T045 (US4).
+   * Delegates to kernel/restart.ts. The onSocketReopen callback updates this
+   * client's internal socket reference and re-attaches the message listener
+   * before kernelInfo() subscribes, ensuring the reply is seen on the new WS.
    */
   restart(): Promise<void> {
-    // Implemented in T044/T045 (US4)
-    return Promise.reject(
-      new Error("restart: not yet implemented (Phase 3.3 US4)"),
+    if (!this._runtime || !this._baseUrl || !this._token || !this._wsUrl) {
+      return Promise.reject(
+        new Error("restart: client not connected — call start() first"),
+      );
+    }
+    return restartImpl(
+      this._runtime,
+      this._baseUrl,
+      this._token,
+      this._wsUrl,
+      this._subprotocols,
+      (socket) => {
+        this._socket = socket;
+        this._attachMessageListener(socket);
+        this._attachReconnectLoop(socket);
+      },
     );
   }
 }
