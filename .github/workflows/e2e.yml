@@ -7,6 +7,8 @@ on:
       - 'schema/config.ts'
       - 'contracts/kernel-client.ts'
       - 'contracts/dispatcher.ts'
+      - 'tests/pyproject.toml'
+      - 'tests/uv.lock'
       - 'tests/conformance/**'
       - 'tests/fixtures/mock-kernel.ts'
       - 'tests/fixtures/mock-host.ts'
