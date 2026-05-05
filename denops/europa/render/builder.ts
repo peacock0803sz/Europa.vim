@@ -18,6 +18,67 @@ import { renderMarkdown } from "./markdown.ts";
 // Matches schema/config.ts and denops/europa/config.ts — when no opts are
 // passed, the renderer behaves as if the user accepted Vim defaults.
 const DEFAULT_MAX_OUTPUT_LINES = 100;
+const DEFAULT_CELL_BORDER_CHARS = ["╭", "─", "╮", "╰", "╯"] as const;
+const DEFAULT_CELL_BORDER_PADDING = 4;
+const DEFAULT_CELL_BORDER_ALIGN = "left" as const;
+// Reference width = length of "Out [NN]" (8). Ensures all cell types produce
+// the same total border width regardless of label length differences.
+const BORDER_REF_LABEL_WIDTH = 8;
+
+function buildBorderLine(
+  left: string,
+  right: string,
+  fill: string,
+  label: string,
+  leftFill: number,
+  rightFill: number,
+): string {
+  return `${left}${fill.repeat(leftFill)} ${label} ${
+    fill.repeat(rightFill)
+  }${right}`;
+}
+
+function formatHeadBorder(
+  cell: Notebook["cells"][number],
+  chars: readonly string[],
+  padding: number,
+  align: "center" | "left",
+): string {
+  const tl = chars[0] ?? "╭";
+  const h = chars[1] ?? "─";
+  const tr = chars[2] ?? "╮";
+  let label: string;
+  if (cell.cell_type === "code") {
+    label = `In [${cell.execution_count ?? " "}]`;
+  } else if (cell.cell_type === "markdown") {
+    label = "Md";
+  } else {
+    label = "Raw";
+  }
+  const extraFill = Math.max(0, BORDER_REF_LABEL_WIDTH - label.length);
+  const [lf, rf] = align === "left"
+    ? [0, padding * 2 + extraFill]
+    : [padding, padding + extraFill];
+  return buildBorderLine(tl, tr, h, label, lf, rf);
+}
+
+function formatMidBorder(
+  cell: Notebook["cells"][number],
+  chars: readonly string[],
+  padding: number,
+  align: "center" | "left",
+): string {
+  const h = chars[1] ?? "─";
+  const bl = chars[3] ?? "╰";
+  const br = chars[4] ?? "╯";
+  const n = cell.cell_type === "code" ? (cell.execution_count ?? " ") : " ";
+  const label = `Out [${n}]`;
+  const extraFill = Math.max(0, BORDER_REF_LABEL_WIDTH - label.length);
+  const [lf, rf] = align === "left"
+    ? [0, padding * 2 + extraFill]
+    : [padding, padding + extraFill];
+  return buildBorderLine(bl, br, h, label, lf, rf);
+}
 
 /** Merge consecutive stream outputs of the same name (FR-012). */
 export function mergeStreams(outputs: readonly Output[]): Output[] {
@@ -150,11 +211,15 @@ function appendCellOutputs(
  *
  * @param nb - Normalized notebook (all source fields are plain strings).
  * @param caps - Host capabilities used by `dispatchOutput`.
- * @param opts - Options including `maxOutputLines` and `mimePriority`.
+ * @param opts - Options including `maxOutputLines`, `mimePriority`,
+ *   `cellBorderChars`, `cellBorderPadding`, and `cellBorderAlign`. The `Out`
+ *   mid-border emitted between source and outputs is a structural line and is
+ *   NOT counted against the `maxOutputLines` cap.
  * @returns A `RenderPlan` ready for `applyRenderPlan`.
  * @spec-id europa.render.builder.assemble
  * @spec-id europa.render.builder.cell-ranges
  * @spec-id europa.render.builder.empty-notebook-guidance
+ * @spec-id europa.render.builder.cell-borders
  */
 export function buildRenderPlan(
   nb: Notebook,
@@ -162,9 +227,16 @@ export function buildRenderPlan(
   opts?: {
     maxOutputLines?: number;
     mimePriority?: string[];
+    cellBorderChars?: readonly string[];
+    cellBorderPadding?: number;
+    cellBorderAlign?: "center" | "left";
   },
 ): RenderPlan {
   const maxOutputLines = opts?.maxOutputLines ?? DEFAULT_MAX_OUTPUT_LINES;
+  const cellBorderChars = opts?.cellBorderChars ?? DEFAULT_CELL_BORDER_CHARS;
+  const cellBorderPadding = opts?.cellBorderPadding ??
+    DEFAULT_CELL_BORDER_PADDING;
+  const cellBorderAlign = opts?.cellBorderAlign ?? DEFAULT_CELL_BORDER_ALIGN;
   const mimePriority = opts?.mimePriority ?? [
     "image/png",
     "image/jpeg",
@@ -208,12 +280,29 @@ export function buildRenderPlan(
     const startLine = lines.length;
     const bufLineStart = startLine;
 
-    lines.push(`## [${cell.cell_type}] ${cell.id}`);
+    lines.push(
+      formatHeadBorder(
+        cell,
+        cellBorderChars,
+        cellBorderPadding,
+        cellBorderAlign,
+      ),
+    );
 
     const sourceLines = cell.source ? cell.source.split("\n") : [];
     for (const line of sourceLines) lines.push(line);
 
     if (cell.cell_type === "code" && cell.outputs && cell.outputs.length > 0) {
+      // Mid-border is structural; push before appendCellOutputs so it is not
+      // counted against the maxOutputLines cap.
+      lines.push(
+        formatMidBorder(
+          cell,
+          cellBorderChars,
+          cellBorderPadding,
+          cellBorderAlign,
+        ),
+      );
       appendCellOutputs(
         { lines, highlights, sixelPlacements },
         cell.outputs,

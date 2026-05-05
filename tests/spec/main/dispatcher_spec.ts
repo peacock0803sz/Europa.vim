@@ -350,9 +350,10 @@ describe("splitCell dispatcher", () => {
     // Line 3 in the viewer falls within cell 1's source ("print(...)").
     await dispatcher.splitCell(VIEWER_BUFNR, FIRST_CELL_ID, 3);
     const lines = host.getBufLines(VIEWER_BUFNR);
-    // Two distinct `## [code]` headers exist for the original cell's id and
+    // Two distinct head borders exist for the original cell's id and
     // the freshly minted lower-half cell; structural mutation succeeded.
-    const headerCount = lines.filter((l) => l.startsWith("## [code]")).length;
+    const headerCount =
+      lines.filter((l) => l.startsWith("╭") && l.includes("In [")).length;
     assertEquals(
       headerCount >= 4,
       true,
@@ -368,7 +369,7 @@ describe("splitCell dispatcher", () => {
     await dispatcher.splitCell(VIEWER_BUFNR, FIRST_CELL_ID, 1);
     const lines = host.getBufLines(VIEWER_BUFNR);
     const firstSourceLineIdx = lines.findIndex((l) =>
-      l === "" || l.startsWith("## ")
+      l === "" || l.startsWith("╭") || l.startsWith("╰")
     );
     // After a splitLine=0 split, the original cellId's body is empty, so the
     // line right after its header is either another header or a blank line.
@@ -560,7 +561,7 @@ describe("joinCell dispatcher", () => {
     await dispatcher.joinCell(VIEWER_BUFNR, SECOND_CELL_ID);
     const lines = host.getBufLines(VIEWER_BUFNR);
     // Originally 5 cells = 5 headers; after join 4 cells = 4 headers.
-    const allHeaders = lines.filter((l) => l.startsWith("## ["));
+    const allHeaders = lines.filter((l) => l.startsWith("╭"));
     assertEquals(allHeaders.length, 4);
     // The merged cell still uses the previous (cell 1) id and absorbed the
     // markdown source on the line right after its header.

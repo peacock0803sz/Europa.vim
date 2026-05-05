@@ -44,9 +44,15 @@ export const EuropaConfigSchema = Type.Object({
     default: ["image/png", "image/jpeg", "text/html", "text/plain"],
   }),
   max_output_lines: Type.Integer({ minimum: 1, default: 100 }),
-  cell_border_chars: Type.Array(Type.String(), {
-    default: ["╭", "─", "╮", "╰", "╯"],
-  }),
+  cell_border_chars: Type.Array(
+    Type.String({ minLength: 1, pattern: "^[^/\n\r\x00]+$" }),
+    { default: ["╭", "─", "╮", "╰", "╯"], minItems: 5, maxItems: 5 },
+  ),
+  cell_border_padding: Type.Integer({ minimum: 0, default: 4 }),
+  cell_border_align: Type.Union(
+    [Type.Literal("center"), Type.Literal("left")],
+    { default: "left" },
+  ),
   lazy_padding: Type.Integer({ minimum: 0, default: 10 }),
 
   // Behavior (Phase 2 active)
