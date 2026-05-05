@@ -172,11 +172,21 @@ export type MockKernelOptions = {
   /** Scripted replies for execute_request messages (Phase 3.3). */
   executeScript?: MockExecuteScript;
   /**
+   * If set, delay (ms) before sending execute_reply (for busy-restart tests).
+   * Allows a runCell to stay in-flight while restartKernel is called.
+   */
+  executeReplyDelayMs?: number;
+  /**
    * If set, stop responding to kernel_info_request after this many replies.
    * Allows start() to succeed on the first reply while subsequent kernelInfo()
    * calls time out (for KERNEL_INFO_TIMEOUT test coverage).
    */
   kernelInfoReplyLimit?: number;
+  /**
+   * HTTP status to return for POST /api/kernels/:kid/restart.
+   * Defaults to 200. Set to 500 to test the FR-013 5xx fallback path.
+   */
+  restartReplyStatus?: number;
 };
 
 export type MockKernelHandle = {
@@ -188,6 +198,8 @@ export type MockKernelHandle = {
   deletedSessions: string[];
   /** REST interrupt call count (POST /api/kernels/:kid/interrupt). */
   interruptCallTimestamps: number[];
+  /** REST restart call count (POST /api/kernels/:kid/restart). */
+  restartCallCount: number;
   /** All execute_request messages received over the WebSocket. */
   executeRequestCalls: MockKernelMessage[];
   /** All inbound wire messages received (diagnostic API). */
@@ -227,6 +239,7 @@ export function makeMockKernel(
   const sessionId = crypto.randomUUID();
   const deletedSessions: string[] = [];
   const interruptCallTimestamps: number[] = [];
+  let restartCallCount = 0;
   const executeRequestCalls: MockKernelMessage[] = [];
   const allWireMessages: MockKernelMessage[] = [];
   const activeSockets = new Set<WebSocket>();
@@ -294,8 +307,13 @@ export function makeMockKernel(
       return new Response(null, { status: 204 });
     }
 
-    // POST /api/kernels/:kid/restart → 200 + kernel JSON
+    // POST /api/kernels/:kid/restart → 200 + kernel JSON (or restartReplyStatus if set)
     if (req.method === "POST" && path.endsWith("/restart")) {
+      restartCallCount++;
+      const status = opts.restartReplyStatus ?? 200;
+      if (status !== 200) {
+        return new Response("Server Error", { status });
+      }
       const kernelJson = {
         id: kernelId,
         name: "python3",
@@ -416,6 +434,17 @@ export function makeMockKernel(
             "iopub",
           );
 
+          // Optional delay before sending execute_reply (for busy-restart tests)
+          if (opts.executeReplyDelayMs && opts.executeReplyDelayMs > 0) {
+            try {
+              await delay(opts.executeReplyDelayMs, {
+                signal: socketAbort.signal,
+              });
+            } catch {
+              return;
+            }
+          }
+
           // Scripted replies (iopub messages before execute_reply)
           if (opts.executeScript) {
             const script = opts.executeScript;
@@ -499,6 +528,7 @@ export function makeMockKernel(
     token,
     deletedSessions,
     interruptCallTimestamps,
+    get restartCallCount() { return restartCallCount; },
     executeRequestCalls,
     allWireMessages,
     async close(): Promise<void> {

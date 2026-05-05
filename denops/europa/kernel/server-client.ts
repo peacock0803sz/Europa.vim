@@ -896,6 +896,9 @@ export class ServerKernelClient implements KernelClient {
       this._subprotocols,
       (socket) => {
         this._socket = socket;
+        // Sync the fresh AbortController that restart.ts created so that
+        // subsequent kernelInfo() does not see the already-aborted old signal.
+        this._abort = this._runtime!.abort;
         this._attachMessageListener(socket);
         this._attachReconnectLoop(socket);
       },
