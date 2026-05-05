@@ -11,7 +11,10 @@
  * @spec-id europa.kernel.errors.cause-chain
  */
 
-/** All valid kernel error codes (11 values). */
+/**
+ * All valid kernel error codes (16 values; 11 Phase 3.2 + 5 Phase 3.3).
+ * @spec-id europa.kernel.errors.code-classification-phase3-3
+ */
 export const KERNEL_ERROR_CODES = [
   "JUPYTER_NOT_FOUND",
   "SPAWN_TIMEOUT",
@@ -24,6 +27,12 @@ export const KERNEL_ERROR_CODES = [
   "RECONNECT_EXHAUSTED",
   "CONFIG_INVALID",
   "INVALID_ARGS",
+  // Phase 3.3 additions
+  "EXECUTE_TIMEOUT",
+  "EXECUTE_REENTRANT",
+  "INTERRUPT_REST_FAILED",
+  "RESTART_REST_FAILED",
+  "RESTART_HANDSHAKE_FAILED",
 ] as const;
 
 export type KernelErrorCode = typeof KERNEL_ERROR_CODES[number];
