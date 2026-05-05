@@ -1374,8 +1374,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
 
       const codeCell = cell as CodeCell;
+      const currentCellState = kr.cellStates.get(cellId);
 
-      if (kr.cellStates.get(cellId) === "busy") {
+      if (currentCellState === "busy") {
         await denops.cmd(
           `echom ${
             vimSingleQuote(
@@ -1386,7 +1387,35 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
-      if (kr.execState === "busy") {
+      // Cell was previously queued (runCell called while kernel was busy)
+      let redispatchMsgId: string | undefined;
+      if (currentCellState === "queued") {
+        if (kr.execState === "busy") {
+          await denops.cmd(
+            `echom ${
+              vimSingleQuote(
+                "Europa: Cell is already queued. Use :EuropaCancelCell to cancel.",
+              )
+            }`,
+          );
+          return;
+        }
+        // execState=idle: find existing queued entry to re-dispatch (FR-003 no double-enqueue)
+        for (const [msgId, entry] of kr.pendingRequests.entries()) {
+          if (entry.cellId === cellId && entry.state === "queued") {
+            redispatchMsgId = msgId;
+            break;
+          }
+        }
+        if (!redispatchMsgId) {
+          // Stale cellState with no matching entry — reset and fall through to fresh enqueue
+          kr.cellStates.set(cellId, "idle");
+        }
+      }
+
+      // FR-008: kernel busy and cell not yet queued → enqueue without dispatching
+      if (kr.execState === "busy" && !redispatchMsgId) {
+        enqueue(kr, bn, cellId);
         await denops.cmd(
           `echom ${
             vimSingleQuote(
@@ -1400,7 +1429,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       // Snapshot source at call time (Q-edit / FR-002)
       const code = codeCell.source;
 
-      const msgId = enqueue(kr, bn, cellId);
+      // Re-dispatch queued entry or fresh enqueue — either way msgId is the Jupyter msg_id
+      const msgId = redispatchMsgId ?? enqueue(kr, bn, cellId);
 
       // Clear outputs only when we are actually about to send the request
       codeCell.outputs = [];
