@@ -32,6 +32,7 @@ import {
 } from "./server-process.ts";
 import { decodeV1, encodeV1 } from "./wire/protocol-v1.ts";
 import { decodeDefault, encodeDefault } from "./wire/protocol-default.ts";
+import { execute as executeImpl } from "./execute.ts";
 
 type ServerClientOptions = {
   kernelInfoTimeoutMs?: number;
@@ -604,14 +605,17 @@ export class ServerKernelClient implements KernelClient {
   /**
    * Execute code on the kernel and yield each iopub/shell message.
    *
-   * Stub: delegates to `kernel/execute.ts` (T019/T020).
+   * Delegates to `kernel/execute.ts`. The opts.msgId must match the
+   * pendingRequests key (FR-003 shared UUID invariant).
    */
   execute(
-    _code: string,
-    _opts?: { signal?: AbortSignal; msgId?: string },
-  ): AsyncIterable<import("../../../schema/message.ts").KernelMessage> {
-    // Implemented in T019/T020 (US1)
-    throw new Error("execute: not yet implemented (Phase 3.3 US1)");
+    code: string,
+    opts?: { signal?: AbortSignal; msgId?: string },
+  ): AsyncIterable<KernelMessage> {
+    if (!this._runtime) {
+      throw new Error("execute: client not connected — call start() first");
+    }
+    return executeImpl(this._runtime, code, opts);
   }
 
   /**
