@@ -80,8 +80,6 @@ Phase 1 establishes the operational rule only. The lint that enforces the biject
 
 - Documentation, in-code comments, and commit subjects are written in English.
 - Commit messages follow the `.gitmessage` template. Each subject opens with an emoji prefix and stays at or under 72 columns; the body explains the why.
-- Every PR declares its phase, `Phase 0`–`Phase 5`. Mixing phases in one PR is rejected.
-- Once the bijection check lands in Phase 2, every PR lists the `@spec-id` values it covers. Phase 1 PRs are exempt and say so in the description, pointing to `plan.md` Complexity Tracking for the active feature.
 - The PR body is paragraph-per-line; do not hard-wrap inside a paragraph, since GitHub renders the wraps as line breaks.
 
 ## 9. Debugging and reporting issues
