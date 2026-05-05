@@ -73,7 +73,7 @@ describe("EuropaKernelError — cause chain", () => {
   });
 });
 
-describe("KernelErrorCode — 11 values", () => {
+describe("KernelErrorCode — Phase 3.2 codes (11 values)", () => {
   const EXPECTED_CODES: KernelErrorCode[] = [
     "JUPYTER_NOT_FOUND",
     "SPAWN_TIMEOUT",
@@ -92,7 +92,7 @@ describe("KernelErrorCode — 11 values", () => {
     assertEquals(KERNEL_ERROR_CODES.length, 16);
   });
 
-  it("all 11 expected codes are present", () => {
+  it("all 11 Phase 3.2 codes are present", () => {
     for (const code of EXPECTED_CODES) {
       assertEquals(
         KERNEL_ERROR_CODES.includes(code),
