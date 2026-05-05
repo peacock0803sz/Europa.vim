@@ -1489,6 +1489,17 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
+      if (kr.execState === "busy") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Kernel is busy. Wait for the current execution to finish.",
+            )
+          }`,
+        );
+        return;
+      }
+
       const allCells = session!.notebook.cells;
       const codeCells = allCells.filter((c) => c.cell_type === "code");
       const markdownSkipped = allCells.length - codeCells.length;
