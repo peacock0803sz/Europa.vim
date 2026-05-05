@@ -58,6 +58,60 @@ describe("loadConfig — validation", () => {
   });
 });
 
+describe("loadConfig — cell_border_chars validation", () => {
+  const CHARS_EXPR =
+    `get(g:, 'europa_cell_border_chars', ["╭","─","╮","╰","╯"])`;
+
+  it("accepts a valid 5-element array", async () => {
+    const denops = mockVim();
+    denops.setEval(CHARS_EXPR, ["┌", "═", "┐", "└", "┘"]);
+    const config = await loadConfig(denops);
+    assertEquals(config.cell_border_chars, ["┌", "═", "┐", "└", "┘"]);
+  });
+
+  it("rejects an array of length 4 (minItems: 5)", async () => {
+    const denops = mockVim();
+    denops.setEval(CHARS_EXPR, ["╭", "─", "╮", "╰"]);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+
+  it("rejects an array of length 6 (maxItems: 5)", async () => {
+    const denops = mockVim();
+    denops.setEval(CHARS_EXPR, ["╭", "─", "╮", "╰", "╯", "x"]);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+
+  it("rejects an empty string element (minLength: 1)", async () => {
+    const denops = mockVim();
+    denops.setEval(CHARS_EXPR, ["", "─", "╮", "╰", "╯"]);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+});
+
+describe("loadConfig — cell_border_padding validation", () => {
+  const PADDING_EXPR = `get(g:, 'europa_cell_border_padding', 4)`;
+
+  it("accepts a non-negative integer", async () => {
+    const denops = mockVim();
+    denops.setEval(PADDING_EXPR, 8);
+    const config = await loadConfig(denops);
+    assertEquals(config.cell_border_padding, 8);
+  });
+
+  it("accepts 0 (no fill)", async () => {
+    const denops = mockVim();
+    denops.setEval(PADDING_EXPR, 0);
+    const config = await loadConfig(denops);
+    assertEquals(config.cell_border_padding, 0);
+  });
+
+  it("rejects a negative integer (minimum: 0)", async () => {
+    const denops = mockVim();
+    denops.setEval(PADDING_EXPR, -1);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+});
+
 describe("loadConfig — deprecated g:europa_use_default_mappings", () => {
   /**
    * @spec-id europa.config.deprecated-use-default-mappings
