@@ -1728,7 +1728,11 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       }
 
       await denops.cmd(
-        `echom ${vimSingleQuote("Europa: Cell is not queued (state=idle)")}`,
+        `echom ${
+          vimSingleQuote(
+            `Europa: Cell is not queued (state=${state ?? "idle"})`,
+          )
+        }`,
       );
     },
 
