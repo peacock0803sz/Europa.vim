@@ -19,7 +19,7 @@
 ### 1.2 Feature Scope (per Phase)
 
 - Phase 0: Minimum spike (flake.nix / pre-commit basics / deno.json / minimum CI / empty vimdoc generation / `.ipynb` smoke)
-- Phase 1: Pre-Phase 2 setup (renovate / in-house lint / `doc/sources` chapter templates for all chapters / CONTRIBUTING / operational preparation for spec <-> TSDoc correspondence)
+- Phase 1: Pre-Phase 2 setup (renovate / in-house lint / `doc/europa-<slug>.txt` chapter templates for all chapters / CONTRIBUTING / operational preparation for spec <-> TSDoc correspondence)
 - Phase 2: Open `.ipynb` and view cell structure and rich outputs (no kernel connection, local view/save only)
 - Phase 3: Cell execution, Kernel management, full inline image rendering
 - Phase 4: ZMQ direct mode (attach to existing connection_file), advanced MIMEs such as Vega-Lite/PDF
@@ -36,38 +36,37 @@ graph TD
   Sc["1. Schema (TypeBox)<br/>schema/*.ts"]
   Te["2. Tests (BDD spec)<br/>tests/spec/**/*_spec.ts"]
   Co3a["3a. TSDoc comments<br/>denops/europa/**/*.ts<br/>(SoT for API reference)"]
-  Co3b["3b. Hand-written guide chapters<br/>doc/sources/*.txt<br/>(SoT for the user guide)"]
-  Vd["doc/europa.txt (vimdoc)<br/>(derivative, committed to git)"]
+  Co3b["3b. Hand-written guide chapters<br/>doc/europa-&lt;slug&gt;.txt<br/>(SoT for the user guide; shipped as-is)"]
+  Vd["doc/europa-api.txt<br/>(API reference, derivative, committed to git)"]
   Tp["TypeScript types (derived)"]
   Js["JSON Schema (export, optional)"]
   Sc -->|"type inference Static&lt;typeof&gt;"| Tp
   Sc -->|"JSON Schema export"| Js
   Sc -->|"runtime validation Value.Check"| Te
   Te -->|"spec chapters correspond 1:1 with TSDoc"| Co3a
-  Co3a -->|"typedoc + plugin-markdown<br/>+ panvimdoc<br/>(API Reference chapter only)"| Vd
-  Co3b -->|"concatenated as-is"| Vd
+  Co3a -->|"typedoc + plugin-markdown<br/>+ panvimdoc"| Vd
 ```
 
 | Rank | SoT type | Location | Derivative | Validation method |
 | --- | --- | --- | --- | --- |
 | 1 | TypeBox schema | `schema/*.ts` | TS types (inferred), JSON Schema (export optional) | `Value.Check` runtime validation |
 | 2 | BDD spec | `tests/spec/**/*_spec.ts` | (CI presents PASS/FAIL) | `deno test` |
-| 3a | TSDoc comments (API reference) | `denops/europa/**/*.ts` | API Reference chapter of `doc/europa.txt` | typedoc + panvimdoc + golden file diff |
-| 3b | Hand-written guide chapters | `doc/sources/*.txt` (vim help format) | First half of `doc/europa.txt` (Introduction ~ FAQ) | golden file diff |
+| 3a | TSDoc comments (API reference) | `denops/europa/**/*.ts` | `doc/europa-api.txt` | typedoc + panvimdoc + golden file diff |
+| 3b | Hand-written guide chapters | `doc/europa-<slug>.txt` (vim help format, shipped as-is) | each chapter is its own help file under `doc/` | hand-edited; no aggregation step |
 
 #### Six Principles
 
 1. Do not hand-write data types. Data types for persistence, wire, RenderPlan, etc. are inferred from TypeBox schemas via `Static<typeof Schema>`. Behavioral contracts such as `KernelClient`, `CellMarker`, and `Dispatcher` cannot be expressed in TypeBox, so they are consolidated under `contracts/*.ts`. Defining new `interface` or `type X = ...` outside of these places will trigger a lint warning. Exceptions are only allowed via a whitelist.
 2. Tests serve as the specification. BDD spec and TSDoc chapters correspond via `@spec-id`. Heading-name matching is prone to false positives, so it is not used. Write a comment like `@spec-id europa.notebook.parse.normalize` on the spec side and embed the same ID in the corresponding TSDoc. The correspondence is mechanically verified in CI. Implementation does not start for specs that do not have tests.
 3. Comments should only contain why and the API specification. TSDoc tags such as `@param`, `@returns`, `@example`, and `@throws` are kept as the SoT for the API specification. Other in-code comments are limited to "why" for complex logic.
-4. Hand-written documentation is placed only at the repository root: `README.md`, `DESIGN.md`, `CONTRIBUTING.md`, and the vim help guide chapters under `doc/sources/*.txt`. Hand-written md and txt files outside of these locations are forbidden. The API reference is auto-generated from TSDoc. Denops itself also hand-writes `doc/denops.txt`. We separate the readers into two: a hand-written user-facing guide aligned with vim culture, and an auto-generated developer-facing API from TSDoc.
-5. Generated artifacts are committed to git, and CI enforces the diff. Generated artifacts such as `doc/europa.txt` are placed in the repository, and CI runs `deno task gen:vimdoc && git diff --exit-code doc/europa.txt`. PRs whose generated artifacts have drifted are failed.
+4. Hand-written documentation is placed only at the repository root (`README.md`, `DESIGN.md`, `CONTRIBUTING.md`), the vim help index `doc/europa.txt`, and the vim help guide chapters `doc/europa-<slug>.txt`. Hand-written md and txt files outside of these locations are forbidden. The API reference is auto-generated from TSDoc into `doc/europa-api.txt`. Denops itself also hand-writes `doc/denops.txt`. We separate the readers into two: a hand-written user-facing guide aligned with vim culture, and an auto-generated developer-facing API from TSDoc.
+5. Generated artifacts are committed to git, and CI enforces the diff. The only generated vimdoc artifact is `doc/europa-api.txt`, and CI runs `deno task gen:vimdoc && git diff --exit-code doc/europa-api.txt`. PRs whose generated artifact has drifted are failed.
 6. Dependency updates are operated assuming renovate/dependabot. typedoc, typedoc-plugin-markdown, and TypeBox have pinned versions. Minor and patch updates are bundled by groupName for automatic PRs, while majors are reviewed manually. The impact of bumps is detected by golden file tests for generated artifacts.
 
 #### Implementation Policy
 
 - New features are written in the order: schema, tests, then TSDoc-annotated implementation. The reverse order is forbidden.
-- Vim help has a two-tier structure. User-facing guide chapters (Introduction, Requirements, Setup, Configuration, Commands, Mappings, Examples, FAQ, About) are hand-written under `doc/sources/*.txt`, while API reference chapters are auto-generated from TSDoc of the corresponding TS modules and concatenated. `@packageDocumentation`, `@module`, and `@category` are used for chapter organization on the API reference side, not for the user guide.
+- Vim help has a two-tier structure. User-facing guide chapters (Introduction, Requirements, Setup, Configuration, Commands, Mappings, Examples, Kernel, FAQ, About) are hand-written as `doc/europa-<slug>.txt` and shipped directly as standalone help files; `doc/europa.txt` is the hand-written index that links them together. The API reference is auto-generated from TSDoc of the corresponding TS modules into `doc/europa-api.txt`. `@packageDocumentation`, `@module`, and `@category` are used for chapter organization on the API reference side, not for the user guide.
 - The generation and validation pipelines are consolidated under `deno task`. `gen:vimdoc`, `test:spec`, `test:golden`, `validate`, and `ci` are bundled in `deno.json` tasks. No manual steps are created.
 - The automated PR workflow runs `deno task check` in `.github/workflows/ci.yml`, checking both generated artifact diffs and golden file diffs. When typedoc or panvimdoc bumps change the output, a human approves it as an intentional fixture-update PR.
 
@@ -169,7 +168,7 @@ tests/                         <- SoT 2: BDD spec + golden fixture
       multi-line-source.ipynb
       pandas-output.ipynb
       kitty-image.ipynb
-  (vimdoc uses doc/europa.txt itself as the expected value via diff check; no separate expected file)
+  (vimdoc uses doc/europa-api.txt itself as the expected value via diff check; no separate expected file)
   fixtures/                    <- test helpers
     mock-host.ts               <- Vim/Neovim host mock (mocks the Denops type from denops)
     mock-kernel.ts             <- Jupyter Server mock (including WebSocket)
@@ -220,17 +219,18 @@ ftdetect/
 syntax/
   europa.vim                   <- cell boundary syntax (auxiliary)
 doc/
-  europa.txt                   <- final vimdoc (generated artifact, committed to git, diff enforced in CI)
-  sources/                     <- SoT 3b: hand-written sources for user-facing guide chapters (vim help format .txt)
-    01-introduction.txt        <- overview, use cases
-    02-requirements.txt        <- Vim/Neovim/Deno/jupyter requirements
-    03-setup.txt               <- installation steps
-    04-configuration.txt       <- g:europa_* settings
-    05-commands.txt            <- :Europa* command list
-    06-mappings.txt            <- <Plug>(europa-*) mappings
-    07-examples.txt            <- a series of usage examples
-    08-faq.txt                 <- frequently asked questions
-    99-about.txt               <- License / Credits
+  europa.txt                   <- hand-written index (links to each europa-<slug>)
+  europa-introduction.txt      <- overview, use cases
+  europa-requirements.txt      <- Vim/Neovim/Deno/jupyter requirements
+  europa-setup.txt             <- installation steps
+  europa-configuration.txt     <- g:europa_* settings
+  europa-commands.txt          <- :Europa* command list
+  europa-mappings.txt          <- <Plug>(europa-*) mappings
+  europa-examples.txt          <- a series of usage examples
+  europa-kernel.txt            <- kernel lifecycle and protocol
+  europa-faq.txt               <- frequently asked questions
+  europa-about.txt             <- License / Credits
+  europa-api.txt               <- API reference (auto-generated from TSDoc, diff enforced in CI)
 scripts/                       <- generation pipeline
   gen-vimdoc.ts                <- deno script integrating typedoc + concat-md + panvimdoc
   gen-schema-json.ts           <- TypeBox -> JSON Schema export (optional, generated as needed)
@@ -255,7 +255,7 @@ CONTRIBUTING.md                <- development participation guide (including den
 1. schema/ at the top level: equidistant from Deno code / tests / generation scripts. Do not place under `denops/europa/`.
 2. Type definitions exist only under schema/: `denops/europa/**/*.ts` must not export types (forbidden via lint).
 3. Markdown only at the repository root (3 files): `README.md` / `DESIGN.md` / `CONTRIBUTING.md`.
-4. Commit `doc/europa.txt` to git: although a generated artifact, it is committed so diff review is possible in PRs. Do not place in `.gitignore`.
+4. Commit `doc/europa-api.txt` to git: although a generated artifact, it is committed so diff review is possible in PRs. Do not place in `.gitignore`.
 5. `tests/golden/` is treated close to SoT: when generated artifacts change due to typedoc/panvimdoc/TypeBox bumps, create a fixture-update PR for human approval.
 
 ### 3.2 Per-Phase Implementation Map
@@ -388,7 +388,7 @@ Legend:
 | `autoload/europa.vim` | O (helper functions) | | | |
 | `ftdetect/ipynb.vim` | O | | | |
 | `syntax/europa.vim` | basic (cell separators) | | | |
-| `doc/europa.txt` | O | + execution | + ZMQ | + widgets |
+| `doc/europa-api.txt` | O | + execution | + ZMQ | + widgets |
 
 ### 3.3 Minimum File Set for the Phase 2 MVP
 
@@ -414,7 +414,7 @@ tests/
     config_spec.ts
   golden/
     ipynb/*.ipynb              (official samples + in-house fixtures, 5-10 files)
-    (vimdoc diffs against doc/europa.txt itself as the expected value, so no separate expected file)
+    (vimdoc diffs against doc/europa-api.txt itself as the expected value, so no separate expected file)
   fixtures/
     mock-host.ts
 ```
@@ -438,7 +438,7 @@ syntax/europa.vim
 #### Derivatives + pipeline (12 files)
 
 ```
-doc/europa.txt                             (generated artifact, committed to git)
+doc/europa-api.txt                             (generated artifact, committed to git)
 scripts/{gen-vimdoc,concat-md,validate-fixtures,gen-schema-json}.ts
 deno.json deno.lock tsconfig.json typedoc.json panvimdoc.config renovate.json
 .github/workflows/ci.yml
@@ -469,7 +469,7 @@ graph TD
   S9["9. schema/session.ts -> spec -> session/{state,events}.ts"]
   S10["10. main.ts (@packageDocumentation)<br/>+ plugin/europa.vim + ftdetect"]
   S11["11. plugin/{commands,mappings}.vim<br/>+ autoload/europa.vim"]
-  S12["12. deno task gen:vimdoc<br/>-> commit doc/europa.txt"]
+  S12["12. deno task gen:vimdoc<br/>-> commit doc/europa-api.txt"]
   S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11 --> S12
 ```
 
@@ -477,7 +477,7 @@ SoT operations and completion criteria of each step:
 
 | Step | SoT operation | Completion criteria (= "what works at this point") |
 | --- | --- | --- |
-| 1 | (infrastructure only; assumes Phase 0 is complete; Phase 1 is to be completed by mid-Phase 2) | `nix develop` boots the environment, `deno task check` PASSes empty, `.ipynb` smoke works, `deno task gen:vimdoc` generates an empty vimdoc, `git diff --exit-code doc/europa.txt` PASSes |
+| 1 | (infrastructure only; assumes Phase 0 is complete; Phase 1 is to be completed by mid-Phase 2) | `nix develop` boots the environment, `deno task check` PASSes empty, `.ipynb` smoke works, `deno task gen:vimdoc` generates an empty vimdoc, `git diff --exit-code doc/europa-api.txt` PASSes |
 | 2 | add schema/notebook.ts | TypeBox schema can infer types like `Static<typeof CodeCellSchema>`; JSON Schema can be exported via `gen-schema-json.ts` |
 | 3 | add tests/spec/notebook/ | `deno test` has 5-10 specs that "fail because of unimplemented" (Test-First) |
 | 4 | add tests/golden/ipynb/ | Express the parse/serialize round-trip diff-0 expectation for official Jupyter samples in spec |
@@ -488,7 +488,7 @@ SoT operations and completion criteria of each step:
 | 9 | implement session/ | bufnr <-> notebook <-> kernel relationship can be managed (in Phase 2, kernel = none) |
 | 10 | main.ts + plugin entry | `:edit foo.ipynb` opens a Notebook; `@packageDocumentation` is picked up by typedoc |
 | 11 | commands + mappings | `:Europa*` commands work |
-| 12 | vimdoc generation | `:help europa` works; CI PASSes via `git diff --exit-code doc/europa.txt` |
+| 12 | vimdoc generation | `:help europa` works; CI PASSes via `git diff --exit-code doc/europa-api.txt` |
 
 The shortest path for the MVP is up to step 8 (= "open `.ipynb` and see cell structure with text outputs + simple markdown"). Rich MIMEs (image, full markdown rendering) and session management (9) are gradual additions.
 
@@ -501,15 +501,15 @@ Europa.vim's generation/validation pipelines are all consolidated under `tasks` 
 | task name | content | input | output |
 | --- | --- | --- | --- |
 | `gen:types` | Export JSON Schema from TypeBox schemas (optional) | `schema/*.ts` | `tmp/schema/*.json` |
-| `gen:vimdoc` | Run typedoc -> concat-md -> panvimdoc as an integrated step | TSDoc comments | `doc/europa.txt` |
+| `gen:vimdoc` | Run typedoc -> concat-md -> panvimdoc as an integrated step | TSDoc comments | `doc/europa-api.txt` |
 | `test:spec` | Run BDD specs | `tests/spec/**/*_spec.ts` | PASS / FAIL |
-| `test:golden` | Golden file consistency check (ipynb round-trip + `doc/europa.txt` diff) | `tests/golden/ipynb/*` + `doc/europa.txt` | PASS / FAIL |
+| `test:golden` | Golden file consistency check (ipynb round-trip + `doc/europa-api.txt` diff) | `tests/golden/ipynb/*` + `doc/europa-api.txt` | PASS / FAIL |
 | `test:fixtures` | Validate that `tests/golden/ipynb/*` conforms to `schema/notebook.ts` | `tests/golden/ipynb/*` | PASS / FAIL |
 | `test:conformance` (Phase 3+) | Start a real Jupyter Server and validate wire-protocol conformance | `tests/conformance/**/*` | PASS / FAIL |
 | `validate` | Full schema consistency check (cyclic references, undefined references) | `schema/*.ts` | PASS / FAIL |
 | `lint` | `deno lint` + the rule "types only exist under schema/" + the rule "comments are only why" | `**/*.ts` | PASS / FAIL |
 | `fmt:check` | `deno fmt --check` | `**/*.ts` | PASS / FAIL |
-| `ci` | Run all of the above sequentially + `git diff --exit-code doc/europa.txt` | (everything) | PASS / FAIL |
+| `ci` | Run all of the above sequentially + `git diff --exit-code doc/europa-api.txt` | (everything) | PASS / FAIL |
 
 #### Anticipated `deno.json` (excerpt)
 
@@ -525,7 +525,7 @@ Europa.vim's generation/validation pipelines are all consolidated under `tasks` 
     "validate":      "deno check schema/ && deno run -A scripts/validate-schema.ts",
     "lint":          "deno lint && deno run -A scripts/lint-no-handwritten-types.ts",
     "fmt:check":     "deno fmt --check",
-    "ci": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && deno task test:fixtures && deno task test:spec && deno task test:golden && git diff --exit-code doc/europa.txt"
+    "ci": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && deno task test:fixtures && deno task test:spec && deno task test:golden && git diff --exit-code doc/europa-api.txt"
   },
   "imports": {
     // Dependencies are exact-pinned (no caret). Assumes renovate creates fully automatic PRs including minor/patch.
@@ -544,14 +544,15 @@ Europa.vim's generation/validation pipelines are all consolidated under `tasks` 
 
 ```mermaid
 graph TD
-  G["hand-written guide chapters<br/>doc/sources/01-introduction.txt<br/>~ doc/sources/99-about.txt"]
+  G["hand-written guide chapters<br/>doc/europa-introduction.txt<br/>~ doc/europa-about.txt<br/>(shipped as standalone help, no aggregation)"]
+  Gi["doc/europa.txt<br/>(hand-written index)"]
   T["TSDoc comments<br/>denops/europa/**/*.ts"]
   T -->|"npm:typedoc + plugin-markdown"| Tm["tmp/typedoc/**/*.md"]
   Tm -->|"scripts/concat-md.ts<br/>(orders chapters within API ref:<br/>Modules -> Classes -> Functions -> Types)"| Tc["tmp/api-reference.md"]
   Tc -->|"panvimdoc.sh<br/>(md -> vimdoc, --doc-mapping europa-api)"| Av["tmp/api-reference.txt"]
-  G --> Cb["scripts/gen-vimdoc.ts<br/>(concatenates in chapter order: guide chapters (01-99) -> API Reference)"]
-  Av --> Cb
-  Cb --> E["doc/europa.txt"]
+  Av --> Cb["scripts/gen-vimdoc.ts"]
+  Cb --> E["doc/europa-api.txt"]
+  Gi -.->|"hand-written, links each chapter"| G
   E -->|"git diff --exit-code (CI)"| F["PASS / FAIL"]
 ```
 
@@ -583,12 +584,12 @@ jobs:
 When a bot PR for dependency updates arrives:
 
 1. CI runs `deno task check`
-2. `deno task gen:vimdoc` generates a fresh `doc/europa.txt`
+2. `deno task gen:vimdoc` generates a fresh `doc/europa-api.txt`
 3. If a diff appears in the generated artifact, `git diff --exit-code` fails
 4. The PR becomes unmergeable
 5. Branching action:
-   - bump is non-breaking (output format unchanged) -> renovate's post-upgrade hook regenerates `doc/europa.txt` and auto-commits
-   - bump is breaking -> human approves it as a fixture-update PR (updates `tests/golden/vimdoc/europa.txt.expected`)
+   - bump is non-breaking (output format unchanged) -> renovate's post-upgrade hook regenerates `doc/europa-api.txt` and auto-commits
+   - bump is breaking -> human approves it as a fixture-update PR (updates `tests/golden/vimdoc/europa-api.txt.expected`)
 
 Example post-upgrade hook in `renovate.json`:
 
@@ -596,7 +597,7 @@ Example post-upgrade hook in `renovate.json`:
 {
   "postUpgradeTasks": {
     "commands": ["deno task gen:vimdoc"],
-    "fileFilters": ["doc/europa.txt"],
+    "fileFilters": ["doc/europa-api.txt"],
     "executionMode": "branch"
   },
   "packageRules": [
@@ -623,13 +624,13 @@ Example post-upgrade hook in `renovate.json`:
 
 1. `interface` or `type X = ...` (not derived from TypeBox) being exported under `denops/europa/**/*.ts`
 2. Non-TSDoc comments (`//` `/* */`) of 3 or more consecutive lines must contain "why" (not empty, not starting with `@`)
-3. Additions under the `docs/` directory (the existence of the `docs/` directory itself is also forbidden). Hand-written vim help is allowed only under `doc/sources/*.txt`.
+3. Additions under the `docs/` directory (the existence of the `docs/` directory itself is also forbidden). Hand-written vim help is allowed only as `doc/europa.txt` (index) and `doc/europa-<slug>.txt`.
 
 These are failed via lint, and CI stops the build. In other words, "design principles can be enforced mechanically" is the essence of SoT design.
 
 ### 3.6 Responsibilities of Each Module
 
-This section is a high-level overview of module responsibilities. Detailed specifications of each module (function `@param` / `@returns` / `@example`, etc.) reside in the corresponding TSDoc as the SoT and are referenced from `doc/europa.txt`. To avoid duplicate management, details are not redescribed here.
+This section is a high-level overview of module responsibilities. Detailed specifications of each module (function `@param` / `@returns` / `@example`, etc.) reside in the corresponding TSDoc as the SoT and are referenced from `doc/europa-api.txt`. To avoid duplicate management, details are not redescribed here.
 
 #### SoT 1: schema/
 
@@ -745,7 +746,7 @@ Notes:
 
 | Script | Responsibility | Input | Output |
 | --- | --- | --- | --- |
-| `gen-vimdoc.ts` | Generate the API Reference via typedoc -> concat-md -> panvimdoc, then concatenate with `doc/sources/*.txt` (hand-written guide chapters) to produce the final vimdoc | TSDoc + hand-written guide chapters | `doc/europa.txt` |
+| `gen-vimdoc.ts` | Generate the API Reference via typedoc -> concat-md -> panvimdoc and emit `doc/europa-api.txt`. Hand-written guide chapters under `doc/europa-<slug>.txt` are not touched. | TSDoc | `doc/europa-api.txt` |
 | `gen-schema-json.ts` | TypeBox -> JSON Schema export | `schema/*.ts` | `tmp/schema/*.json` |
 | `concat-md.ts` | Format typedoc-output *.md into the API Reference chapter order (Modules -> Classes -> Functions -> Types) | `tmp/typedoc/**/*.md` | `tmp/api-reference.md` |
 | `validate-fixtures.ts` | Validate that `tests/golden/ipynb/*` conforms to `schema/notebook.ts` | fixtures | PASS / FAIL |
@@ -765,7 +766,7 @@ Notes:
 
 #### SoT-ness of the responsibility description
 
-What this section's tables can describe is limited to the high-level overview of responsibilities (which file is responsible for what / which spec corresponds / which TSDoc tags to attach). The behavior, arguments, and return values of individual functions are SoT'd in TSDoc, referenced from `doc/europa.txt`. Do not write them in DESIGN.md.
+What this section's tables can describe is limited to the high-level overview of responsibilities (which file is responsible for what / which spec corresponds / which TSDoc tags to attach). The behavior, arguments, and return values of individual functions are SoT'd in TSDoc, referenced from `doc/europa-api.txt`. Do not write them in DESIGN.md.
 
 ### 3.7 TypeScript Signatures of Major I/Fs
 
@@ -1138,16 +1139,16 @@ describe("golden:notebook/canonicalize-roundtrip", () => {
 });
 ```
 
-vimdoc treats `doc/europa.txt` itself as the expected value (no separate expected file). In the flow of `deno task check`, `gen:vimdoc` regenerates `doc/europa.txt`, and `git diff --exit-code` verifies a 0 diff against the repo's `doc/europa.txt`:
+vimdoc treats `doc/europa-api.txt` itself as the expected value (no separate expected file). In the flow of `deno task check`, `gen:vimdoc` regenerates `doc/europa-api.txt`, and `git diff --exit-code` verifies a 0 diff against the repo's `doc/europa-api.txt`:
 
 ```bash
 # CI order (consistent with the SoT pipeline of 3.5)
-deno task gen:vimdoc                      # regenerate doc/europa.txt (before test:golden)
+deno task gen:vimdoc                      # regenerate doc/europa-api.txt (before test:golden)
 deno task test:fixtures && deno task test:spec && deno task test:golden
-git diff --exit-code doc/europa.txt       # verify 0 diff against the expected value
+git diff --exit-code doc/europa-api.txt       # verify 0 diff against the expected value
 ```
 
-This way, when typedoc / panvimdoc bumps change the output, CI fails and a human-approved `doc/europa.txt` update PR is required. The `tests/golden/vimdoc/` directory is not created (avoids duplication because `doc/europa.txt` itself is the SoT).
+This way, when typedoc / panvimdoc bumps change the output, CI fails and a human-approved `doc/europa-api.txt` update PR is required. The `tests/golden/vimdoc/` directory is not created (avoids duplication because `doc/europa-api.txt` itself is the SoT).
 
 #### 3.9.4 Sources of .ipynb fixtures
 
@@ -2273,29 +2274,29 @@ The purpose of this phase is to put together a working foundation and a technica
 3. Minimum CI configuration
    1. `.github/workflows/ci.yml` (just runs `deno task check` + installs pandoc)
 4. Minimum scripts
-   1. Minimum implementation of `scripts/gen-vimdoc.ts` (concatenates an empty `doc/sources/` and an empty API Reference; CI passes even if empty)
+   1. Minimum implementation of `scripts/gen-vimdoc.ts` (CI passes even with an empty API Reference)
 5. Technical-validation spike
    1. `.ipynb` smoke. With a single TS script, read the official sample `hello.ipynb`, convert into a Notebook structure, and confirm via CLI that `Notebook -> RenderPlan -> string` works (no Vim connection, pure logic verification)
    2. Sixel spike (only if Sixel remains in Phase 2). Generate PNG -> Sixel escapes via ImageMagick and confirm minimally that pushing them to the supported terminal's `/dev/tty` renders an image (no Vim/Neovim involvement)
 6. Create empty directories
-   1. Create `schema/`, `tests/spec/`, `tests/golden/`, `tests/fixtures/`, `denops/europa/`, `plugin/`, `autoload/`, `ftdetect/`, `syntax/`, `doc/`, `doc/sources/` with `.gitkeep`
+   1. Create `schema/`, `tests/spec/`, `tests/golden/`, `tests/fixtures/`, `denops/europa/`, `plugin/`, `autoload/`, `ftdetect/`, `syntax/`, `doc/` with `.gitkeep`
 
-The completion criteria are as follows. `nix develop` boots the environment, `deno task check` PASSes empty, `scripts/gen-vimdoc.ts` generates an empty `doc/europa.txt`, and `.ipynb` smoke works.
+The completion criteria are as follows. `nix develop` boots the environment, `deno task check` PASSes empty, `scripts/gen-vimdoc.ts` generates an empty `doc/europa-api.txt`, and `.ipynb` smoke works.
 
 ### Phase 1 - Pre-Phase 2 Setup
 
 After Phase 0 is complete and a clear path to Phase 2 exists, proceed. May progress in parallel with Phase 2, but must be completed by the end of Phase 2.
 
 1. Renovate setup
-   1. `renovate.json` (groupName + manual review for major + post-upgrade hook auto-regenerating `doc/europa.txt`)
+   1. `renovate.json` (groupName + manual review for major + post-upgrade hook auto-regenerating `doc/europa-api.txt`)
 2. In-house lint scaffolds
    1. `scripts/lint-no-handwritten-types.ts` scaffold (full implementation in Phase 2)
    2. `scripts/concat-md.ts` scaffold (chapter-order formatting of typedoc output)
 3. Documentation scaffolds
    1. `CONTRIBUTING.md` (`deno task` list + development flow + guide-chapter editing rules + `@spec-id` operation for spec/TSDoc correspondence)
-   2. Empty templates of `doc/sources/01-introduction.txt` ~ `08-faq.txt` `99-about.txt` (vim-help-tagged skeletons + TODO comments)
+   2. Empty templates of `doc/europa-introduction.txt` ~ `doc/europa-faq.txt`, `doc/europa-about.txt` (vim-help-tagged skeletons + TODO comments)
 
-The completion criteria are as follows. `pre-commit run --all-files` PASSes, `git diff --exit-code` confirms `doc/europa.txt`, and renovate's automatic PR can confirm regeneration of `doc/europa.txt`.
+The completion criteria are as follows. `pre-commit run --all-files` PASSes, `git diff --exit-code` confirms `doc/europa-api.txt`, and renovate's automatic PR can confirm regeneration of `doc/europa-api.txt`.
 
 ### Phase 2 (MVP) - Viewing
 
@@ -2565,10 +2566,10 @@ Three devices carry the meaning:
 | Surface | Copy |
 | --- | --- |
 | README eyecatch image (under H1) | Tagline `Your Vim/Neovim becomes a moon of Jupyter.` (rendered as part of the eyecatch image, not as body text) |
-| README body (under eyecatch) | Sub-tagline `A Vim/Neovim plugin that orbits Jupyter — running on Deno, no Python on the host, .ipynb as a first-class citizen.` + doc pointer `For details, see :help europa.` (linked to `./doc/europa.txt`) |
+| README body (under eyecatch) | Sub-tagline `A Vim/Neovim plugin that orbits Jupyter — running on Deno, no Python on the host, .ipynb as a first-class citizen.` + doc pointer `For details, see :help europa.` (linked to `./doc/europa-api.txt`) |
 | GitHub repo About | `A Vim/Neovim plugin that orbits Jupyter — Deno-powered, .ipynb-native.` |
 | OG description | `Your Vim/Neovim becomes a moon of Jupyter. Europa.vim is a Deno-powered Vim/Neovim plugin that opens .ipynb natively — no Python on the host.` |
-| vimdoc Introduction (`doc/sources/01-introduction.txt`) | `Europa.vim turns your Vim/Neovim into a moon of Jupyter: a quiet orbit around .ipynb notebooks, viewed directly inside the editor. It runs on Deno via denops.vim, gives identical behaviour on both hosts, and keeps the host Python-free — no pip install of plugin dependencies required.` (phase-adapted for Phase 2; revisit when kernel connection lands in Phase 3) |
+| vimdoc Introduction (`doc/europa-introduction.txt`) | `Europa.vim turns your Vim/Neovim into a moon of Jupyter: a quiet orbit around .ipynb notebooks, viewed directly inside the editor. It runs on Deno via denops.vim, gives identical behaviour on both hosts, and keeps the host Python-free — no pip install of plugin dependencies required.` (phase-adapted for Phase 2; revisit when kernel connection lands in Phase 3) |
 | README "Why Europa?" | `Europa is the second moon of Jupiter — icy, quiet, and always close. Europa.vim is the same idea for your Vim/Neovim: a plugin that puts it in orbit around a Jupyter kernel, without dragging Python into the host or asking you to leave :edit. Notebooks stay .ipynb. Your Vim/Neovim stays your Vim/Neovim.` |
 | Quick Start | `Open a notebook. Stay in orbit.` (alt: `:edit notebook.ipynb — and your Vim/Neovim is in orbit.`) |
 | CONTRIBUTING | `Europa.vim is a Deno-based Vim/Neovim plugin that connects to Jupyter via REST + WebSocket (Phase 3) and ZeroMQ (Phase 4, opt-in). .ipynb is the wire format; the host stays Python-free.` |

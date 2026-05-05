@@ -18,9 +18,9 @@ on:
       - 'denops/europa/session/events.ts'
       - 'plugin/commands.vim'
       - 'autoload/europa.vim'
-      - 'doc/sources/04-configuration.txt'
-      - 'doc/sources/05-commands.txt'
-      - 'doc/sources/07-kernel.txt'
+      - 'doc/europa-configuration.txt'
+      - 'doc/europa-commands.txt'
+      - 'doc/europa-kernel.txt'
       - '.github/workflows/e2e.yml'
       - 'deno.json'
   schedule:

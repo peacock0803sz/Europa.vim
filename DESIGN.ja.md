@@ -19,7 +19,7 @@
 ### 1.2 機能スコープ (フェーズ別)
 
 - Phase 0: 最小スパイク (flake.nix / pre-commit 基本 / deno.json / 最小 CI / 空 vimdoc 生成 / `.ipynb` smoke)
-- Phase 1: Phase 2 着手前の整備 (renovate / 自前 lint / `doc/sources` 全章テンプレ / CONTRIBUTING / spec ↔ TSDoc 対応の運用準備)
+- Phase 1: Phase 2 着手前の整備 (renovate / 自前 lint / `doc/europa-<slug>.txt` 全章テンプレ / CONTRIBUTING / spec ↔ TSDoc 対応の運用準備)
 - Phase 2: `.ipynb` を開いてセル構造とリッチ出力を閲覧 (kernel 接続なし、ローカル閲覧/保存のみ)
 - Phase 3: セル実行、Kernel 管理、画像 inline 表示の本格化
 - Phase 4: ZMQ 直結モード (既存 connection_file への attach)、Vega-Lite/PDF 等の高度な MIME
@@ -36,38 +36,37 @@ graph TD
   Sc["1. スキーマ (TypeBox)<br/>schema/*.ts"]
   Te["2. テスト (BDD spec)<br/>tests/spec/**/*_spec.ts"]
   Co3a["3a. TSDoc コメント<br/>denops/europa/**/*.ts<br/>(API リファレンスの SoT)"]
-  Co3b["3b. 手書きガイド章<br/>doc/sources/*.txt<br/>(利用ガイドの SoT)"]
-  Vd["doc/europa.txt (vimdoc)<br/>(派生物, git commit 対象)"]
+  Co3b["3b. 手書きガイド章<br/>doc/europa-&lt;slug&gt;.txt<br/>(利用ガイドの SoT, そのまま配信)"]
+  Vd["doc/europa-api.txt<br/>(API リファレンス, 派生物, git commit 対象)"]
   Tp["TypeScript 型 (派生)"]
   Js["JSON Schema (export, 任意)"]
   Sc -->|"型推論 Static&lt;typeof&gt;"| Tp
   Sc -->|"JSON Schema export"| Js
   Sc -->|"実行時検証 Value.Check"| Te
   Te -->|"spec の章が TSDoc と 1:1 対応"| Co3a
-  Co3a -->|"typedoc + plugin-markdown<br/>+ panvimdoc<br/>(API Reference 章のみ)"| Vd
-  Co3b -->|"そのまま結合"| Vd
+  Co3a -->|"typedoc + plugin-markdown<br/>+ panvimdoc"| Vd
 ```
 
 | 順位 | SoT 種別 | 配置 | 派生物 | 検証手段 |
 | --- | --- | --- | --- | --- |
 | 1 | TypeBox スキーマ | `schema/*.ts` | TS 型 (推論)、JSON Schema (export 任意) | `Value.Check` 実行時検証 |
 | 2 | BDD spec | `tests/spec/**/*_spec.ts` | (CI が PASS/FAIL を提示) | `deno test` |
-| 3a | TSDoc コメント (API リファレンス) | `denops/europa/**/*.ts` | `doc/europa.txt` の API Reference 章 | typedoc + panvimdoc + golden file diff |
-| 3b | 手書きガイド章 | `doc/sources/*.txt` (vim help 形式) | `doc/europa.txt` の前半 (Introduction ~ FAQ) | golden file diff |
+| 3a | TSDoc コメント (API リファレンス) | `denops/europa/**/*.ts` | `doc/europa-api.txt` | typedoc + panvimdoc + golden file diff |
+| 3b | 手書きガイド章 | `doc/europa-<slug>.txt` (vim help 形式, そのまま配信) | 各章が独立した help ファイルとして `doc/` 配下に置かれる | 手書き; 結合ステップなし |
 
 #### 6 つの原則
 
 1. データ型は手書きしない。永続化、wire、RenderPlan などのデータ型は TypeBox スキーマから `Static<typeof Schema>` で推論する。`KernelClient`、`CellMarker`、`Dispatcher` のような振る舞い契約は TypeBox で表現できないので `contracts/*.ts` に集約する。これ以外の場所で `interface` や `type X = ...` を新設すると lint が warning を出す。例外はホワイトリスト経由でのみ認める。
 2. テストが仕様にあたる。BDD spec と TSDoc の章は `@spec-id` で対応させる。見出し一致は誤検知が多いので使わない。spec 側に `@spec-id europa.notebook.parse.normalize` のコメントを書き、対応する TSDoc にも同じ ID を埋める。対応関係は CI で機械的に検証する。テストが存在しない仕様は実装に着手しない。
 3. コメントは why と API 仕様だけにする。TSDoc の `@param`、`@returns`、`@example`、`@throws` は API 仕様の SoT として残す。それ以外のコード内コメントは複雑なロジックの why に限る。
-4. 手書きドキュメントはルート直下の `README.md`、`DESIGN.md`、`CONTRIBUTING.md` と、`doc/sources/*.txt` の vim help ガイド章だけに置く。これ以外の場所への手書き md と txt は禁止する。API リファレンスは TSDoc から自動生成する。Denops 本家も `doc/denops.txt` を手書きしている。ユーザー向けガイドは vim 文化に沿った手書き、開発者向け API は TSDoc 自動生成、という二系統で読者を分けたいから。
-5. 生成物は git commit して、CI で diff を強制する。`doc/europa.txt` のような生成物はリポジトリに置き、CI で `deno task gen:vimdoc && git diff --exit-code doc/europa.txt` を実行する。生成物がズレた PR は fail させる。
+4. 手書きドキュメントはルート直下の `README.md`、`DESIGN.md`、`CONTRIBUTING.md` と、vim help の索引 `doc/europa-api.txt`、ガイド章 `doc/europa-<slug>.txt` だけに置く。これ以外の場所への手書き md と txt は禁止する。API リファレンスは TSDoc から `doc/europa-api.txt` に自動生成する。Denops 本家も `doc/denops.txt` を手書きしている。ユーザー向けガイドは vim 文化に沿った手書き、開発者向け API は TSDoc 自動生成、という二系統で読者を分けたいから。
+5. 生成物は git commit して、CI で diff を強制する。生成 vimdoc 物は `doc/europa-api.txt` のみで、CI で `deno task gen:vimdoc && git diff --exit-code doc/europa-api.txt` を実行する。生成物がズレた PR は fail させる。
 6. 依存更新は renovate/dependabot 前提で運用する。typedoc、typedoc-plugin-markdown、TypeBox は version を pin する。minor と patch は groupName でまとめて自動 PR、major は手動 review。bump の影響は生成物 golden ファイルテストで検出する。
 
 #### 実装上の方針
 
 - 新機能はスキーマ、テスト、TSDoc 付き実装の順で書く。逆順は禁止。
-- vim help は二層構造にする。ユーザー向けガイド章 (Introduction、Requirements、Setup、Configuration、Commands、Mappings、Examples、FAQ、About) は `doc/sources/*.txt` に手書きし、API リファレンス章は対応する TS モジュールの TSDoc から自動生成して結合する。`@packageDocumentation`、`@module`、`@category` は API リファレンス側の章立てに使い、利用ガイドの章立てには使わない。
+- vim help は二層構造にする。ユーザー向けガイド章 (Introduction、Requirements、Setup、Configuration、Commands、Mappings、Examples、Kernel、FAQ、About) は `doc/europa-<slug>.txt` に手書きし、独立した help ファイルとしてそのまま配信する。`doc/europa-api.txt` は手書きの索引で、各章へのリンクをまとめる。API リファレンスは対応する TS モジュールの TSDoc から `doc/europa-api.txt` に自動生成する。`@packageDocumentation`、`@module`、`@category` は API リファレンス側の章立てに使い、利用ガイドの章立てには使わない。
 - 生成と検証のパイプラインは `deno task` に集約する。`gen:vimdoc`、`test:spec`、`test:golden`、`validate`、`ci` を `deno.json` の tasks にまとめる。手動ステップは作らない。
 - 自動 PR は `.github/workflows/ci.yml` で `deno task check` を走らせ、生成物 diff と golden ファイル diff を両方チェックする。typedoc や panvimdoc の bump で出力が変わったら、意図的な fixture 更新 PR として人間が承認する。
 
@@ -169,7 +168,7 @@ tests/                         ← SoT 2: BDD spec + golden fixture
       multi-line-source.ipynb
       pandas-output.ipynb
       kitty-image.ipynb
-  (vimdoc は doc/europa.txt 自体を期待値として diff チェック、別 expected ファイルは持たない)
+  (vimdoc は doc/europa-api.txt 自体を期待値として diff チェック、別 expected ファイルは持たない)
   fixtures/                    ← テストヘルパ
     mock-host.ts               ← Vim/Neovim ホストモック (denops の Denops 型をモック)
     mock-kernel.ts             ← Jupyter Server モック (WebSocket 含む)
@@ -220,17 +219,18 @@ ftdetect/
 syntax/
   europa.vim                   ← セル境界の syntax (補助)
 doc/
-  europa.txt                   ← 最終 vimdoc (生成物、git commit 対象、CI で diff 強制)
-  sources/                     ← SoT 3b: ユーザー向けガイド章の手書きソース (vim help 形式 .txt)
-    01-introduction.txt        ← 概要、ユースケース
-    02-requirements.txt        ← Vim/Neovim/Deno/jupyter 要件
-    03-setup.txt               ← インストール手順
-    04-configuration.txt       ← g:europa_* 設定
-    05-commands.txt            ← :Europa* コマンド一覧
-    06-mappings.txt            ← <Plug>(europa-*) マップ
-    07-examples.txt            ← 一連の使用例
-    08-faq.txt                 ← よくある質問
-    99-about.txt               ← License / Credits
+  europa.txt                   ← 手書き索引 (各 europa-<slug> へのリンク)
+  europa-introduction.txt      ← 概要、ユースケース
+  europa-requirements.txt      ← Vim/Neovim/Deno/jupyter 要件
+  europa-setup.txt             ← インストール手順
+  europa-configuration.txt     ← g:europa_* 設定
+  europa-commands.txt          ← :Europa* コマンド一覧
+  europa-mappings.txt          ← <Plug>(europa-*) マップ
+  europa-examples.txt          ← 一連の使用例
+  europa-kernel.txt            ← kernel ライフサイクルとプロトコル
+  europa-faq.txt               ← よくある質問
+  europa-about.txt             ← License / Credits
+  europa-api.txt               ← API リファレンス (TSDoc から自動生成、CI で diff 強制)
 scripts/                       ← 生成パイプライン
   gen-vimdoc.ts                ← typedoc + concat-md + panvimdoc を統合する deno script
   gen-schema-json.ts           ← TypeBox -> JSON Schema export (任意、必要なら生成)
@@ -255,7 +255,7 @@ CONTRIBUTING.md                ← 開発参加ガイド (deno task 一覧 含�
 1. schema/ は トップレベル直下: Deno コード / テスト / 生成スクリプトすべてから等距離。`denops/europa/` の下に置かない
 2. type 定義は schema/ にしか存在しない: `denops/europa/**/*.ts` が型を export してはいけない (lint で禁止)
 3. markdown はリポジトリルートのみ (3 ファイル): `README.md` / `DESIGN.md` / `CONTRIBUTING.md`
-4. `doc/europa.txt` は git commit する: 生成物だが PR で diff レビュー可能にするため。`.gitignore` には入れない
+4. `doc/europa-api.txt` は git commit する: 生成物だが PR で diff レビュー可能にするため。`.gitignore` には入れない
 5. `tests/golden/` は SoT に近い扱い: typedoc/panvimdoc/TypeBox の bump で生成物が変わったら、人間が承認する fixture 更新 PR を作る
 
 ### 3.2 Phase 別実装マップ
@@ -388,7 +388,7 @@ CONTRIBUTING.md                ← 開発参加ガイド (deno task 一覧 含�
 | `autoload/europa.vim` | O (補助関数) | | | |
 | `ftdetect/ipynb.vim` | O | | | |
 | `syntax/europa.vim` | basic (cell 区切り) | | | |
-| `doc/europa.txt` | O | + 実行系 | + ZMQ | + widgets |
+| `doc/europa-api.txt` | O | + 実行系 | + ZMQ | + widgets |
 
 ### 3.3 Phase 2 MVP の最小ファイル集合
 
@@ -414,7 +414,7 @@ tests/
     config_spec.ts
   golden/
     ipynb/*.ipynb              (公式サンプル + 自前 fixture, 5-10 ファイル)
-    (vimdoc は doc/europa.txt 自体を期待値として diff するため、別 expected ファイルは持たない)
+    (vimdoc は doc/europa-api.txt 自体を期待値として diff するため、別 expected ファイルは持たない)
   fixtures/
     mock-host.ts
 ```
@@ -438,7 +438,7 @@ syntax/europa.vim
 #### 派生物 + パイプライン (12 ファイル)
 
 ```
-doc/europa.txt                             (生成物、git commit)
+doc/europa-api.txt                             (生成物、git commit)
 scripts/{gen-vimdoc,concat-md,validate-fixtures,gen-schema-json}.ts
 deno.json deno.lock tsconfig.json typedoc.json panvimdoc.config renovate.json
 .github/workflows/ci.yml
@@ -469,7 +469,7 @@ graph TD
   S9["9. schema/session.ts → spec → session/{state,events}.ts"]
   S10["10. main.ts (@packageDocumentation)<br/>+ plugin/europa.vim + ftdetect"]
   S11["11. plugin/{commands,mappings}.vim<br/>+ autoload/europa.vim"]
-  S12["12. deno task gen:vimdoc<br/>→ doc/europa.txt commit"]
+  S12["12. deno task gen:vimdoc<br/>→ doc/europa-api.txt commit"]
   S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11 --> S12
 ```
 
@@ -477,7 +477,7 @@ graph TD
 
 | ステップ | SoT 操作 | 完了基準 (= "この時点で何が動くか") |
 | --- | --- | --- |
-| 1 | (インフラのみ、Phase 0 で完了が前提、Phase 1 は Phase 2 中盤までに完了) | `nix develop` で環境起動、`deno task check` が空 PASS、`.ipynb` smoke が動作、`deno task gen:vimdoc` が空 vimdoc を生成、`git diff --exit-code doc/europa.txt` が PASS |
+| 1 | (インフラのみ、Phase 0 で完了が前提、Phase 1 は Phase 2 中盤までに完了) | `nix develop` で環境起動、`deno task check` が空 PASS、`.ipynb` smoke が動作、`deno task gen:vimdoc` が空 vimdoc を生成、`git diff --exit-code doc/europa-api.txt` が PASS |
 | 2 | schema/notebook.ts 追加 | TypeBox スキーマで `Static<typeof CodeCellSchema>` が型として推論できる、`gen-schema-json.ts` で JSON Schema export 可能 |
 | 3 | tests/spec/notebook/ 追加 | `deno test` が「未実装で fail する」 spec を 5-10 件持つ (Test-First) |
 | 4 | tests/golden/ipynb/ 追加 | 公式 Jupyter サンプルの parse/serialize round-trip diff 0 期待を spec で表現 |
@@ -488,7 +488,7 @@ graph TD
 | 9 | session/ 実装 | bufnr ↔ notebook ↔ kernel の関係が管理できる (Phase 2 では kernel = なし) |
 | 10 | main.ts + plugin entry | `:edit foo.ipynb` で Notebook が開く、`@packageDocumentation` が typedoc に拾われる |
 | 11 | commands + mappings | `:Europa*` 系のコマンドが動く |
-| 12 | vimdoc 生成 | `:help europa` が引ける、CI が `git diff --exit-code doc/europa.txt` で PASS |
+| 12 | vimdoc 生成 | `:help europa` が引ける、CI が `git diff --exit-code doc/europa-api.txt` で PASS |
 
 MVP の最短経路はステップ 8 まで (= 「.ipynb を開いてセル構造とテキスト出力 + 簡易 markdown が見える」)。リッチ MIME (image, full markdown rendering) と session 管理 (9) は段階的な積み増し。
 
@@ -501,15 +501,15 @@ Europa.vim の生成・検証パイプラインはすべて `deno.json` の `tas
 | task 名 | 内容 | 入力 | 出力 |
 | --- | --- | --- | --- |
 | `gen:types` | TypeBox スキーマから JSON Schema を export (任意) | `schema/*.ts` | `tmp/schema/*.json` |
-| `gen:vimdoc` | typedoc → concat-md → panvimdoc を統合実行 | TSDoc コメント | `doc/europa.txt` |
+| `gen:vimdoc` | typedoc → concat-md → panvimdoc を統合実行 | TSDoc コメント | `doc/europa-api.txt` |
 | `test:spec` | BDD spec の実行 | `tests/spec/**/*_spec.ts` | PASS / FAIL |
-| `test:golden` | golden file 整合チェック (ipynb round-trip + `doc/europa.txt` diff) | `tests/golden/ipynb/*` + `doc/europa.txt` | PASS / FAIL |
+| `test:golden` | golden file 整合チェック (ipynb round-trip + `doc/europa-api.txt` diff) | `tests/golden/ipynb/*` + `doc/europa-api.txt` | PASS / FAIL |
 | `test:fixtures` | `tests/golden/ipynb/*` が `schema/notebook.ts` に適合するか検証 | `tests/golden/ipynb/*` | PASS / FAIL |
 | `test:conformance` (Phase 3+) | 実 Jupyter Server を起動して wire protocol 適合性を検証 | `tests/conformance/**/*` | PASS / FAIL |
 | `validate` | 全 schema 整合性チェック (循環参照、未定義参照) | `schema/*.ts` | PASS / FAIL |
 | `lint` | `deno lint` + 「型は schema/ にしか存在しない」rule + 「コメントは why のみ」rule | `**/*.ts` | PASS / FAIL |
 | `fmt:check` | `deno fmt --check` | `**/*.ts` | PASS / FAIL |
-| `ci` | 上記すべてを順次実行 + `git diff --exit-code doc/europa.txt` | (全部) | PASS / FAIL |
+| `ci` | 上記すべてを順次実行 + `git diff --exit-code doc/europa-api.txt` | (全部) | PASS / FAIL |
 
 #### 想定する `deno.json` (抜粋)
 
@@ -525,7 +525,7 @@ Europa.vim の生成・検証パイプラインはすべて `deno.json` の `tas
     "validate":      "deno check schema/ && deno run -A scripts/validate-schema.ts",
     "lint":          "deno lint && deno run -A scripts/lint-no-handwritten-types.ts",
     "fmt:check":     "deno fmt --check",
-    "ci": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && deno task test:fixtures && deno task test:spec && deno task test:golden && git diff --exit-code doc/europa.txt"
+    "ci": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && deno task test:fixtures && deno task test:spec && deno task test:golden && git diff --exit-code doc/europa-api.txt"
   },
   "imports": {
     // 依存は exact pin (caret 不可)。renovate が minor/patch も含めて全自動 PR を作る前提。
@@ -544,14 +544,15 @@ Europa.vim の生成・検証パイプラインはすべて `deno.json` の `tas
 
 ```mermaid
 graph TD
-  G["手書きガイド章<br/>doc/sources/01-introduction.txt<br/>~ doc/sources/99-about.txt"]
+  G["手書きガイド章<br/>doc/europa-introduction.txt<br/>~ doc/europa-about.txt<br/>(独立 help として配信、結合なし)"]
+  Gi["doc/europa.txt<br/>(手書き索引)"]
   T["TSDoc コメント<br/>denops/europa/**/*.ts"]
   T -->|"npm:typedoc + plugin-markdown"| Tm["tmp/typedoc/**/*.md"]
   Tm -->|"scripts/concat-md.ts<br/>(API ref 内の章順整形:<br/>Modules → Classes → Functions → Types)"| Tc["tmp/api-reference.md"]
   Tc -->|"panvimdoc.sh<br/>(md → vimdoc, --doc-mapping europa-api)"| Av["tmp/api-reference.txt"]
-  G --> Cb["scripts/gen-vimdoc.ts<br/>(章順で結合: ガイド章 (01-99) → API Reference)"]
-  Av --> Cb
-  Cb --> E["doc/europa.txt"]
+  Av --> Cb["scripts/gen-vimdoc.ts"]
+  Cb --> E["doc/europa-api.txt"]
+  Gi -.->|"手書き、索引から各章へのリンク"| G
   E -->|"git diff --exit-code (CI)"| F["PASS / FAIL"]
 ```
 
@@ -583,12 +584,12 @@ jobs:
 依存更新の bot PR が来たとき:
 
 1. CI で `deno task check` が走る
-2. `deno task gen:vimdoc` が新しい `doc/europa.txt` を生成
+2. `deno task gen:vimdoc` が新しい `doc/europa-api.txt` を生成
 3. 生成物に diff が出ると `git diff --exit-code` が fail
 4. PR は merge できない状態になる
 5. 対応分岐:
-   - bump が breaking でない (出力フォーマット変わらず) → renovate の post-upgrade hook で `doc/europa.txt` を再生成・自動 commit
-   - bump が breaking → fixture 更新 PR として人間が承認 (`tests/golden/vimdoc/europa.txt.expected` を更新)
+   - bump が breaking でない (出力フォーマット変わらず) → renovate の post-upgrade hook で `doc/europa-api.txt` を再生成・自動 commit
+   - bump が breaking → fixture 更新 PR として人間が承認 (`tests/golden/vimdoc/europa-api.txt.expected` を更新)
 
 `renovate.json` の post-upgrade hook 例:
 
@@ -596,7 +597,7 @@ jobs:
 {
   "postUpgradeTasks": {
     "commands": ["deno task gen:vimdoc"],
-    "fileFilters": ["doc/europa.txt"],
+    "fileFilters": ["doc/europa-api.txt"],
     "executionMode": "branch"
   },
   "packageRules": [
@@ -623,13 +624,13 @@ jobs:
 
 1. `denops/europa/**/*.ts` で `interface` または `type X = ...` (TypeBox 由来でない) が export されている
 2. TSDoc 以外のコメント (`//` `/* */`) で 3 行以上の連続したものは "why" を要求 (空でないか、`@` で始まらないか)
-3. `docs/` ディレクトリへの追加 (`docs/` ディレクトリ自体が存在することも禁止)。手書き vim help は `doc/sources/*.txt` のみ許容
+3. `docs/` ディレクトリへの追加 (`docs/` ディレクトリ自体が存在することも禁止)。手書き vim help は `doc/europa.txt` (索引) と `doc/europa-<slug>.txt` のみ許容
 
 これらは lint で fail させ、CI が止める。つまり「設計原則 = 機械的に守れる」が SoT 設計の要諦。
 
 ### 3.6 各モジュールの責務
 
-このセクションはモジュール責務の俯瞰。各モジュールの詳細仕様 (関数の `@param` / `@returns` / `@example` 等) は対応する TSDoc が SoT であり、`doc/europa.txt` から参照する。二重管理を避けるため、ここで詳細を再記述しない。
+このセクションはモジュール責務の俯瞰。各モジュールの詳細仕様 (関数の `@param` / `@returns` / `@example` 等) は対応する TSDoc が SoT であり、`doc/europa-api.txt` から参照する。二重管理を避けるため、ここで詳細を再記述しない。
 
 #### SoT 1: schema/
 
@@ -745,7 +746,7 @@ jobs:
 
 | スクリプト | 責任 | 入力 | 出力 |
 | --- | --- | --- | --- |
-| `gen-vimdoc.ts` | typedoc → concat-md → panvimdoc で API Reference を生成し、`doc/sources/*.txt` (手書きガイド章) と結合して最終 vimdoc を出力 | TSDoc + 手書きガイド章 | `doc/europa.txt` |
+| `gen-vimdoc.ts` | typedoc → concat-md → panvimdoc で API Reference を生成し、`doc/europa-api.txt` を出力 (手書きガイド章 `doc/europa-<slug>.txt` は触らない) | TSDoc | `doc/europa-api.txt` |
 | `gen-schema-json.ts` | TypeBox -> JSON Schema export | `schema/*.ts` | `tmp/schema/*.json` |
 | `concat-md.ts` | typedoc 出力 *.md を API Reference 内の章順 (Modules → Classes → Functions → Types) に整形 | `tmp/typedoc/**/*.md` | `tmp/api-reference.md` |
 | `validate-fixtures.ts` | `tests/golden/ipynb/*` が `schema/notebook.ts` に適合するか検証 | fixture | PASS / FAIL |
@@ -765,7 +766,7 @@ jobs:
 
 #### 責務記述の SoT 性
 
-このセクションの表に書ける情報は責務の俯瞰 (どのファイルが何の責任を持つか / どの spec が対応するか / どの TSDoc タグを付けるか) に限定する。個別関数の挙動・引数・戻り値は TSDoc が SoT であり、`doc/europa.txt` で参照される。DESIGN.md には書かない。
+このセクションの表に書ける情報は責務の俯瞰 (どのファイルが何の責任を持つか / どの spec が対応するか / どの TSDoc タグを付けるか) に限定する。個別関数の挙動・引数・戻り値は TSDoc が SoT であり、`doc/europa-api.txt` で参照される。DESIGN.md には書かない。
 
 ### 3.7 主要 I/F の TypeScript シグネチャ
 
@@ -1138,16 +1139,16 @@ describe("golden:notebook/canonicalize-roundtrip", () => {
 });
 ```
 
-vimdoc は `doc/europa.txt` 自体を期待値として扱う (別 expected ファイルは持たない)。`deno task check` の流れで `gen:vimdoc` が `doc/europa.txt` を再生成し、`git diff --exit-code` で repo の `doc/europa.txt` との diff 0 を検証する:
+vimdoc は `doc/europa-api.txt` 自体を期待値として扱う (別 expected ファイルは持たない)。`deno task check` の流れで `gen:vimdoc` が `doc/europa-api.txt` を再生成し、`git diff --exit-code` で repo の `doc/europa-api.txt` との diff 0 を検証する:
 
 ```bash
 # CI 順序 (3.5 SoT パイプラインと整合)
-deno task gen:vimdoc                      # doc/europa.txt を再生成 (test:golden の前)
+deno task gen:vimdoc                      # doc/europa-api.txt を再生成 (test:golden の前)
 deno task test:fixtures && deno task test:spec && deno task test:golden
-git diff --exit-code doc/europa.txt       # 期待値との diff 0 を検証
+git diff --exit-code doc/europa-api.txt       # 期待値との diff 0 を検証
 ```
 
-これによって typedoc / panvimdoc の bump で出力が変わると CI が fail し、人間が承認する `doc/europa.txt` 更新 PR が必要になる。`tests/golden/vimdoc/` ディレクトリは作らない (`doc/europa.txt` 自体が SoT のため二重化を避ける)。
+これによって typedoc / panvimdoc の bump で出力が変わると CI が fail し、人間が承認する `doc/europa-api.txt` 更新 PR が必要になる。`tests/golden/vimdoc/` ディレクトリは作らない (`doc/europa-api.txt` 自体が SoT のため二重化を避ける)。
 
 #### 3.9.4 .ipynb fixture の出所
 
@@ -2273,29 +2274,29 @@ nnoremap <silent> <Plug>(europa-run-cell)        :<C-u>EuropaRunCell<CR>
 3. CI の最小構成
    1. `.github/workflows/ci.yml` (`deno task check` 実行 + pandoc install のみ)
 4. scripts の最小構成
-   1. `scripts/gen-vimdoc.ts` 最小実装 (空 `doc/sources/` を結合し、空 API Reference を結合する。空でも CI が通る)
+   1. `scripts/gen-vimdoc.ts` 最小実装 (空 API Reference でも CI が通る)
 5. 技術検証スパイク
    1. `.ipynb` smoke。単体 TS スクリプトで公式サンプル `hello.ipynb` を読み、Notebook 構造体へ変換し、`Notebook → RenderPlan → 文字列` まで CLI で出力できることを確認する (Vim 接続なし、純粋ロジックの動作検証)
    2. Sixel spike (Sixel を Phase 2 に残す場合のみ)。ImageMagick 経由で PNG → Sixel エスケープを生成し、対応端末の `/dev/tty` に流すことで画像が描画される最小確認 (Vim/Neovim 経由なし)
 6. 空ディレクトリの作成
-   1. `schema/` `tests/spec/` `tests/golden/` `tests/fixtures/` `denops/europa/` `plugin/` `autoload/` `ftdetect/` `syntax/` `doc/` `doc/sources/` を `.gitkeep` で作成
+   1. `schema/` `tests/spec/` `tests/golden/` `tests/fixtures/` `denops/europa/` `plugin/` `autoload/` `ftdetect/` `syntax/` `doc/` を `.gitkeep` で作成
 
-完了基準は次の通り。`nix develop` で環境が立ち上がり、`deno task check` が空 PASS、`scripts/gen-vimdoc.ts` が空 `doc/europa.txt` を生成し、`.ipynb` smoke が動作する。
+完了基準は次の通り。`nix develop` で環境が立ち上がり、`deno task check` が空 PASS、`scripts/gen-vimdoc.ts` が空 `doc/europa-api.txt` を生成し、`.ipynb` smoke が動作する。
 
 ### Phase 1 — Phase 2 着手前の整備
 
 Phase 0 が完了し、Phase 2 着手の見通しが立った後に進める。Phase 2 と並行で進めても良いが、Phase 2 の終盤までには完了させる。
 
 1. renovate の整備
-   1. `renovate.json` (groupName + major manual review + post-upgrade hook で `doc/europa.txt` 自動再生成)
+   1. `renovate.json` (groupName + major manual review + post-upgrade hook で `doc/europa-api.txt` 自動再生成)
 2. 自前 lint の雛形
    1. `scripts/lint-no-handwritten-types.ts` 雛形 (Phase 2 で本格実装)
    2. `scripts/concat-md.ts` 雛形 (typedoc 出力の章順整形)
 3. ドキュメント雛形
    1. `CONTRIBUTING.md` (`deno task` 一覧 + 開発フロー + ガイド章編集ルール + spec/TSDoc 対応の `@spec-id` 運用)
-   2. `doc/sources/01-introduction.txt` ~ `08-faq.txt` `99-about.txt` の空テンプレート (vim help タグ付きスケルトン + TODO コメント)
+   2. `doc/europa-introduction.txt` ~ `doc/europa-faq.txt`、`doc/europa-about.txt` の空テンプレート (vim help タグ付きスケルトン + TODO コメント)
 
-完了基準は次の通り。`pre-commit run --all-files` が PASS、`git diff --exit-code` で `doc/europa.txt` が確認できる、renovate 自動 PR で `doc/europa.txt` の再生成が確認できる。
+完了基準は次の通り。`pre-commit run --all-files` が PASS、`git diff --exit-code` で `doc/europa-api.txt` が確認できる、renovate 自動 PR で `doc/europa-api.txt` の再生成が確認できる。
 
 ### Phase 2 (MVP) — 閲覧
 
