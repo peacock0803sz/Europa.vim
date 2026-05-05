@@ -215,3 +215,14 @@ function! europa#current_viewer_bufnr() abort
   endif
   return bufnr('%')
 endfunction
+
+" Phase 3.3: execute the cell at cursor position.
+function! europa#run_cell() abort
+  let l:bufnr = bufnr('%')
+  let l:cell_id = europa#current_cell_id()
+  if empty(l:cell_id)
+    echohl WarningMsg | echom 'Europa: No cell at cursor' | echohl None
+    return
+  endif
+  call denops#notify('europa', 'runCell', [l:bufnr, l:cell_id])
+endfunction

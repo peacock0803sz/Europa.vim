@@ -17,3 +17,6 @@ nnoremap <silent> <Plug>(europa-cell-down)       :<C-u>EuropaMoveCellDown<CR>
 nnoremap <silent> <Plug>(europa-edit-cell)       :<C-u>EuropaEditCell<CR>
 nnoremap <silent> <Plug>(europa-split-cell)      :<C-u>EuropaSplitCell<CR>
 nnoremap <silent> <Plug>(europa-join-cell)       :<C-u>EuropaJoinCell<CR>
+
+" Phase 3.3: kernel execution (run-cell implemented)
+nnoremap <silent> <Plug>(europa-run-cell)        :<C-u>EuropaRunCell<CR>

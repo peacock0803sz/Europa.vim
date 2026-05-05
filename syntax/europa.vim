@@ -20,4 +20,9 @@ execute 'syntax match EuropaCellFooter /^\V' .. escape(s:bl, '/\') .. '\m.*$/'
 highlight default link EuropaCellHeader Comment
 highlight default link EuropaCellFooter Comment
 
+" Phase 3.3: cell execution state signs
+highlight default link EuropaCellBusyHl    WarningMsg
+highlight default link EuropaCellQueuedHl  Comment
+highlight default link EuropaCellAbortedHl ErrorMsg
+
 let b:current_syntax = 'europa'
