@@ -105,6 +105,11 @@ export async function* execute(
   let resolveNext: ((msg: KernelMessage) => void) | null = null;
   let receivedReply = false;
 
+  // Check before subscribing to avoid an orphaned onMessage listener: if the
+  // signal is already aborted, the throw happens before the try/finally block
+  // that calls unsubscribe(), so the listener would otherwise leak.
+  opts?.signal?.throwIfAborted();
+
   const unsubscribe = runtime.client.onMessage((msg) => {
     const ph = msg.parent_header as { msg_id?: string };
     if (!ph || ph.msg_id !== msgId) return;
@@ -119,9 +124,6 @@ export async function* execute(
       buffer.push(msg);
     }
   });
-
-  // Abort before sending to avoid a side-effect on a pre-cancelled signal
-  opts?.signal?.throwIfAborted();
 
   // SC-007: send exactly one execute_request
   const encoded = runtime.info.subprotocol === "v1"
