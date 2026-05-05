@@ -1628,6 +1628,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     /**
      * @spec-id europa.dispatcher.interrupt-kernel
      * @spec-id europa.kernel.interrupt.idle-no-op
+     * @spec-id europa.kernel.interrupt.reconnect-mid
      */
     async interruptKernel(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);

@@ -20,6 +20,7 @@
  * @spec-id europa.dispatcher.cancel-cell
  * @spec-id europa.dispatcher.interrupt-kernel
  * @spec-id europa.kernel.interrupt.idle-no-op
+ * @spec-id europa.kernel.interrupt.reconnect-mid
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
@@ -2152,6 +2153,45 @@ describe(
           msgs.length > 0,
           true,
           "must show 'No kernel attached'",
+        );
+      },
+    );
+
+    it(
+      "(c) reconnect in progress (FR-011) → 'Cannot interrupt during reconnect', no REST",
+      { sanitizeResources: false, sanitizeOps: false },
+      async () => {
+        currentMkInt = makeMockKernel();
+        // Long reconnect interval so the kernel stays in reconnect state during the test
+        intHost.setEval(
+          `get(g:, 'europa_ws_reconnect_initial_interval_ms', 1000)`,
+          30000,
+        );
+        setIntConfig(currentMkInt.url, currentMkInt.token);
+        const dispatcher = buildDispatcher(intHost);
+        await startKernelForInt(dispatcher);
+
+        // Force WS disconnect → reconnect loop starts, kr.reconnect is set immediately
+        currentMkInt.forceWsClose();
+
+        // Yield to allow close event to propagate and reconnect loop to begin
+        await new Promise<void>((r) => setTimeout(r, 20));
+
+        await dispatcher.interruptKernel(INT_BUFNR);
+
+        // REST interrupt must NOT be sent during reconnect (FR-011)
+        assertEquals(
+          currentMkInt.interruptCallTimestamps.length,
+          0,
+          "no REST interrupt call expected during reconnect",
+        );
+        const reconnectMsgs = intHost.cmdsMatching(
+          "Cannot interrupt during reconnect",
+        );
+        assertEquals(
+          reconnectMsgs.length > 0,
+          true,
+          "must show 'Cannot interrupt during reconnect' message",
         );
       },
     );

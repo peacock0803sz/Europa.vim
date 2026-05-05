@@ -188,6 +188,8 @@ export type MockKernelHandle = {
   allWireMessages: MockKernelMessage[];
   /** Stop the server and clean up. */
   close(): Promise<void>;
+  /** Close all active WebSocket connections (simulates network drop for reconnect tests). */
+  forceWsClose(): void;
 };
 
 const V1_SUBPROTOCOL = "v1.kernel.websocket.jupyter.org";
@@ -221,6 +223,7 @@ export function makeMockKernel(
   const interruptCallTimestamps: number[] = [];
   const executeRequestCalls: MockKernelMessage[] = [];
   const allWireMessages: MockKernelMessage[] = [];
+  const activeSockets = new Set<WebSocket>();
   let executionCount = 0;
 
   const kernelInfoReply: Record<string, unknown> = opts.kernelInfoReply ?? {
@@ -340,7 +343,11 @@ export function makeMockKernel(
 
       // Abort any in-flight delay when the socket closes (prevents timer leaks)
       const socketAbort = new AbortController();
-      socket.onclose = () => { socketAbort.abort(); };
+      activeSockets.add(socket);
+      socket.onclose = () => {
+        activeSockets.delete(socket);
+        socketAbort.abort();
+      };
 
       const sendMsg = (
         msgType: string,
@@ -480,6 +487,15 @@ export function makeMockKernel(
     allWireMessages,
     async close(): Promise<void> {
       await serverController?.shutdown();
+    },
+    forceWsClose(): void {
+      for (const s of activeSockets) {
+        try {
+          s.close(1011, "test disconnect");
+        } catch {
+          // ignore if already closed
+        }
+      }
     },
   };
 }
