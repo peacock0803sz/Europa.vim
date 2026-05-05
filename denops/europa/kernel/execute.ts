@@ -120,6 +120,9 @@ export async function* execute(
     }
   });
 
+  // Abort before sending to avoid a side-effect on a pre-cancelled signal
+  opts?.signal?.throwIfAborted();
+
   // SC-007: send exactly one execute_request
   const encoded = runtime.info.subprotocol === "v1"
     ? new Uint8Array(encodeV1(envelope))
