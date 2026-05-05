@@ -138,7 +138,13 @@ KERNEL COMMANDS~
 		:EuropaStartKernel python3
 <	Example — use default kernel: >
 		:EuropaStartKernel
-<
+<	Example — attach to an existing server (set in vimrc first): >
+		let g:europa_use_subprocess = v:false
+		let g:europa_jupyter_url = 'http://localhost:9999'
+		let g:europa_jupyter_token = 'mytoken'
+<	Then run `:EuropaStartKernel python3` as normal.  Europa connects
+	to the running server without spawning a subprocess.
+
 	See also: |g:europa_default_kernel|, |g:europa_jupyter_url|,
 	|g:europa_use_subprocess|
 

@@ -113,32 +113,143 @@ describe("detectJupyterExecutable — priority 3: venv/bin/jupyter", () => {
   });
 });
 
-describe("detectJupyterExecutable — priority 4+5: VIRTUAL_ENV / CONDA_PREFIX", () => {
-  it("finds VIRTUAL_ENV/bin/jupyter when env var is set", async () => {
-    const dir2 = await Deno.makeTempDir({ prefix: "europa_venv_env_test_" });
+describe("detectJupyterExecutable — priority 4: VIRTUAL_ENV", () => {
+  it("finds $VIRTUAL_ENV/bin/jupyter when env var is set", async () => {
+    const venvRoot = await Deno.makeTempDir({
+      prefix: "europa_venv_env_test_",
+    });
     try {
-      const isWindows = Deno.build.os === "windows";
-      const subdir = isWindows ? "Scripts" : "bin";
-      const binaryName = isWindows ? "jupyter.exe" : "jupyter";
-      await Deno.mkdir(join(dir2, subdir), { recursive: true });
-      const path = join(dir2, subdir, binaryName);
-      await Deno.writeTextFile(path, "#!/bin/sh\necho fake");
-      if (!isWindows) await Deno.chmod(path, 0o755);
+      const isWin = Deno.build.os === "windows";
+      const subdir = isWin ? "Scripts" : "bin";
+      const binaryName = isWin ? "jupyter.exe" : "jupyter";
+      await Deno.mkdir(join(venvRoot, subdir), { recursive: true });
+      const path = join(venvRoot, subdir, binaryName);
+      await Deno.writeTextFile(
+        path,
+        isWin ? "@echo off\n" : "#!/bin/sh\necho fake",
+      );
+      if (!isWin) await Deno.chmod(path, 0o755);
 
-      // Use a cwd without any venv to avoid priority 2/3 match
       const cleanDir = await Deno.makeTempDir({ prefix: "europa_clean_" });
+      const savedVenv = Deno.env.get("VIRTUAL_ENV");
       try {
-        Deno.env.set("VIRTUAL_ENV", dir2);
+        Deno.env.set("VIRTUAL_ENV", venvRoot);
         const config = { ...BASE_CONFIG, jupyter_executable: "" };
         const result = await detectJupyterExecutable(cleanDir, config);
-        assertStringIncludes(result, dir2);
+        assertStringIncludes(result, venvRoot);
       } finally {
-        Deno.env.delete("VIRTUAL_ENV");
+        if (savedVenv !== undefined) {
+          Deno.env.set("VIRTUAL_ENV", savedVenv);
+        } else {
+          Deno.env.delete("VIRTUAL_ENV");
+        }
         await Deno.remove(cleanDir, { recursive: true });
       }
     } finally {
-      await Deno.remove(dir2, { recursive: true });
+      await Deno.remove(venvRoot, { recursive: true });
     }
+  });
+});
+
+describe("detectJupyterExecutable — priority 5: CONDA_PREFIX", () => {
+  it("finds $CONDA_PREFIX/bin/jupyter when env var is set and VIRTUAL_ENV absent", async () => {
+    const condaRoot = await Deno.makeTempDir({ prefix: "europa_conda_test_" });
+    const isWin = Deno.build.os === "windows";
+    const subdir = isWin ? "Scripts" : "bin";
+    const binaryName = isWin ? "jupyter.exe" : "jupyter";
+    try {
+      await Deno.mkdir(join(condaRoot, subdir), { recursive: true });
+      const jupPath = join(condaRoot, subdir, binaryName);
+      await Deno.writeTextFile(
+        jupPath,
+        isWin ? "@echo off\n" : "#!/bin/sh\necho fake",
+      );
+      if (!isWin) await Deno.chmod(jupPath, 0o755);
+
+      const cleanDir = await Deno.makeTempDir({ prefix: "europa_clean_" });
+      try {
+        const savedVenv = Deno.env.get("VIRTUAL_ENV");
+        Deno.env.delete("VIRTUAL_ENV");
+        Deno.env.set("CONDA_PREFIX", condaRoot);
+        try {
+          const config = { ...BASE_CONFIG, jupyter_executable: "" };
+          const result = await detectJupyterExecutable(cleanDir, config);
+          assertStringIncludes(result, condaRoot);
+        } finally {
+          Deno.env.delete("CONDA_PREFIX");
+          if (savedVenv !== undefined) Deno.env.set("VIRTUAL_ENV", savedVenv);
+        }
+      } finally {
+        await Deno.remove(cleanDir, { recursive: true });
+      }
+    } finally {
+      await Deno.remove(condaRoot, { recursive: true });
+    }
+  });
+});
+
+describe("detectJupyterExecutable — priority 6: PATH via which/where", () => {
+  it("finds jupyter via PATH when python_env_detect=disabled and no venv env vars", async () => {
+    // Create a temp bin dir containing a fake jupyter script and prepend it to PATH.
+    // Uses `which` (POSIX) / `where` (Windows) to locate the binary.
+    const binDir = await Deno.makeTempDir({ prefix: "europa_pathbin_" });
+    const isWin = Deno.build.os === "windows";
+    try {
+      // `where` on Windows matches PATHEXT-aware names; use .bat so it's found.
+      const binaryName = isWin ? "jupyter.bat" : "jupyter";
+      const jupPath = join(binDir, binaryName);
+      if (isWin) {
+        await Deno.writeTextFile(jupPath, "@echo off\necho fake\n");
+      } else {
+        await Deno.writeTextFile(jupPath, "#!/bin/sh\necho fake");
+        await Deno.chmod(jupPath, 0o755);
+      }
+
+      const cleanDir = await Deno.makeTempDir({ prefix: "europa_clean_" });
+      try {
+        const savedPath = Deno.env.get("PATH") ?? "";
+        const savedVenv = Deno.env.get("VIRTUAL_ENV");
+        const savedConda = Deno.env.get("CONDA_PREFIX");
+        Deno.env.delete("VIRTUAL_ENV");
+        Deno.env.delete("CONDA_PREFIX");
+        const sep = isWin ? ";" : ":";
+        Deno.env.set("PATH", `${binDir}${sep}${savedPath}`);
+        try {
+          const config = {
+            ...BASE_CONFIG,
+            jupyter_executable: "",
+            python_env_detect: "disabled" as const,
+          };
+          const result = await detectJupyterExecutable(cleanDir, config);
+          assertStringIncludes(result, binDir);
+        } finally {
+          Deno.env.set("PATH", savedPath);
+          if (savedVenv !== undefined) Deno.env.set("VIRTUAL_ENV", savedVenv);
+          if (savedConda !== undefined) {
+            Deno.env.set("CONDA_PREFIX", savedConda);
+          }
+        }
+      } finally {
+        await Deno.remove(cleanDir, { recursive: true });
+      }
+    } finally {
+      await Deno.remove(binDir, { recursive: true });
+    }
+  });
+});
+
+describe("detectJupyterExecutable — Windows path: Scripts/jupyter.exe on Windows, bin/jupyter on POSIX", () => {
+  it("uses platform-appropriate venv subdirectory and binary name (SC-009 Windows case)", async () => {
+    // On Windows CI: tmpDir/.venv/Scripts/jupyter.exe is created in beforeAll.
+    // On POSIX CI:   tmpDir/.venv/bin/jupyter is created in beforeAll.
+    // Both cases are validated by the priority-2 detect returning a path
+    // that contains the correct platform subdir + binary name.
+    const config = { ...BASE_CONFIG, jupyter_executable: "" };
+    const result = await detectJupyterExecutable(tmpDir, config);
+    const expectedSubdir = Deno.build.os === "windows" ? "Scripts" : "bin";
+    const expectedBin = Deno.build.os === "windows" ? "jupyter.exe" : "jupyter";
+    assertStringIncludes(result, expectedSubdir);
+    assertStringIncludes(result, expectedBin);
   });
 });
 

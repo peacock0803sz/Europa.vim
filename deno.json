@@ -9,7 +9,8 @@
     "check": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && deno task test:fixtures && deno task test:spec && deno task test:golden && git diff --exit-code doc/europa.txt",
     "test:golden": "deno test --allow-read 'tests/spec/notebook/serialize_spec.ts'",
     "bench": "deno bench --allow-read tests/bench/",
-    "smoke:ipynb": "deno run --allow-read scripts/smoke-ipynb.ts tests/fixtures/hello.ipynb"
+    "smoke:ipynb": "deno run --allow-read scripts/smoke-ipynb.ts tests/fixtures/hello.ipynb",
+    "test:conformance": "deno test --allow-run --allow-net --allow-read --allow-env 'tests/conformance/**/*_spec.ts'"
   },
   "imports": {
     "@denops/std": "jsr:@denops/std@^8.2.0",

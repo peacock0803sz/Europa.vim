@@ -807,30 +807,27 @@ export type EuropaDispatcher = {
 
 実行時メソッド契約 (`AsyncIterable` を含むため TypeBox 不可)。例外的な手書き interface (4.4 参照):
 
-```typescript
-import type {
-  KernelMessage,
-  ExecuteOptions,
-  KernelInfoReply,
-  CompleteReply,
-  InspectReply,
-} from "../../schema/message.ts";
+**Phase 3.2 実装スコープ**: `start`、`shutdown`、`onMessage` の 3 メソッドのみ実装・宣言済み (`contracts/kernel-client.ts`)。残りのメソッド (`execute`、`kernelInfo`、`complete`、`inspect`、`interrupt`、`restart`) は Phase 3.3+ の追加 (additive) で、現在の interface には含まない。
 
+```typescript
+// Phase 3.2 interface (contracts/kernel-client.ts)
 export interface KernelClient {
-  start(opts: { kernelName: string; cwd?: string }):                       Promise<void>;
-  shutdown():                                                              Promise<void>;
-  restart():                                                               Promise<void>;
-  interrupt():                                                             Promise<void>;
-  execute(code: string, opts?: ExecuteOptions):                            AsyncIterable<KernelMessage>;
-  kernelInfo():                                                            Promise<KernelInfoReply>;
-  complete(code: string, cursorPos: number):                               Promise<CompleteReply>;
-  inspect(code: string, cursorPos: number, detail: 0 | 1):                 Promise<InspectReply>;
-  onMessage(handler: (msg: KernelMessage) => void):                        () => void;  // unsubscribe
+  start(opts: { kernelName: string; cwd?: string; signal?: AbortSignal }): Promise<KernelRuntime>;
+  shutdown():                                                               Promise<void>;
+  onMessage(handler: (msg: KernelMessage) => void):                        () => void;
+
+  // Phase 3.3+ 予約 (現在の interface には含まない):
+  // execute(code: string, opts?: ExecuteOptions):     AsyncIterable<KernelMessage>;
+  // kernelInfo():                                     Promise<KernelInfoReply>;
+  // complete(code: string, cursorPos: number):        Promise<CompleteReply>;
+  // inspect(code: string, cursorPos: number, detail: 0|1): Promise<InspectReply>;
+  // interrupt():                                      Promise<void>;
+  // restart():                                        Promise<void>;
 }
 ```
 
 実装:
-- `ServerKernelClient` (Phase 3): REST + WebSocket 経由
+- `ServerKernelClient` (Phase 3.2): REST + WebSocket 経由 (subprocess または外部 attach)
 - `ZmqKernelClient` (Phase 4): npm:zeromq 経由
 
 #### 3.7.3 CellMarker interface (Vim/Neovim 抽象)
@@ -2206,6 +2203,11 @@ let g:europa_cell_border_chars    = ['╭', '─', '╮', '╰', '╯']
 " 動作
 let g:europa_auto_save            = v:false
 let g:europa_use_subprocess       = v:true    " ローカル jupyter server を spawn
+
+" WebSocket 再接続 (Phase 3.2, Q3 clarification)
+let g:europa_ws_reconnect_max_retries         = 5      " 0 = 再接続無効
+let g:europa_ws_reconnect_initial_interval_ms = 1000   " 初回リトライ遅延 ms (100..30000)
+let g:europa_ws_reconnect_multiplier          = 2.0    " exponential backoff 乗数 (1.0..5.0)
 ```
 
 ### 9.2 コマンド (`:Europa*`)
@@ -2221,8 +2223,10 @@ let g:europa_use_subprocess       = v:true    " ローカル jupyter server を 
 | `:EuropaSplitCell` | カーソル位置で分割 |
 | `:EuropaCellType {type}` | セル type 変更 |
 | `:EuropaPreviewOutput {cellIdx} {outputIdx}` | 出力を外部ビューアで開く |
-| `:EuropaStartKernel [name]` | Kernel 起動 (Phase 3) |
-| `:EuropaRestartKernel` | Kernel 再起動 (Phase 3) |
+| `:EuropaStartKernel [name]` | 現在のバッファに Jupyter kernel を起動または attach (Phase 3.2) |
+| `:EuropaShutdownKernel` | 現在のバッファに接続中の kernel を停止 (Phase 3.2) |
+| `:EuropaKernelStatus` | kernel 接続状態を `:messages` に表示 (Phase 3.2) |
+| `:EuropaRestartKernel` | Kernel 再起動 (Phase 3.3+、未実装) |
 | `:EuropaInterrupt` | 実行中断 (Phase 3) |
 | `:EuropaRunCell` | カーソル位置のセル実行 (Phase 3) |
 | `:EuropaRunAll` | 全セル実行 (Phase 3) |

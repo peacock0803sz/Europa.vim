@@ -807,30 +807,27 @@ How to call:
 
 A runtime method contract (TypeBox is not feasible because it includes `AsyncIterable`). An exceptional hand-written interface (see 4.4):
 
-```typescript
-import type {
-  KernelMessage,
-  ExecuteOptions,
-  KernelInfoReply,
-  CompleteReply,
-  InspectReply,
-} from "../../schema/message.ts";
+**Phase 3.2 implementation scope**: Only `start`, `shutdown`, and `onMessage` are implemented and declared in `contracts/kernel-client.ts`. The remaining methods (`execute`, `kernelInfo`, `complete`, `inspect`, `interrupt`, `restart`) are reserved for Phase 3.3+ and are **not** in the current interface. Adding them in a future phase is purely additive.
 
+```typescript
+// Phase 3.2 interface (contracts/kernel-client.ts)
 export interface KernelClient {
-  start(opts: { kernelName: string; cwd?: string }):                       Promise<void>;
-  shutdown():                                                              Promise<void>;
-  restart():                                                               Promise<void>;
-  interrupt():                                                             Promise<void>;
-  execute(code: string, opts?: ExecuteOptions):                            AsyncIterable<KernelMessage>;
-  kernelInfo():                                                            Promise<KernelInfoReply>;
-  complete(code: string, cursorPos: number):                               Promise<CompleteReply>;
-  inspect(code: string, cursorPos: number, detail: 0 | 1):                 Promise<InspectReply>;
-  onMessage(handler: (msg: KernelMessage) => void):                        () => void;  // unsubscribe
+  start(opts: { kernelName: string; cwd?: string; signal?: AbortSignal }): Promise<KernelRuntime>;
+  shutdown():                                                               Promise<void>;
+  onMessage(handler: (msg: KernelMessage) => void):                        () => void;
+
+  // Phase 3.3+ reserved (not in current interface):
+  // execute(code: string, opts?: ExecuteOptions):     AsyncIterable<KernelMessage>;
+  // kernelInfo():                                     Promise<KernelInfoReply>;
+  // complete(code: string, cursorPos: number):        Promise<CompleteReply>;
+  // inspect(code: string, cursorPos: number, detail: 0|1): Promise<InspectReply>;
+  // interrupt():                                      Promise<void>;
+  // restart():                                        Promise<void>;
 }
 ```
 
 Implementations:
-- `ServerKernelClient` (Phase 3): via REST + WebSocket
+- `ServerKernelClient` (Phase 3.2): via REST + WebSocket (subprocess or external attach)
 - `ZmqKernelClient` (Phase 4): via npm:zeromq
 
 #### 3.7.3 CellMarker interface (Vim/Neovim abstraction)
@@ -2206,6 +2203,11 @@ let g:europa_cell_border_chars    = ['╭', '─', '╮', '╰', '╯']
 " Behavior
 let g:europa_auto_save            = v:false
 let g:europa_use_subprocess       = v:true    " spawn local jupyter server
+
+" WebSocket reconnect (Phase 3.2, Q3 clarification)
+let g:europa_ws_reconnect_max_retries         = 5      " 0 = disable reconnect
+let g:europa_ws_reconnect_initial_interval_ms = 1000   " first retry delay in ms (100..30000)
+let g:europa_ws_reconnect_multiplier          = 2.0    " exponential backoff factor (1.0..5.0)
 ```
 
 ### 9.2 Commands (`:Europa*`)
@@ -2221,8 +2223,10 @@ let g:europa_use_subprocess       = v:true    " spawn local jupyter server
 | `:EuropaSplitCell` | Split at cursor location |
 | `:EuropaCellType {type}` | Change cell type |
 | `:EuropaPreviewOutput {cellIdx} {outputIdx}` | Open output in external viewer |
-| `:EuropaStartKernel [name]` | Start Kernel (Phase 3) |
-| `:EuropaRestartKernel` | Restart Kernel (Phase 3) |
+| `:EuropaStartKernel [name]` | Start or attach to a Jupyter kernel for the current buffer (Phase 3.2) |
+| `:EuropaShutdownKernel` | Shut down the kernel attached to the current buffer (Phase 3.2) |
+| `:EuropaKernelStatus` | Display kernel connection status in `:messages` (Phase 3.2) |
+| `:EuropaRestartKernel` | Restart Kernel (Phase 3.3+, not yet implemented) |
 | `:EuropaInterrupt` | Interrupt execution (Phase 3) |
 | `:EuropaRunCell` | Execute cell at cursor location (Phase 3) |
 | `:EuropaRunAll` | Execute all cells (Phase 3) |

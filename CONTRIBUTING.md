@@ -50,8 +50,9 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 | `deno task lint` | Runs `deno lint` and `scripts/lint-no-handwritten-types.ts`. Phase 1 enforces only the `docs/` prohibition; Phase 2 adds the AST-based hand-written-type and comment-quality rules. | Phase 1+ |
 | `deno task gen:vimdoc` | Runs `scripts/concat-md.ts` (passthrough scaffold in Phase 1) and emits `doc/europa.txt`. Re-running yields a zero diff. | Phase 0+ |
 | `deno task smoke:ipynb` | Runs the Phase 0 nbformat-v4 smoke test against `tests/fixtures/hello.ipynb`. | Phase 0+ |
-| `deno task test:spec` | Will run BDD specs under `tests/spec/`, wired up in Phase 2. | Phase 2+ (planned) |
-| `deno task test:golden` | Will run golden-file diffs for `.ipynb` fixtures and `doc/europa.txt`, wired up in Phase 2. | Phase 2+ (planned) |
+| `deno task test:spec` | Runs BDD specs under `tests/spec/`. | Phase 2+ |
+| `deno task test:golden` | Runs golden-file diffs for `.ipynb` fixtures and `doc/europa.txt`. | Phase 2+ |
+| `deno task test:conformance` | Runs end-to-end conformance tests under `tests/conformance/` against a real `jupyter server`. Requires `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`. Not included in `deno task check` (Q5 decision). | Phase 3.2+ |
 
 ## 6. Guide chapter editing rules
 

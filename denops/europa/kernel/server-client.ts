@@ -243,6 +243,18 @@ export class ServerKernelClient implements KernelClient {
       abort,
     };
     this._runtime = runtime;
+
+    // SC-010a: abort propagation must reach kernel state within 100ms.
+    // Decoupled from the WS close event because Windows can delay the close
+    // (no TCP FIN when the peer process is killed) past the 100ms budget.
+    abort.signal.addEventListener("abort", () => {
+      const r = this._runtime;
+      if (r && r.info.state !== "disconnected") {
+        r.info.state = "disconnected";
+        delete r.reconnect;
+      }
+    }, { once: true });
+
     this._attachReconnectLoop(socket);
 
     return runtime;
@@ -329,6 +341,9 @@ export class ServerKernelClient implements KernelClient {
   private _attachReconnectLoop(socket: WebSocket): void {
     socket.addEventListener("close", (ev) => {
       if (ev.code === 1000 || !this._runtime) return;
+      // Abort listener already set state to "disconnected"; skip the loop to
+      // avoid a transient "reconnecting" flicker after teardown.
+      if (this._runtime.abort.signal.aborted) return;
       this._runReconnectLoop();
     }, { once: true });
   }
@@ -421,6 +436,7 @@ export class ServerKernelClient implements KernelClient {
       };
 
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let resendIntervalId: ReturnType<typeof setInterval> | undefined;
       let opened = false;
 
       const cleanup = () => {
@@ -428,6 +444,10 @@ export class ServerKernelClient implements KernelClient {
         if (timeoutId !== undefined) {
           clearTimeout(timeoutId);
           timeoutId = undefined;
+        }
+        if (resendIntervalId !== undefined) {
+          clearInterval(resendIntervalId);
+          resendIntervalId = undefined;
         }
       };
 
@@ -537,28 +557,36 @@ export class ServerKernelClient implements KernelClient {
 
         ws.addEventListener("message", onMessage);
 
-        const req: KernelMessage = {
-          header: {
-            msg_id: crypto.randomUUID(),
-            msg_type: "kernel_info_request",
-            username: "europa",
-            session: crypto.randomUUID(),
-            date: new Date().toISOString(),
-            version: "5.3",
-          },
-          parent_header: {},
-          metadata: {},
-          content: {},
-          buffers: [],
+        const clientSession = crypto.randomUUID();
+        const sendInfoRequest = () => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          const req: KernelMessage = {
+            header: {
+              msg_id: crypto.randomUUID(),
+              msg_type: "kernel_info_request",
+              username: "europa",
+              session: clientSession,
+              date: new Date().toISOString(),
+              version: "5.3",
+            },
+            parent_header: {},
+            metadata: {},
+            content: {},
+            buffers: [],
+          };
+          if (isV1) {
+            // new Uint8Array(typedArray) copies into a fresh ArrayBuffer,
+            // satisfying strict WebSocket.send() typings in TS 5.7+.
+            ws.send(new Uint8Array(encodeV1(req)));
+          } else {
+            ws.send(encodeDefault(req));
+          }
         };
 
-        if (isV1) {
-          // new Uint8Array(typedArray) copies into a fresh ArrayBuffer,
-          // satisfying strict WebSocket.send() typings in TS 5.7+.
-          ws.send(new Uint8Array(encodeV1(req)));
-        } else {
-          ws.send(encodeDefault(req));
-        }
+        // Send immediately, then retry every 1s until reply arrives or timeout.
+        // ipykernel may not be ready to respond on the first message after WS open.
+        sendInfoRequest();
+        resendIntervalId = setInterval(sendInfoRequest, 1_000);
       });
     });
   }
