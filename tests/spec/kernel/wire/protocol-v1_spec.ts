@@ -113,7 +113,7 @@ describe("decodeV1 — kernel_info_reply", () => {
       protocol_version: "5.3",
       implementation: "ipython",
       implementation_version: "8.0.0",
-      language_info: { name: "python", version: "3.12.0" },
+      language_info: { name: "python", version: "3.14.0" },
       banner: "IPython",
       help_links: [],
     };

@@ -7,3 +7,11 @@ updates:
       interval: weekly
     commit-message:
       prefix: ":arrow_up:"
+
+  # uv (Python) in tests/
+  - package-ecosystem: uv
+    directory: tests/
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ":arrow_up:"

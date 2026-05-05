@@ -207,7 +207,7 @@ export function makeMockKernel(
     implementation_version: "8.0.0",
     language_info: {
       name: "python",
-      version: "3.12.0",
+      version: "3.14.0",
       mimetype: "text/x-python",
       file_extension: ".py",
     },
