@@ -88,8 +88,7 @@ describe("KernelErrorCode — 11 values", () => {
     "INVALID_ARGS",
   ];
 
-  it("KERNEL_ERROR_CODES exports all 11 Phase 3.2 codes (16 total with Phase 3.3)", () => {
-    // Phase 3.3 added 5 codes; total is now 16
+  it("KERNEL_ERROR_CODES exports all 16 codes (11 Phase 3.2 + 5 Phase 3.3)", () => {
     assertEquals(KERNEL_ERROR_CODES.length, 16);
   });
 
