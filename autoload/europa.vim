@@ -216,7 +216,7 @@ function! europa#current_viewer_bufnr() abort
   return bufnr('%')
 endfunction
 
-function! europa#interrupt_kernel() abort
+function! europa#interrupt() abort
   let l:bufnr = europa#current_viewer_bufnr()
   call denops#plugin#wait_async('europa',
         \ { -> denops#notify('europa', 'interruptKernel', [l:bufnr]) })

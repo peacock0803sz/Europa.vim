@@ -49,4 +49,4 @@ command! -nargs=0 EuropaRunAll
 command! -nargs=0 EuropaCancelCell
       \ call europa#cancel_cell()
 command! -nargs=0 EuropaInterrupt
-      \ call europa#interrupt_kernel()
+      \ call europa#interrupt()
