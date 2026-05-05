@@ -7,7 +7,7 @@
     "@std/async": "jsr:@std/async@^1.0.0",
     "@std/cli": "jsr:@std/cli@^1.0.0",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
-    "@std/fs": "jsr:@std/fs@^1.0.0",
+    "@std/fs": "jsr:@std/fs@^1.0.23",
     "@std/path": "jsr:@std/path@^1.1.4",
     "@std/uuid": "jsr:@std/uuid@^1.1.1"
   }
