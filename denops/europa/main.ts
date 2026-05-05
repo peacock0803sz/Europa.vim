@@ -1408,6 +1408,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
           kr.cellStates.set(cellId, "aborted");
+        } else {
+          const msg = e instanceof Error ? e.message : String(e);
+          await echomError(denops, `Execution error: ${msg}`);
         }
       } finally {
         complete(kr, msgId);
