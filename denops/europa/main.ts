@@ -1504,10 +1504,19 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const codeCells = allCells.filter((c) => c.cell_type === "code");
       const markdownSkipped = allCells.length - codeCells.length;
 
-      // Phase 1: pre-enqueue all code cells
+      // Phase 1: pre-enqueue all code cells.
+      // Reuse any existing queued entry left by a prior runCell call to avoid
+      // leaving ghost requests in pendingRequests.
       const entries: Array<{ cell: typeof codeCells[0]; msgId: string }> = [];
       for (const cell of codeCells) {
-        const msgId = enqueue(kr, bn, cell.id);
+        let msgId: string | undefined;
+        for (const [mid, entry] of kr.pendingRequests.entries()) {
+          if (entry.cellId === cell.id && entry.state === "queued") {
+            msgId = mid;
+            break;
+          }
+        }
+        msgId ??= enqueue(kr, bn, cell.id);
         entries.push({ cell, msgId });
       }
 
