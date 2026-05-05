@@ -24,5 +24,7 @@ export function createKernelClient(
   config: EuropaConfig,
   pool: ServerPool,
 ): KernelClient {
-  return new ServerKernelClient(denops, config, pool);
+  return new ServerKernelClient(denops, config, pool, {
+    kernelInfoTimeoutMs: config.kernelInfoTimeoutMs,
+  });
 }

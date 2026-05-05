@@ -171,6 +171,12 @@ export type MockKernelOptions = {
   closeAfterOpen?: boolean;
   /** Scripted replies for execute_request messages (Phase 3.3). */
   executeScript?: MockExecuteScript;
+  /**
+   * If set, stop responding to kernel_info_request after this many replies.
+   * Allows start() to succeed on the first reply while subsequent kernelInfo()
+   * calls time out (for KERNEL_INFO_TIMEOUT test coverage).
+   */
+  kernelInfoReplyLimit?: number;
 };
 
 export type MockKernelHandle = {
@@ -343,6 +349,7 @@ export function makeMockKernel(
 
       // Abort any in-flight delay when the socket closes (prevents timer leaks)
       const socketAbort = new AbortController();
+      let kernelInfoRepliesSent = 0;
       activeSockets.add(socket);
       socket.onclose = () => {
         activeSockets.delete(socket);
@@ -444,6 +451,15 @@ export function makeMockKernel(
         }
 
         if (msg.header.msg_type !== "kernel_info_request") return;
+
+        // Honour kernelInfoReplyLimit: stop responding after N replies.
+        if (
+          opts.kernelInfoReplyLimit !== undefined &&
+          kernelInfoRepliesSent >= opts.kernelInfoReplyLimit
+        ) {
+          return;
+        }
+        kernelInfoRepliesSent++;
 
         if (opts.replyDelayMs && opts.replyDelayMs > 0) {
           try {
