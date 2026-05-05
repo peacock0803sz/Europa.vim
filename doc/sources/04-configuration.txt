@@ -34,8 +34,32 @@ RENDERING OPTIONS~
 	Type: integer  Default: `100`
 
 *g:europa_cell_border_chars*
-	Unicode characters used to draw cell borders.
-	Type: list of 5 strings  Default: `['╭', '─', '╮', '╰', '╯']`
+	Unicode strings used to draw cell borders, in order:
+	top-left corner, horizontal fill, top-right corner,
+	bottom-left corner, bottom-right corner.
+	The first character of `chars[0]` and `chars[3]` is also
+	used by `syntax/europa.vim` to detect header/footer lines
+	for highlighting; if you set custom values, the syntax
+	regex picks them up automatically on next buffer open.
+	Note: changing this option mid-session requires `:e` (buffer
+	re-open) to refresh the syntax highlighting regex.
+	Type: list of exactly 5 non-empty strings
+	Default: `['╭', '─', '╮', '╰', '╯']`
+
+*g:europa_cell_border_padding*
+	Number of horizontal fill characters (`chars[1]`) used per side in
+	center-aligned mode, or placed entirely on the right in left-aligned
+	mode. A value of `4` with `'left'` produces `╭ In [1] ────────╮`;
+	the same value with `'center'` produces `╭──── In [1] ────╮`.
+	`0` omits the fill regardless of alignment, yielding `╭ In [1] ╮`.
+	Type: integer (minimum: 0)  Default: `4`
+
+*g:europa_cell_border_align*
+	Horizontal alignment of the label within the cell border line.
+	`'left'`	Label immediately after the corner: `╭ In [1] ────────╮`
+	`'center'`	Label centered with equal fill on both sides:
+			`╭──── In [1] ────╮`
+	Type: string (`'left'` or `'center'`)  Default: `'left'`
 
 *g:europa_lazy_padding*
 	Lines above and below the visible viewport that are pre-rendered
