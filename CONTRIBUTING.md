@@ -1,6 +1,6 @@
 # Contributing to Europa.vim
 
-This document covers contributor mechanics: development setup, the `deno task` pipeline, the editing rules for `doc/sources/*.txt`, and the `@spec-id` linkage between BDD specs and TSDoc. For architecture, read `DESIGN.md`; the English version is authoritative and `DESIGN.ja.md` is the synchronized translation.
+This document covers contributor mechanics: development setup, the `deno task` pipeline, the editing rules for `doc/europa-<slug>.txt`, and the `@spec-id` linkage between BDD specs and TSDoc. For architecture, read `DESIGN.md`; the English version is authoritative and `DESIGN.ja.md` is the synchronized translation.
 
 ## 1. Introduction
 
@@ -48,7 +48,7 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 |------|---------|-------|
 | `deno task check` | Full local CI: `deno fmt --check`, `deno task lint`, `deno task gen:vimdoc`, and `git diff --exit-code doc/europa.txt`. Must pass before opening a PR. | Phase 0+ |
 | `deno task lint` | Runs `deno lint` and `scripts/lint-no-handwritten-types.ts`. Phase 1 enforces only the `docs/` prohibition; Phase 2 adds the AST-based hand-written-type and comment-quality rules. | Phase 1+ |
-| `deno task gen:vimdoc` | Runs `scripts/concat-md.ts` (passthrough scaffold in Phase 1) and emits `doc/europa.txt`. Re-running yields a zero diff. | Phase 0+ |
+| `deno task gen:vimdoc` | Runs `scripts/concat-md.ts` (passthrough scaffold in Phase 1) and emits `doc/europa-api.txt`. Re-running yields a zero diff. The hand-written guide chapters under `doc/europa-<slug>.txt` are not touched. | Phase 0+ |
 | `deno task smoke:ipynb` | Runs the Phase 0 nbformat-v4 smoke test against `tests/fixtures/hello.ipynb`. | Phase 0+ |
 | `deno task test:spec` | Runs BDD specs under `tests/spec/`. | Phase 2+ |
 | `deno task test:golden` | Runs golden-file diffs for `.ipynb` fixtures and `doc/europa.txt`. | Phase 2+ |
@@ -56,10 +56,11 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 
 ## 6. Guide chapter editing rules
 
-User-facing chapters live under `doc/sources/*.txt` in vim help format. The aggregated `doc/europa.txt` is generated; never hand-edit it.
+Each user-facing chapter ships as its own help file under `doc/europa-<slug>.txt` in vim help format. Vim/Neovim's `:helptags` scans `doc/` recursively, so keeping a separate sources directory inside `doc/` would produce duplicate-tag errors; the chapters themselves are the source of truth and are loaded directly. Only `doc/europa-api.txt` is generated, by `deno task gen:vimdoc` from TSDoc.
 
-- Edit only `doc/sources/<NN>-<slug>.txt`. Run `deno task gen:vimdoc` and commit both files in the same change.
-- The filename pattern is `<NN>-<slug>.txt`. The two-digit prefix orders chapters; `01`–`08` cover the canonical chapters and `99` closes with About. The slug is kebab-case English.
+- Edit `doc/europa-<slug>.txt` directly. The slug is kebab-case English; canonical chapters are `introduction`, `requirements`, `setup`, `configuration`, `commands`, `mappings`, `examples`, `kernel`, `faq`, `about`, plus the auto-generated `api`.
+- `doc/europa.txt` is the hand-written index. When you add a new chapter file, add a `|europa-<slug>|` line to that index in the same change.
+- Never hand-edit `doc/europa-api.txt`. Run `deno task gen:vimdoc` to regenerate it; CI fails on a non-zero `git diff --exit-code doc/europa-api.txt`.
 - Every chapter carries a primary tag of the form `*europa-<slug>*` matching the filename slug. Sub-section tags follow `*europa-<slug>-<subsection>*`. Tags must not collide with `doc/denops.txt`, which ships its own namespace.
 - Every chapter ends with the standard vim help modeline `vim:tw=78:ts=8:noet:ft=help:norl:`.
 - Files are UTF-8 with LF line endings.

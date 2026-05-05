@@ -44,15 +44,15 @@ jobs:
           key: deno-${{ runner.os }}-${{ hashFiles('deno.json') }}
           restore-keys: deno-${{ runner.os }}-
 
-      - name: Regenerate doc/europa.txt
+      - name: Regenerate doc/europa-api.txt
         run: deno task gen:vimdoc
 
-      - name: Commit and push if doc/europa.txt changed
+      - name: Commit and push if doc/europa-api.txt changed
         run: |
-          if [[ -n "$(git status --short doc/europa.txt)" ]]; then
-            git add doc/europa.txt
-            git commit -m ":memo: Regenerate doc/europa.txt"
+          if [[ -n "$(git status --short doc/europa-api.txt)" ]]; then
+            git add doc/europa-api.txt
+            git commit -m ":memo: Regenerate doc/europa-api.txt"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           else
-            echo "doc/europa.txt is up to date; skipping commit"
+            echo "doc/europa-api.txt is up to date; skipping commit"
           fi

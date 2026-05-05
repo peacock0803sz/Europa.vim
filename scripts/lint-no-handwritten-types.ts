@@ -316,7 +316,7 @@ if (import.meta.main) {
       console.error(
         "lint-no-handwritten-types: 'docs/' is forbidden. " +
           "Hand-written documentation belongs in repo-root markdown or " +
-          "doc/sources/*.txt only. See DESIGN.md chapter 3 for the rule.",
+          "doc/europa-*.txt only. See DESIGN.md chapter 3 for the rule.",
       );
       failed = true;
     }
