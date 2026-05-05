@@ -116,11 +116,11 @@ export type EuropaDispatcher = {
 
   /**
    * Execute the cell at the given cellId on the attached kernel.
-   * Phase 3.3 dispatcher RPC (runCell). When execState is busy, the cell
-   * is enqueued in pendingRequests (state='queued') without sending an
-   * execute_request (FR-008 auto-dispatch disabled).
+   * Phase 3.3 dispatcher RPC (runCell). When execState is busy, the call
+   * is rejected with a user-visible echom (no execute_request is sent).
+   * Queue drain is deferred to a later phase (FR-008).
    * @spec-id europa.dispatcher.run-cell
-   * @spec-id europa.dispatcher.run-cell-queued-on-busy
+   * @spec-id europa.dispatcher.run-cell-busy-reject
    */
   runCell(bufnr: unknown, cellId: unknown): Promise<void>;
 

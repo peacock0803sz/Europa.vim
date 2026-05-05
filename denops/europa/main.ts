@@ -1321,7 +1321,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
 
     // @spec-id europa.contract.dispatcher-phase3-3-alignment
     // @spec-id europa.dispatcher.run-cell
-    // @spec-id europa.dispatcher.run-cell-queued-on-busy
+    // @spec-id europa.dispatcher.run-cell-busy-reject
     async runCell(_bufnr: unknown, _cellId: unknown): Promise<void> {
       const bn = Number(_bufnr);
       if (!Number.isInteger(bn) || bn < 1) {
@@ -1381,11 +1381,11 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
-      if (kr.cellStates.get(cellId) === "queued") {
+      if (kr.execState === "busy") {
         await denops.cmd(
           `echom ${
             vimSingleQuote(
-              "Europa: Cell is already queued.",
+              "Europa: Kernel is busy. Wait for the current execution to finish.",
             )
           }`,
         );
@@ -1396,17 +1396,6 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const code = codeCell.source;
 
       const msgId = enqueue(kr, bn, cellId);
-
-      if (kr.execState === "busy") {
-        await denops.cmd(
-          `echom ${
-            vimSingleQuote(
-              "Europa: Cell queued. Run :EuropaRunCell again after current execution finishes, or use :EuropaRunAll.",
-            )
-          }`,
-        );
-        return;
-      }
 
       // Clear outputs only when we are actually about to send the request
       codeCell.outputs = [];

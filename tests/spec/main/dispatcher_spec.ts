@@ -15,7 +15,7 @@
  * @spec-id europa.dispatcher.shutdown-kernel
  * @spec-id europa.dispatcher.kernel-status
  * @spec-id europa.dispatcher.run-cell
- * @spec-id europa.dispatcher.run-cell-queued-on-busy
+ * @spec-id europa.dispatcher.run-cell-busy-reject
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
@@ -1732,7 +1732,7 @@ describe(
     );
 
     it(
-      "(j) busy execState: cell queued but execute_request NOT sent",
+      "(j) busy execState: second runCell rejected, execute_request NOT sent",
       async () => {
         // Set up a slow first execution to keep execState='busy' while we call runCell again.
         currentMk = makeMockKernel({
@@ -1747,25 +1747,25 @@ describe(
         const dispatcher = buildDispatcher(runHost);
         await startKernelForRun(dispatcher);
 
-        // Start executing cell 1 and immediately queue cell 3.
+        // Start executing cell 1; immediately attempt cell 3 while kernel is busy.
         // Use allSettled so both rejections are handled even in the stub phase.
         await Promise.allSettled([
           dispatcher.runCell(RUN_BUFNR, CODE_CELL_1),
           dispatcher.runCell(RUN_BUFNR, CODE_CELL_3),
         ]);
 
-        // Cell 3 was queued but not sent → only 1 execute_request total.
+        // Cell 3 call was rejected → only 1 execute_request total.
         assertEquals(
           currentMk.executeRequestCalls.length,
           1,
-          "only 1 execute_request sent (cell 3 was queued, not sent)",
+          "only 1 execute_request sent (cell 3 was rejected, not sent)",
         );
 
-        const queueMsgs = runHost.cmdsMatching("Cell queued");
+        const busyMsgs = runHost.cmdsMatching("Kernel is busy");
         assertEquals(
-          queueMsgs.length > 0,
+          busyMsgs.length > 0,
           true,
-          "must show 'Cell queued' message for cell 3",
+          "must show 'Kernel is busy' message for cell 3",
         );
       },
     );
