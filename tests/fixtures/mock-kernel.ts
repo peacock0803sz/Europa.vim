@@ -148,8 +148,6 @@ export type MockKernelInfo = {
 
 /** Scripted reply set for a single execute_request in tests. */
 export type MockExecuteScript = {
-  /** The code to match (exact string). If omitted, matches any code. */
-  code?: string;
   /**
    * Sequence of iopub messages to emit, in order, before execute_reply.
    * Each entry is { msg_type, content }.
