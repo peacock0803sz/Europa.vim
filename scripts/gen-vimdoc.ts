@@ -1,15 +1,20 @@
 /**
- * Europa.vim vimdoc generator — Phase 2 pipeline.
+ * Europa.vim API reference generator.
  *
  * Pipeline:
  *   1. typedoc (typedoc-plugin-markdown) → tmp/typedoc/
  *   2. concat-md.ts → tmp/api-reference.md  (Modules → Classes → Functions → Types)
- *   3. doc/sources/*.txt + api-reference.md → doc/europa.txt
+ *   3. tmp/api-reference.md → doc/europa-api.txt
  *
- * typedoc errors are fatal. The pipeline still writes `doc/europa.txt` from
- * the source chapters that were read so the file stays in sync with
- * `doc/sources/`, but the task exits non-zero so CI surfaces missing or broken
- * API reference output.
+ * The hand-written guide chapters live as `doc/europa-<slug>.txt` and are
+ * shipped as standalone help files; this script no longer aggregates them.
+ * Only the API reference is auto-generated, so every other doc file under
+ * `doc/` is a hand-edited source of truth.
+ *
+ * typedoc errors are fatal. The pipeline still writes `doc/europa-api.txt`
+ * with whatever apiBody is available (possibly empty) so the file remains
+ * present for `:helptags`, but the task exits non-zero so CI surfaces missing
+ * or broken API reference output.
  *
  * panvimdoc (Lua/pandoc filter) is deferred to Phase 3 when it will be
  * available in the nix dev shell.
@@ -19,64 +24,25 @@
 
 import { generate as runConcatMd } from "./concat-md.ts";
 
-const SOURCES_DIR = "doc/sources";
-const OUTPUT_PATH = "doc/europa.txt";
+const OUTPUT_PATH = "doc/europa-api.txt";
 const API_REFERENCE_PATH = "tmp/api-reference.md";
-// Each `doc/sources/*.txt` carries its own vim help modeline so the file is
-// edit-friendly on its own; strip it before concatenating so the aggregated
-// `doc/europa.txt` ends up with the single modeline that `buildVimdoc`
-// appends, not one per chapter.
-const TRAILING_MODELINE = /\n+vim:[^\n]*\n*$/;
-
-function stripTrailingModeline(text: string): string {
-  return text.replace(TRAILING_MODELINE, "\n");
-}
 
 /**
- * Read every `.txt` file under `doc/sources/` in lexicographic order and
- * concatenate their contents, dropping each file's trailing modeline so the
- * aggregated output keeps only the canonical one added by `buildVimdoc`.
+ * Build the canonical API reference vimdoc body.
  *
- * @returns Concatenated source body, or an empty string if no sources exist.
+ * The output is a single help file with `*europa-api.txt*` as the file tag,
+ * `*europa-api*` as the primary navigation tag, and a trailing modeline so
+ * end-of-file-fixer stays happy and re-running yields a zero diff.
  */
-async function readSources(): Promise<string> {
-  const parts: string[] = [];
-  try {
-    const names: string[] = [];
-    for await (const entry of Deno.readDir(SOURCES_DIR)) {
-      if (entry.isFile && entry.name.endsWith(".txt")) names.push(entry.name);
-    }
-    names.sort();
-    for (const name of names) {
-      const text = await Deno.readTextFile(`${SOURCES_DIR}/${name}`);
-      parts.push(stripTrailingModeline(text));
-    }
-  } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
-  }
-  return parts.join("\n");
-}
-
-/**
- * Build the canonical Phase 0 vimdoc body.
- *
- * The order is fixed. The header line comes first, then guide chapters from
- * `doc/sources/`, then the API Reference placeholder, then the modeline. The
- * output ends with a trailing newline so end-of-file-fixer stays happy and
- * re-running yields a zero diff.
- */
-function buildVimdoc(sourcesBody: string, apiBody: string): string {
-  const header = "*europa.txt*\teuropa.vim documentation\n";
+function buildVimdoc(apiBody: string): string {
+  const header = "*europa-api.txt*\teuropa.vim API reference\n";
   const apiSection =
     "==============================================================================\nAPI REFERENCE\t\t\t\t\t\t\t*europa-api*\n\n" +
     (apiBody.length > 0
       ? apiBody
       : "(generated from TSDoc; populated in Phase 2+)\n");
-  const guideSection = sourcesBody.length > 0
-    ? sourcesBody
-    : "(guide chapters land in doc/sources/ during Phase 1)\n";
   const modeline = "vim:tw=78:ts=8:noet:ft=help:norl:\n";
-  return [header, guideSection, apiSection, modeline].join("\n");
+  return [header, apiSection, modeline].join("\n");
 }
 
 /**
@@ -128,7 +94,7 @@ async function runTypedoc(): Promise<boolean> {
 }
 
 /**
- * Generate `doc/europa.txt` deterministically from current sources.
+ * Generate `doc/europa-api.txt` deterministically from current TSDoc.
  *
  * @example
  * ```sh
@@ -138,9 +104,8 @@ async function runTypedoc(): Promise<boolean> {
 export async function generate(): Promise<void> {
   const typedocOk = await runTypedoc();
   await runConcatMd();
-  const sourcesBody = await readSources();
   const apiBody = await readApiReference();
-  const body = buildVimdoc(sourcesBody, apiBody);
+  const body = buildVimdoc(apiBody);
   await Deno.writeTextFile(OUTPUT_PATH, body);
   if (!typedocOk) {
     throw new Error("typedoc failed — API reference is empty");
