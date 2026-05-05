@@ -1648,8 +1648,18 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         return;
       }
 
-      // FR-011: cannot interrupt during reconnect or restart
-      if (kr.execState === "restarting" || kr.reconnect) {
+      // FR-011: cannot interrupt during restart or reconnect
+      if (kr.execState === "restarting") {
+        await denops.cmd(
+          `echom ${
+            vimSingleQuote(
+              "Europa: Cannot interrupt while kernel is restarting, please wait",
+            )
+          }`,
+        );
+        return;
+      }
+      if (kr.reconnect) {
         await denops.cmd(
           `echom ${
             vimSingleQuote(
