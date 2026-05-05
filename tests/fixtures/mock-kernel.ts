@@ -183,7 +183,7 @@ export type MockKernelHandle = {
   /** Session IDs for which DELETE /api/sessions/<sid> was received. */
   deletedSessions: string[];
   /** REST interrupt call count (POST /api/kernels/:kid/interrupt). */
-  interruptCalls: number[];
+  interruptCallTimestamps: number[];
   /** All execute_request messages received over the WebSocket. */
   executeRequestCalls: MockKernelMessage[];
   /** All inbound wire messages received (diagnostic API). */
@@ -220,7 +220,7 @@ export function makeMockKernel(
   const kernelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
   const deletedSessions: string[] = [];
-  const interruptCalls: number[] = [];
+  const interruptCallTimestamps: number[] = [];
   const executeRequestCalls: MockKernelMessage[] = [];
   const allWireMessages: MockKernelMessage[] = [];
   let executionCount = 0;
@@ -283,7 +283,7 @@ export function makeMockKernel(
 
     // POST /api/kernels/:kid/interrupt → 204
     if (req.method === "POST" && path.endsWith("/interrupt")) {
-      interruptCalls.push(Date.now());
+      interruptCallTimestamps.push(Date.now());
       return new Response(null, { status: 204 });
     }
 
@@ -477,7 +477,7 @@ export function makeMockKernel(
     url: serverUrl,
     token,
     deletedSessions,
-    interruptCalls,
+    interruptCallTimestamps,
     executeRequestCalls,
     allWireMessages,
     async close(): Promise<void> {
