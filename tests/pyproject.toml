@@ -1,7 +1,7 @@
 [project]
 name = "europa-tests"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "jupyter-server>=2.17.0",
     "matplotlib>=3.10.9",
