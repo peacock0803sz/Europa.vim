@@ -257,6 +257,12 @@ describe("Phase 3.2 dispatcher method presence (europa.contract.dispatcher-phase
       ) {
         threwInvalidArgs = true;
       }
+    } finally {
+      try {
+        await d.shutdownKernel(1);
+      } catch {
+        // cleanup errors are non-fatal for this test
+      }
     }
     assertEquals(
       threwInvalidArgs,

@@ -98,6 +98,12 @@ async function findStartupLine(
     }
   } finally {
     abortSignal.removeEventListener("abort", onAbort);
+    // Release the reader lock so the stream can be cancelled later (e.g. on kill).
+    try {
+      reader.releaseLock();
+    } catch {
+      // Already released or cancelled
+    }
   }
 }
 
@@ -354,10 +360,14 @@ export async function killChildProcess(
   }
 
   // Wait up to 5s for graceful exit
+  let killTimerId: number | undefined;
   const status = await Promise.race([
     child.status,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+    new Promise<null>((resolve) => {
+      killTimerId = setTimeout(() => resolve(null), 5_000);
+    }),
   ]);
+  clearTimeout(killTimerId);
 
   if (status === null) {
     // Force kill after timeout
@@ -378,5 +388,13 @@ export async function killChildProcess(
         // Already dead
       }
     }
+  }
+
+  // Cancel the piped stderr stream to avoid resource leaks.
+  // child.stderr is null when the process was not spawned with stderr:"piped".
+  try {
+    await child.stderr?.cancel();
+  } catch {
+    // Already consumed or closed
   }
 }
