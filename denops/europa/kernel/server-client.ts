@@ -831,11 +831,12 @@ export class ServerKernelClient implements KernelClient {
   }
 
   /**
-   * Fetch kernel_info_reply on the open channel (single-shot, no auto-retry).
+   * Fetch kernel_info_reply on the open channel (single API call, no reconnect retry).
    *
-   * Sends one kernel_info_request (with 1 s resend interval until reply) and
-   * resolves within `kernelInfoTimeoutMs`. Rejects KERNEL_INFO_TIMEOUT on
-   * expiry. Both start() and restart() delegate their handshakes here (DRY).
+   * Sends one kernel_info_request and resends every 1 s until a reply arrives
+   * or `kernelInfoTimeoutMs` elapses (KERNEL_INFO_TIMEOUT). The "no retry"
+   * refers to connection-level reconnects, not message-level resends.
+   * Both start() and restart() delegate their handshakes here (DRY).
    *
    * @spec-id europa.kernel.server-client.kernel-info-public
    */
