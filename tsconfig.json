@@ -11,6 +11,7 @@
     "allowJs": false,
     "paths": {
       "@denops/std": ["./typings/denops-std.d.ts"],
+      "@denops/std/batch": ["./typings/denops-std-batch.d.ts"],
       "@std/uuid": ["./typings/std-uuid.d.ts"],
       "@std/encoding/base64": ["./typings/std-encoding-base64.d.ts"],
       "@std/path/join": ["./typings/std-path-join.d.ts"],

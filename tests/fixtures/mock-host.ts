@@ -84,6 +84,11 @@ export class MockHost implements Denops {
   /** Fired VimLeavePre autocmd callbacks (registered by tests). */
   private _vimLeavePreCallbacks: Array<() => void | Promise<void>> = [];
 
+  /**
+   * Return value for `bufwinid` calls. Override to -1 in hidden-buffer tests.
+   */
+  bufwinidResult = 1000;
+
   /** Autocmd helpers accessible from tests. */
   readonly autocmd = {
     define: (
@@ -179,7 +184,7 @@ export class MockHost implements Denops {
       }
       return Promise.resolve(1);
     }
-    if (fn === "bufwinid") return Promise.resolve(1000);
+    if (fn === "bufwinid") return Promise.resolve(this.bufwinidResult);
     if (fn === "screenpos") {
       const lnum = args[1] as number;
       return Promise.resolve({ row: lnum, col: 1, endcol: 1, curscol: 1 });
@@ -391,6 +396,7 @@ export class MockHost implements Denops {
   /** Reset call log and state. */
   reset(): void {
     this.calls = [];
+    this.bufwinidResult = 1000;
     this.bufLines.clear();
     this.evalValues.clear();
     this.props.clear();
