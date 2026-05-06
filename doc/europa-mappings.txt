@@ -22,6 +22,11 @@ PLUG MAPPINGS~
 					    *<Plug>(europa-celltype-code)*
 					*<Plug>(europa-celltype-markdown)*
 					     *<Plug>(europa-celltype-raw)*
+					         *<Plug>(europa-run-cell)*
+					          *<Plug>(europa-run-all)*
+					      *<Plug>(europa-cancel-cell)*
+					        *<Plug>(europa-interrupt)*
+					   *<Plug>(europa-restart-kernel)*
 					    *<Plug>(europa-start-kernel)*
 					 *<Plug>(europa-shutdown-kernel)*
 					   *<Plug>(europa-kernel-status)*
@@ -43,6 +48,11 @@ The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
     <Plug>(europa-celltype-code)          Change cell type at cursor to code
     <Plug>(europa-celltype-markdown)      Change cell type at cursor to markdown
     <Plug>(europa-celltype-raw)           Change cell type at cursor to raw
+    <Plug>(europa-run-cell)               Run the cell at cursor
+    <Plug>(europa-run-all)                Run all cells
+    <Plug>(europa-cancel-cell)            Cancel the running cell
+    <Plug>(europa-interrupt)              Interrupt the active kernel
+    <Plug>(europa-restart-kernel)         Restart the active kernel
     <Plug>(europa-start-kernel)           Start the default kernel (python3)
     <Plug>(europa-shutdown-kernel)        Shutdown the active kernel
     <Plug>(europa-kernel-status)          Show kernel status
