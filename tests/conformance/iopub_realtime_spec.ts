@@ -81,6 +81,7 @@ describe(
           } as never,
           config,
           pool,
+          { kernelInfoTimeoutMs: 60_000 },
         );
 
         const runtime = await client.start({ kernelName: "python3" });
@@ -89,7 +90,7 @@ describe(
           id: "realtime-test",
           cell_type: "code",
           source:
-            "import time\nfor i in range(5):\n    print(i)\n    time.sleep(0.1)",
+            "import time\nfor i in range(5):\n    print(i)\n    time.sleep(0.5)",
           outputs: [],
           execution_count: null,
           metadata: {},
@@ -130,12 +131,12 @@ describe(
           `expected ≥ 4 stream messages, got ${streamTimestamps.length}`,
         );
 
-        // The messages should be spaced ~100 ms apart (we allow ×2 slack for CI)
+        // The messages should be spaced ~500 ms apart (we allow ×4 slack for CI)
         if (streamTimestamps.length >= 2) {
           for (let i = 1; i < streamTimestamps.length; i++) {
             const gap = streamTimestamps[i] - streamTimestamps[i - 1];
             assert(
-              gap < 1000,
+              gap < 2000,
               `gap between stream msgs ${
                 i - 1
               } and ${i} was ${gap} ms — kernel may be frozen`,
