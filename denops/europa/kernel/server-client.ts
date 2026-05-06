@@ -483,6 +483,7 @@ export class ServerKernelClient implements KernelClient {
 
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       let resendIntervalId: ReturnType<typeof setInterval> | undefined;
+      let onMessage: ((e: MessageEvent) => void) | undefined;
       let opened = false;
 
       const cleanup = () => {
@@ -494,6 +495,12 @@ export class ServerKernelClient implements KernelClient {
         if (resendIntervalId !== undefined) {
           clearInterval(resendIntervalId);
           resendIntervalId = undefined;
+        }
+        if (onMessage !== undefined) {
+          // Detach on every reject path (abort/close/timeout) so Deno's
+          // test sanitizer does not flag a dangling message receive op.
+          ws.removeEventListener("message", onMessage);
+          onMessage = undefined;
         }
       };
 
@@ -576,7 +583,7 @@ export class ServerKernelClient implements KernelClient {
           );
         }, this.kernelInfoTimeoutMs);
 
-        const onMessage = (e: MessageEvent) => {
+        onMessage = (e: MessageEvent) => {
           let msg: KernelMessage;
           try {
             if (e.data instanceof ArrayBuffer) {
@@ -590,7 +597,6 @@ export class ServerKernelClient implements KernelClient {
 
           if (msg.header.msg_type !== "kernel_info_reply") return;
 
-          ws.removeEventListener("message", onMessage);
           settle(() => {
             cleanup();
             resolve({
