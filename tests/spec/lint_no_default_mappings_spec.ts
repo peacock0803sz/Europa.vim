@@ -2,7 +2,9 @@
  * BDD specs for lint-no-default-mappings.ts.
  *
  * Verifies that plugin/mappings.vim contains only `<Plug>(europa-*)` lhs
- * values and defines all 12 required mappings.
+ * values, defines the 12 baseline mappings (Phase 3.1 / 3.3), and the 9
+ * argument-variant `<Plug>` mappings added on top — each bound to the
+ * correct `:Europa...<CR>` rhs so empty stubs cannot regress.
  *
  * @spec-id europa.lint.no-default-mappings
  */
@@ -66,6 +68,68 @@ describe("lint: plugin/mappings.vim — no default key mappings", () => {
         content.includes(plug),
         true,
         `plugin/mappings.vim must define ${plug}`,
+      );
+    }
+  });
+
+  it("binds argument-variant <Plug>(europa-*) mappings to their :Europa... commands", async () => {
+    const content = await Deno.readTextFile(MAPPINGS_FILE);
+    // Each entry asserts both presence of the lhs and that it is bound to
+    // the expected rhs on the same line — guards against an empty stub
+    // (e.g. `nnoremap <Plug>(europa-celltype-code) :<C-u><CR>`).
+    const bindings: ReadonlyArray<{ plug: string; rhs: string }> = [
+      {
+        plug: "<Plug>(europa-insert-code-above)",
+        rhs: ":<C-u>EuropaInsertCell! code<CR>",
+      },
+      {
+        plug: "<Plug>(europa-insert-markdown-above)",
+        rhs: ":<C-u>EuropaInsertCell! markdown<CR>",
+      },
+      {
+        plug: "<Plug>(europa-insert-raw-above)",
+        rhs: ":<C-u>EuropaInsertCell! raw<CR>",
+      },
+      {
+        plug: "<Plug>(europa-celltype-code)",
+        rhs: ":<C-u>EuropaCellType code<CR>",
+      },
+      {
+        plug: "<Plug>(europa-celltype-markdown)",
+        rhs: ":<C-u>EuropaCellType markdown<CR>",
+      },
+      {
+        plug: "<Plug>(europa-celltype-raw)",
+        rhs: ":<C-u>EuropaCellType raw<CR>",
+      },
+      {
+        plug: "<Plug>(europa-start-kernel)",
+        rhs: ":<C-u>EuropaStartKernel<CR>",
+      },
+      {
+        plug: "<Plug>(europa-shutdown-kernel)",
+        rhs: ":<C-u>EuropaShutdownKernel<CR>",
+      },
+      {
+        plug: "<Plug>(europa-kernel-status)",
+        rhs: ":<C-u>EuropaKernelStatus<CR>",
+      },
+    ];
+    const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    for (const { plug, rhs } of bindings) {
+      assertEquals(
+        content.includes(plug),
+        true,
+        `plugin/mappings.vim must define ${plug}`,
+      );
+      const lineRe = new RegExp(
+        `${escapeRe(plug)}\\s+${escapeRe(rhs)}`,
+        "m",
+      );
+      assertEquals(
+        lineRe.test(content),
+        true,
+        `${plug} must be bound to ${rhs} on the same line`,
       );
     }
   });

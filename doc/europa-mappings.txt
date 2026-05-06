@@ -10,28 +10,46 @@ PLUG MAPPINGS~
 					     *<Plug>(europa-insert-code)*
 					 *<Plug>(europa-insert-markdown)*
 					      *<Plug>(europa-insert-raw)*
+				       *<Plug>(europa-insert-code-above)*
+				   *<Plug>(europa-insert-markdown-above)*
+					*<Plug>(europa-insert-raw-above)*
 					      *<Plug>(europa-delete-cell)*
 					        *<Plug>(europa-cell-up)*
 					      *<Plug>(europa-cell-down)*
 					        *<Plug>(europa-edit-cell)*
 					       *<Plug>(europa-split-cell)*
 					        *<Plug>(europa-join-cell)*
+					    *<Plug>(europa-celltype-code)*
+					*<Plug>(europa-celltype-markdown)*
+					     *<Plug>(europa-celltype-raw)*
+					    *<Plug>(europa-start-kernel)*
+					 *<Plug>(europa-shutdown-kernel)*
+					   *<Plug>(europa-kernel-status)*
 
 The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
 
-    <Plug>(europa-insert-code)      Insert a new code cell after cursor
-    <Plug>(europa-insert-markdown)  Insert a new markdown cell after cursor
-    <Plug>(europa-insert-raw)       Insert a new raw cell after cursor
-    <Plug>(europa-delete-cell)      Delete the cell at cursor
-    <Plug>(europa-cell-up)          Move the cell at cursor one position up
-    <Plug>(europa-cell-down)        Move the cell at cursor one position down
-    <Plug>(europa-edit-cell)        Open scratch buffer for the cell at cursor
-    <Plug>(europa-split-cell)       Split the cell at cursor at the current line
-    <Plug>(europa-join-cell)        Join the cell at cursor with the one above
+    <Plug>(europa-insert-code)            Insert a new code cell after cursor
+    <Plug>(europa-insert-markdown)        Insert a new markdown cell after cursor
+    <Plug>(europa-insert-raw)             Insert a new raw cell after cursor
+    <Plug>(europa-insert-code-above)      Insert a new code cell before cursor
+    <Plug>(europa-insert-markdown-above)  Insert a new markdown cell before cursor
+    <Plug>(europa-insert-raw-above)       Insert a new raw cell before cursor
+    <Plug>(europa-delete-cell)            Delete the cell at cursor
+    <Plug>(europa-cell-up)                Move the cell at cursor one position up
+    <Plug>(europa-cell-down)              Move the cell at cursor one position down
+    <Plug>(europa-edit-cell)              Open scratch buffer for the cell at cursor
+    <Plug>(europa-split-cell)             Split the cell at cursor at the current line
+    <Plug>(europa-join-cell)              Join the cell at cursor with the one above
+    <Plug>(europa-celltype-code)          Change cell type at cursor to code
+    <Plug>(europa-celltype-markdown)      Change cell type at cursor to markdown
+    <Plug>(europa-celltype-raw)           Change cell type at cursor to raw
+    <Plug>(europa-start-kernel)           Start the default kernel (python3)
+    <Plug>(europa-shutdown-kernel)        Shutdown the active kernel
+    <Plug>(europa-kernel-status)          Show kernel status
 
-Note: `:EuropaCellType {type}` and `:EuropaInsertCell! {type}` (insert before)
-are not exposed as `<Plug>` mappings because they require arguments and are
-best invoked from the command line.
+Note: `:EuropaStartKernel {name}` accepts an optional kernel name argument; the
+`<Plug>(europa-start-kernel)` handle starts the default kernel. For non-default
+kernels, invoke the command directly.
 
 RECOMMENDED BINDINGS~
 					     *europa-recommended-mappings*
@@ -97,8 +115,8 @@ in your vimrc as shown below: >
       nmap <buffer><silent> <C-CR> <Plug>(europa-run-cell)
       nmap <buffer><silent> <M-CR> <Plug>(europa-run-cell)<Plug>(europa-insert-code)
 
-      nnoremap <buffer><silent> a :<C-u>EuropaInsertCell! code<CR>
-      nmap     <buffer><silent> b <Plug>(europa-insert-code)
+      nmap <buffer><silent> a <Plug>(europa-insert-code-above)
+      nmap <buffer><silent> b <Plug>(europa-insert-code)
 
       nmap <buffer><silent> dd <Plug>(europa-delete-cell)
       nmap <buffer><silent> M  <Plug>(europa-join-cell)
@@ -110,18 +128,18 @@ in your vimrc as shown below: >
       nmap <buffer><silent> ii <Plug>(europa-interrupt)
       nmap <buffer><silent> 00 <Plug>(europa-restart-kernel)
 
-      nnoremap <buffer><silent> <localleader>m :<C-u>EuropaCellType markdown<CR>
-      nnoremap <buffer><silent> <localleader>y :<C-u>EuropaCellType code<CR>
-      nnoremap <buffer><silent> <localleader>r :<C-u>EuropaCellType raw<CR>
+      nmap <buffer><silent> <localleader>m <Plug>(europa-celltype-markdown)
+      nmap <buffer><silent> <localleader>y <Plug>(europa-celltype-code)
+      nmap <buffer><silent> <localleader>r <Plug>(europa-celltype-raw)
 
       nmap <buffer><silent> <localleader>R <Plug>(europa-run-all)
       nmap <buffer><silent> <localleader>c <Plug>(europa-cancel-cell)
       nmap <buffer><silent> <localleader>k <Plug>(europa-cell-up)
       nmap <buffer><silent> <localleader>j <Plug>(europa-cell-down)
 
-      nnoremap <buffer><silent> <localleader>s :<C-u>EuropaStartKernel<CR>
-      nnoremap <buffer><silent> <localleader>q :<C-u>EuropaShutdownKernel<CR>
-      nnoremap <buffer><silent> <localleader>K :<C-u>EuropaKernelStatus<CR>
+      nmap <buffer><silent> <localleader>s <Plug>(europa-start-kernel)
+      nmap <buffer><silent> <localleader>q <Plug>(europa-shutdown-kernel)
+      nmap <buffer><silent> <localleader>K <Plug>(europa-kernel-status)
     endfunction
 <
 vim:tw=78:ts=8:noet:ft=help:norl:
