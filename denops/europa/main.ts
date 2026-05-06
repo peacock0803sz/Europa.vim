@@ -1818,6 +1818,11 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       );
     },
 
+    // Phase 3.4: hidden-buffer resync — full implementation in T016 (US1)
+    onBufWinEnter(_bufnr: unknown): Promise<void> {
+      return Promise.resolve();
+    },
+
     // Phase 4: ZMQ attach
     attachKernel(_connectionFile: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("attachKernel"));
