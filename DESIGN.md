@@ -933,7 +933,7 @@ function! europa#run_cell() abort                                               
 function! europa#run_all() abort                                                    " Phase 3
 function! europa#start_kernel(name) abort                                           " Phase 3
 function! europa#restart_kernel() abort                                             " Phase 3
-function! europa#interrupt_kernel() abort                                           " Phase 3
+function! europa#interrupt() abort                                                   " Phase 3
 function! europa#attach_kernel(connection_file) abort                               " Phase 4
 ```
 

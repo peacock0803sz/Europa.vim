@@ -128,7 +128,7 @@ The following features are planned for Phase 3.3 and later.  They are not
 available in the current release:
 
   - `:EuropaRun` / `:EuropaRunAll` — cell execution against the kernel.
-  - `:EuropaInterruptKernel` / `:EuropaRestartKernel` — kernel management.
+  - `:EuropaInterrupt` / `:EuropaRestartKernel` — kernel management.
   - iopub stream output rendered inline into the viewer buffer.
   - ZMQ connection mode for low-latency local kernels (Phase 4).
 
