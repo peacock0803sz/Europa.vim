@@ -180,9 +180,10 @@ REAL-TIME OUTPUT STREAMING (PHASE 3.4)		*europa-kernel-streaming*
 During cell execution, iopub messages (`stream`, `display_data`,
 `execute_result`) are buffered and flushed to the viewer every 16 ms via an
 internal batch scheduler.  This reduces Vim RPC round-trips without
-sacrificing responsiveness: at most one `denops#batch` call is issued per
-16 ms window regardless of how many messages the kernel emits (Q1=A /
-DESIGN.md §8.4).
+sacrificing responsiveness.  The 16 ms timer coalesces all queued messages
+into one `denops#batch` call per tick (Q1=A / DESIGN.md §8.4); additional
+immediate flushes are triggered on `execute_reply`, `status: idle`, and
+structural cell operations.
 
 When the viewer buffer is hidden (not visible in any window), the scheduler
 skips the viewer RPC but continues accumulating outputs in memory so no data
