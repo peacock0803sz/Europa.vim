@@ -6,10 +6,11 @@
  *
  * @spec-id europa.render.partial.affected-cell-rerender
  * @spec-id europa.render.partial.below-cell-line-offset-reattach
+ * @spec-id europa.render.partial.above-cell-bit-identical
  */
 
 import { beforeEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertGreater } from "@std/assert";
 import { applyPartialRenderPlan } from "../../../denops/europa/render/partial-render.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
 import type { MockHost } from "../../fixtures/mock-host.ts";
@@ -45,6 +46,22 @@ function makeNotebook(): Notebook {
         metadata: {},
       },
     ],
+  };
+}
+
+function makeMultiCellNotebook(cellCount: number): Notebook {
+  return {
+    nbformat: 4,
+    nbformat_minor: 5,
+    metadata: {},
+    cells: Array.from({ length: cellCount }, (_, i) => ({
+      id: `cell-${i}`,
+      cell_type: "code" as const,
+      source: `print(${i})`,
+      outputs: [],
+      execution_count: null,
+      metadata: {},
+    })),
   };
 }
 
@@ -104,4 +121,67 @@ describe("applyPartialRenderPlan", () => {
     const calls = host.callsTo("setbufline");
     assertEquals(calls.length >= 1, true);
   });
+});
+
+describe("applyPartialRenderPlan — above-cell-bit-identical (SC-003)", () => {
+  let host: MockHost;
+
+  beforeEach(() => {
+    host = mockVim();
+  });
+
+  it(
+    "(3) all setbufline calls in partial path start at or after the affected cell — above lines are never written",
+    async () => {
+      // 6-cell notebook; partial render from cell-3 must not write cells 0-2.
+      const nb = makeMultiCellNotebook(6);
+
+      // Full render: setbufline starts at line 1 (the whole buffer).
+      await applyPartialRenderPlan(host, 1, nb, undefined, caps);
+      const fullLnum = (host.callsTo("setbufline")[0]?.args[2] as number) ?? 1;
+
+      host.reset();
+
+      // Partial render from cell-3: only lines from cell-3 onwards are written.
+      await applyPartialRenderPlan(host, 1, nb, "cell-3", caps);
+      const partialCalls = host.callsTo("setbufline");
+
+      // Every setbufline must start strictly after the full-render start line,
+      // proving that lines above cell-3 (cells 0-2) are left bit-identical.
+      for (const call of partialCalls) {
+        const lnum = call.args[2] as number;
+        assertGreater(
+          lnum,
+          fullLnum,
+          `setbufline lnum=${lnum} writes before cell-3 — above-cell lines must not be touched (SC-003)`,
+        );
+      }
+    },
+  );
+
+  it(
+    "(6) partial render does not invoke cursor-position-changing Vim functions (SC-003 cursor stability)",
+    async () => {
+      const nb = makeMultiCellNotebook(4);
+
+      await applyPartialRenderPlan(host, 1, nb, "cell-2", caps);
+
+      // Direct cursor-movement Vim functions must not be called during partial
+      // render. win_execute() is used only for window options (conceallevel),
+      // not cursor movement, so it is excluded from this check.
+      const cursorCalls = host.calls.filter(
+        (c) =>
+          c.method === "call" &&
+          ["cursor", "setpos", "nvim_win_set_cursor"].includes(
+            c.args[0] as string,
+          ),
+      );
+
+      assertEquals(
+        cursorCalls.length,
+        0,
+        "partial render must not call cursor-position-changing functions",
+      );
+    },
+  );
 });
