@@ -1454,7 +1454,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
       } finally {
         complete(kr, msgId);
-        kr.execState = "idle";
+        // Guard against clobbering "restarting" set by a concurrent restartKernel (FR-011).
+        if (kr.execState === "busy") kr.execState = "idle";
         // Full re-render once execution completes (incremental rendering is Phase 5+)
         try {
           const config = await loadConfig(denops);
@@ -1591,7 +1592,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           }
         }
       } finally {
-        kr.execState = "idle";
+        // Guard against clobbering "restarting" set by a concurrent restartKernel (FR-011).
+        if (kr.execState === "busy") kr.execState = "idle";
         // Re-render after all cells executed
         try {
           const config = await loadConfig(denops);
