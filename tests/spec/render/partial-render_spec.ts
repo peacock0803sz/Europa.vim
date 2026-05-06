@@ -10,8 +10,9 @@
  */
 
 import { beforeEach, describe, it } from "@std/testing/bdd";
-import { assertEquals, assertGreater } from "@std/assert";
+import { assertEquals, assertExists, assertGreater } from "@std/assert";
 import { applyPartialRenderPlan } from "../../../denops/europa/render/partial-render.ts";
+import { buildRenderPlan } from "../../../denops/europa/render/builder.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
 import type { MockHost } from "../../fixtures/mock-host.ts";
 import type { Notebook } from "../../../schema/notebook.ts";
@@ -136,24 +137,28 @@ describe("applyPartialRenderPlan — above-cell-bit-identical (SC-003)", () => {
       // 6-cell notebook; partial render from cell-3 must not write cells 0-2.
       const nb = makeMultiCellNotebook(6);
 
-      // Full render: setbufline starts at line 1 (the whole buffer).
-      await applyPartialRenderPlan(host, 1, nb, undefined, caps);
-      const fullLnum = (host.callsTo("setbufline")[0]?.args[2] as number) ?? 1;
-
-      host.reset();
+      // Compute cell-3's exact start line from RenderPlan instead of using the
+      // full-render's first lnum (always 1), which would trivially pass even if
+      // a buggy partial render wrote from line 2 through cell-2's territory.
+      const plan = buildRenderPlan(nb, caps);
+      const cell3Range = plan.cellRanges.find((r) => r.cellId === "cell-3");
+      assertExists(cell3Range, "cell-3 must appear in cellRanges");
+      // cellRanges.startLine is 0-indexed; setbufline uses 1-indexed lnums
+      // (topOffset + 1 in viewer.ts).  lnum > startLine ⟺ lnum ≥ startLine+1.
+      const cell3StartLine = cell3Range.startLine;
 
       // Partial render from cell-3: only lines from cell-3 onwards are written.
       await applyPartialRenderPlan(host, 1, nb, "cell-3", caps);
       const partialCalls = host.callsTo("setbufline");
 
-      // Every setbufline must start strictly after the full-render start line,
+      // Every setbufline must start at or after cell-3's first line,
       // proving that lines above cell-3 (cells 0-2) are left bit-identical.
       for (const call of partialCalls) {
         const lnum = call.args[2] as number;
         assertGreater(
           lnum,
-          fullLnum,
-          `setbufline lnum=${lnum} writes before cell-3 — above-cell lines must not be touched (SC-003)`,
+          cell3StartLine,
+          `setbufline lnum=${lnum} writes before cell-3 (startLine=${cell3StartLine}) — above-cell lines must not be touched (SC-003)`,
         );
       }
     },
