@@ -1253,6 +1253,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           bufnr: bn,
           getNotebook: () => sessionStore.get(bn)!.notebook,
           caps,
+          renderOpts: renderPlanOpts(config),
         });
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {

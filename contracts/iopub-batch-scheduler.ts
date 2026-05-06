@@ -13,6 +13,7 @@ import type { Denops } from "@denops/std";
 import type { KernelMessage } from "../schema/message.ts";
 import type { Notebook } from "../schema/notebook.ts";
 import type { Capabilities } from "../schema/capabilities.ts";
+import type { BuildRenderPlanOpts } from "../schema/render-plan.ts";
 
 /**
  * Scheduler that accumulates IOPub messages and flushes them to the viewer
@@ -67,12 +68,15 @@ export interface IopubBatchScheduler {
  *
  * @param deps.denops      - Denops handle for RPC. Captured at construction.
  * @param deps.bufnr       - Viewer buffer number. Used for hidden-buffer detection.
- * @param deps.getNotebook - Getter that returns the current live Notebook.
+ * @param deps.getNotebook  - Getter that returns the current live Notebook.
  *   Called on every flush so structural edits (insert/delete/move cell) that
  *   swap the session notebook are always reflected (no stale snapshot).
- * @param deps.caps        - Host capabilities (`vim` | `nvim`). Captured at
+ * @param deps.caps         - Host capabilities (`vim` | `nvim`). Captured at
  *   construction and forwarded to `applyPartialRenderPlan`.
- * @param deps.tickMs      - Flush interval in milliseconds. Hard-coded to 16 ms
+ * @param deps.renderOpts   - Optional render options (borders, maxOutputLines).
+ *   When provided, partial renders use the same visual settings as full renders.
+ *   When omitted, builder defaults apply.
+ * @param deps.tickMs       - Flush interval in milliseconds. Hard-coded to 16 ms
  *   per DESIGN.md §8.4 / §11.2 (Q1=A). Overridable only in tests.
  *
  * @spec-id europa.render.iopub-batch.tick-scheduling
@@ -82,5 +86,6 @@ export declare function createIopubBatchScheduler(deps: {
   bufnr: number;
   getNotebook: () => Notebook;
   caps: Capabilities;
+  renderOpts?: BuildRenderPlanOpts;
   tickMs?: number;
 }): IopubBatchScheduler;

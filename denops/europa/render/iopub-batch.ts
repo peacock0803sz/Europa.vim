@@ -14,6 +14,7 @@ import type { Notebook } from "../../../schema/notebook.ts";
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { IopubBatchScheduler } from "../../../contracts/iopub-batch-scheduler.ts";
 import { applyPartialRenderPlan } from "./partial-render.ts";
+import type { BuildRenderPlanOpts } from "../../../schema/render-plan.ts";
 
 // 16ms is the DESIGN.md §8.4/§11.2 hard-coded value (Q1=A); making it
 // configurable was rejected as YAGNI.
@@ -35,6 +36,7 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
     private readonly getNotebook: () => Notebook,
     private readonly caps: Capabilities,
     private readonly tickMs: number,
+    private readonly renderOpts?: BuildRenderPlanOpts,
   ) {}
 
   /**
@@ -152,6 +154,7 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
           notebook,
           fromCellId,
           this.caps,
+          this.renderOpts ? { renderOpts: this.renderOpts } : undefined,
         );
       });
     } catch {
@@ -183,6 +186,7 @@ export function createIopubBatchScheduler(deps: {
   bufnr: number;
   getNotebook: () => Notebook;
   caps: Capabilities;
+  renderOpts?: BuildRenderPlanOpts;
   tickMs?: number;
 }): IopubBatchScheduler {
   return new IopubBatchSchedulerImpl(
@@ -191,5 +195,6 @@ export function createIopubBatchScheduler(deps: {
     deps.getNotebook,
     deps.caps,
     deps.tickMs ?? DEFAULT_TICK_MS,
+    deps.renderOpts,
   );
 }
