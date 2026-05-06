@@ -124,7 +124,7 @@ describe(
           complete(kr, msgId);
           kr.execState = "idle";
           await client.shutdown();
-          pool.killAll();
+          await pool.killAll();
           await server.stop();
         }
 
