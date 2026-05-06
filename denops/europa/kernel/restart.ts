@@ -147,9 +147,13 @@ export async function restart(
   });
 
   if (!resp.ok) {
-    // (d) 5xx: old WS still open so kernel is still reachable (FR-013)
+    // (d) 5xx: old WS still open so kernel is still reachable (FR-013).
+    // Restore both execState and info.state: step (a) aborted the old
+    // controller which fired the abort→state listener setting state to
+    // "disconnected", but the socket is still functional.
     await resp.text().catch(() => {});
     runtime.execState = "idle";
+    runtime.info.state = "idle";
     throw new EuropaKernelError(
       "RESTART_REST_FAILED",
       `restart REST failed: ${resp.status} ${resp.statusText}`,
