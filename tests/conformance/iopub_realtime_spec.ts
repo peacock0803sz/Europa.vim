@@ -1,9 +1,9 @@
 /**
  * Conformance: real-time IOPub stream output against a live Jupyter Server.
  *
- * Verifies that each `print()` call in a `for i in range(5): time.sleep(0.5)`
- * cell is reflected in the viewer within 50 ms of the kernel emitting it
- * (SC-001). Skips early if `jupyter` is not installed.
+ * Verifies that consecutive `print()` outputs in a
+ * `for i in range(5): time.sleep(0.1)` cell arrive no more than 1000 ms apart
+ * (SC-001 kernel-liveness check). Skips early if `jupyter` is not installed.
  *
  * @spec-id europa.render.iopub-batch.tick-scheduling
  */
