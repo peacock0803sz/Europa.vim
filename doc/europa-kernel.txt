@@ -122,13 +122,10 @@ Prerequisites: `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`
 
 If `jupyter` is not in `$PATH`, the suite exits with a clear error message.
 
-PHASE 3.3+ SCOPE					*europa-kernel-future*
+FUTURE SCOPE						*europa-kernel-future*
 
-The following features are planned for Phase 3.3 and later.  They are not
-available in the current release:
+The following features are planned for later phases and are not yet available:
 
-  - `:EuropaRun` / `:EuropaRunAll` — cell execution against the kernel.
-  - `:EuropaInterrupt` / `:EuropaRestartKernel` — kernel management.
   - iopub stream output rendered inline into the viewer buffer.
   - ZMQ connection mode for low-latency local kernels (Phase 4).
 

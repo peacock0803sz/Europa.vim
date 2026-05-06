@@ -192,14 +192,10 @@ KERNEL COMMANDS~
 
 	See also: |:EuropaStartKernel|, |:EuropaShutdownKernel|
 
-PHASE 4+ COMMANDS (NOT YET AVAILABLE)~
+FUTURE COMMANDS~
 						*europa-commands-future*
-The following commands are planned for Phase 4 and later.
+The following commands are planned for a later phase.
 
-	`:EuropaRun`		Execute the current cell against the kernel.
-	`:EuropaRunAll`		Execute all cells in order.
-	`:EuropaRestartKernel`	Restart the running kernel.
-	`:EuropaInterrupt`	Send an interrupt to the kernel.
 	`:EuropaAttach`		Attach to an existing connection file (Phase 4).
 
 vim:tw=78:ts=8:noet:ft=help:norl:
