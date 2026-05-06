@@ -155,6 +155,13 @@ export type MockExecuteScript = {
   replies: Array<{ msg_type: string; content: Record<string, unknown> }>;
   /** execute_reply content. Defaults to { status: "ok", execution_count: 1 }. */
   executeReply?: Record<string, unknown>;
+  /**
+   * If set, delay (ms) inserted between consecutive reply emissions.
+   * Use this to simulate a "staged stream" scenario where each iopub message
+   * arrives in a separate 16 ms tick window (e.g. set to 100 ms for 5 stream
+   * messages to guarantee at least one batch tick crossing per message).
+   */
+  replyIntervalMs?: number;
 };
 
 /** Config for makeMockKernel(). */
@@ -450,6 +457,15 @@ export function makeMockKernel(
             const script = opts.executeScript;
             for (const rep of script.replies) {
               sendMsg(rep.msg_type, rep.content, parent, "iopub");
+              if (script.replyIntervalMs && script.replyIntervalMs > 0) {
+                try {
+                  await delay(script.replyIntervalMs, {
+                    signal: socketAbort.signal,
+                  });
+                } catch {
+                  return;
+                }
+              }
             }
             const replyContent = script.executeReply ?? {
               status: "ok",
