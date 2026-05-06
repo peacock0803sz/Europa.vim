@@ -55,5 +55,10 @@ export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd(
     "autocmd VimLeavePre * call denops#notify('europa', 'atexit', [])",
   );
+  // Q-hidden-buffer: detect when the viewer buffer becomes visible again so
+  // the scheduler-driven in-memory cell.outputs can be flushed to the screen.
+  await host.cmd(
+    "autocmd BufWinEnter *.ipynb call denops#notify('europa', 'onBufWinEnter', [bufnr('%')])",
+  );
   await host.cmd("augroup END");
 }

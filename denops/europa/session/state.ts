@@ -84,6 +84,18 @@ export class SessionStore {
     return [...this.store.values()];
   }
 
+  /**
+   * Convenience accessor for the IOPub batch scheduler attached to a session.
+   *
+   * Returns `undefined` when no session is registered for `bufnr`, when no
+   * kernel runtime is attached, or when the scheduler has not been created yet
+   * (the brief window between `client.start()` and `createIopubBatchScheduler`
+   * in `startKernel`).
+   */
+  getIopubScheduler(bufnr: number) {
+    return this.get(bufnr)?.kernelRuntime?.iopubBatchScheduler;
+  }
+
   // --- Phase 3.1: cellEditBuffers map ---
 
   /**
