@@ -45,6 +45,17 @@ const AREA_ALLOWLIST = new Set([
   //   dispatcher.{run-cell,run-all,interrupt-kernel,restart-kernel,cancel-cell}
   //   config.kernel-info-timeout-defaults
   //   render.cell-exec-state-sign
+  // Phase 3.4 additions (no new top-level areas; sub-areas below are governed by "render",
+  // "session", and "dispatcher" which are already allowlisted):
+  //   render.iopub-batch  — 16ms tick scheduler (queue-accumulate, tick-scheduling,
+  //                         empty-tick-skip, reply-flush-immediate, close-flush-sync,
+  //                         accumulate-during-flush, no-shed-no-drop)
+  //   render.partial      — partial RenderPlan application (affected-cell-rerender,
+  //                         above-cell-bit-identical, below-cell-line-offset-reattach)
+  //   session.hidden-buffer — hidden buffer RPC skip + BufWinEnter resync
+  //                           (rpc-skip-during-hidden, bufwinenter-resync, outputs-still-update)
+  //   session.state.{iopub-batch-queue-set,iopub-batch-timer-set,iopub-batch-clear}
+  //   dispatcher.{runcell-batch-driven,runall-batch-driven,cellops-flush-on-entry}
 ]);
 
 type Occurrence = { id: string; file: string; line: number };
