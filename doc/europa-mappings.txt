@@ -49,4 +49,79 @@ equivalent) to bind the mappings for notebook buffers: >
     nmap <buffer><silent> <localleader>jc <Plug>(europa-join-cell)
 <
 
+==============================================================================
+JUPYTERLAB-FLAVORED BINDINGS			*europa-jupyterlab-mappings*
+
+A drop-in keymap that mirrors the JupyterLab default command-mode keys. Place
+the bindings inside a `FileType` autocmd so that `<buffer>` attaches to the
+actual ipynb buffer set by `ftdetect/ipynb.vim`, not the startup `[No Name]`
+buffer. The repository ships a runnable copy in `mini.vimrc`.
+
+KEY TABLE~
+
+    JupyterLab     Europa             Action
+    ----------     ----------------   ----------------------------------------
+    Shift-Enter    <S-CR>             Run cell
+    Ctrl-Enter     <C-CR>             Run cell
+    Alt-Enter      <M-CR>             Run cell + insert code cell below
+    A              a                  Insert code cell above
+    B              b                  Insert code cell below
+    D D            dd                 Delete cell
+    Shift-M        M                  Merge cell with the one above
+    Ctrl-Shift--   -                  Split cell at cursor
+    I I            ii                 Interrupt kernel
+    0 0            00                 Restart kernel
+    Enter          <CR> / i           Edit cell body in scratch buffer
+    M              <localleader>m     Change cell type to markdown
+    Y              <localleader>y     Change cell type to code
+    R              <localleader>r     Change cell type to raw
+    (menu)         <localleader>s     Start kernel (default: python3)
+    (menu)         <localleader>q     Shutdown kernel
+    (menu)         <localleader>K     Show kernel status
+
+`m` / `y` / `r` are kept under `<localleader>` so Vim's mark, yank operator
+and replace-char single-key primitives remain usable inside europa buffers.
+
+SAMPLE~
+
+Place in `~/.vim/after/ftplugin/europa.vim` or wrap with a `FileType` autocmd
+in your vimrc as shown below: >
+
+    augroup europa_jupyterlab_keymap
+      autocmd!
+      autocmd FileType europa call s:europa_keymap()
+    augroup END
+
+    function! s:europa_keymap() abort
+      nmap <buffer><silent> <S-CR> <Plug>(europa-run-cell)
+      nmap <buffer><silent> <C-CR> <Plug>(europa-run-cell)
+      nmap <buffer><silent> <M-CR> <Plug>(europa-run-cell)<Plug>(europa-insert-code)
+
+      nnoremap <buffer><silent> a :<C-u>EuropaInsertCell! code<CR>
+      nmap     <buffer><silent> b <Plug>(europa-insert-code)
+
+      nmap <buffer><silent> dd <Plug>(europa-delete-cell)
+      nmap <buffer><silent> M  <Plug>(europa-join-cell)
+      nmap <buffer><silent> -  <Plug>(europa-split-cell)
+
+      nmap <buffer><silent> <CR> <Plug>(europa-edit-cell)
+      nmap <buffer><silent> i    <Plug>(europa-edit-cell)
+
+      nmap <buffer><silent> ii <Plug>(europa-interrupt)
+      nmap <buffer><silent> 00 <Plug>(europa-restart-kernel)
+
+      nnoremap <buffer><silent> <localleader>m :<C-u>EuropaCellType markdown<CR>
+      nnoremap <buffer><silent> <localleader>y :<C-u>EuropaCellType code<CR>
+      nnoremap <buffer><silent> <localleader>r :<C-u>EuropaCellType raw<CR>
+
+      nmap <buffer><silent> <localleader>R <Plug>(europa-run-all)
+      nmap <buffer><silent> <localleader>c <Plug>(europa-cancel-cell)
+      nmap <buffer><silent> <localleader>k <Plug>(europa-cell-up)
+      nmap <buffer><silent> <localleader>j <Plug>(europa-cell-down)
+
+      nnoremap <buffer><silent> <localleader>s :<C-u>EuropaStartKernel<CR>
+      nnoremap <buffer><silent> <localleader>q :<C-u>EuropaShutdownKernel<CR>
+      nnoremap <buffer><silent> <localleader>K :<C-u>EuropaKernelStatus<CR>
+    endfunction
+<
 vim:tw=78:ts=8:noet:ft=help:norl:
