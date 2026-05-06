@@ -36,8 +36,8 @@ function! s:europa_keymap() abort
   nmap <buffer><silent> <M-CR> <Plug>(europa-run-cell)<Plug>(europa-insert-code)
 
   " Cell insertion (JupyterLab A above / B below).
-  nnoremap <buffer><silent> a :<C-u>EuropaInsertCell! code<CR>
-  nmap     <buffer><silent> b <Plug>(europa-insert-code)
+  nmap <buffer><silent> a <Plug>(europa-insert-code-above)
+  nmap <buffer><silent> b <Plug>(europa-insert-code)
 
   " Cell deletion / merge / split (JupyterLab D D / Shift-M / Ctrl-Shift--).
   nmap <buffer><silent> dd <Plug>(europa-delete-cell)
@@ -55,9 +55,9 @@ function! s:europa_keymap() abort
   nmap <buffer><silent> <Space> <localleader>
   " Cell type lives under <localleader> so Vim's m / y / r single-key
   " primitives (mark, yank operator, replace-char) stay usable.
-  nnoremap <buffer><silent> <localleader>m :<C-u>EuropaCellType markdown<CR>
-  nnoremap <buffer><silent> <localleader>y :<C-u>EuropaCellType code<CR>
-  nnoremap <buffer><silent> <localleader>r :<C-u>EuropaCellType raw<CR>
+  nmap <buffer><silent> <localleader>m <Plug>(europa-celltype-markdown)
+  nmap <buffer><silent> <localleader>y <Plug>(europa-celltype-code)
+  nmap <buffer><silent> <localleader>r <Plug>(europa-celltype-raw)
 
   " Auxiliary (no JupyterLab single-key equivalent).
   nmap <buffer><silent> <localleader>R <Plug>(europa-run-all)
@@ -66,7 +66,7 @@ function! s:europa_keymap() abort
   nmap <buffer><silent> <localleader>j <Plug>(europa-cell-down)
 
   " Kernel lifecycle (no JupyterLab single-key equivalent).
-  nnoremap <buffer><silent> <localleader>s :<C-u>EuropaStartKernel<CR>
-  nnoremap <buffer><silent> <localleader>q :<C-u>EuropaShutdownKernel<CR>
-  nnoremap <buffer><silent> <localleader>K :<C-u>EuropaKernelStatus<CR>
+  nmap <buffer><silent> <localleader>s <Plug>(europa-start-kernel)
+  nmap <buffer><silent> <localleader>q <Plug>(europa-shutdown-kernel)
+  nmap <buffer><silent> <localleader>K <Plug>(europa-kernel-status)
 endfunction
