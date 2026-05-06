@@ -1,5 +1,6 @@
 /**
  * Output dispatcher: routes a cell output to the appropriate renderer.
+ * Also provides the cell execution state sign helper (renderCellExecState).
  *
  * Selects the best MIME type from `mimePriority` and returns a RenderFragment.
  *
@@ -8,6 +9,9 @@
  * @spec-id europa.render.image.svg-source
  */
 
+import type { Denops } from "@denops/std";
+import { detectCapabilities } from "../capabilities.ts";
+import type { CellExecState } from "../../../schema/session.ts";
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { Output } from "../../../schema/notebook.ts";
 import type {
@@ -114,4 +118,105 @@ export function dispatchOutput(
     cellIdx: meta.cellIdx ?? 0,
     outputIdx: meta.outputIdx ?? 0,
   }, sixelAcc);
+}
+
+// Sign name + display text + highlight group for each non-idle exec state.
+const CELL_SIGN_CONFIG = {
+  busy: { name: "EuropaCellBusy", text: "*", hl: "EuropaCellBusyHl" },
+  queued: { name: "EuropaCellQueued", text: "…", hl: "EuropaCellQueuedHl" },
+  aborted: { name: "EuropaCellAborted", text: "!", hl: "EuropaCellAbortedHl" },
+} as const;
+
+// Neovim extmark ids per buffer+cell so idle state can remove them.
+const _nvimMarkIds = new Map<string, number>();
+
+/**
+ * Register the three cell execution state signs for the current host.
+ *
+ * Vim: defines EuropaCellBusy / EuropaCellQueued / EuropaCellAborted via sign_define.
+ * Neovim: creates the `europa_cell_exec` namespace via nvim_create_namespace.
+ *
+ * Idempotent: sign_define redefines safely; nvim_create_namespace returns the
+ * same id for the same name, so repeated calls are harmless.
+ */
+export async function initCellExecSigns(denops: Denops): Promise<void> {
+  const caps = await detectCapabilities(denops);
+  if (caps.host === "vim") {
+    for (const cfg of Object.values(CELL_SIGN_CONFIG)) {
+      await denops.call("sign_define", cfg.name, {
+        text: cfg.text,
+        texthl: cfg.hl,
+      });
+    }
+  } else {
+    await denops.call("nvim_create_namespace", "europa_cell_exec");
+  }
+}
+
+/**
+ * Update the cell execution state sign in the sign column.
+ *
+ * Vim: sign group `europa_cell_{cellId}` isolates per-cell placement so
+ * sign_unplace(group) removes the sign without needing a stored sign id.
+ *
+ * Neovim: nvim_buf_set_extmark with sign_text; the extmark id is cached in
+ * _nvimMarkIds for subsequent removal when state transitions to idle.
+ *
+ * @param lnum - 1-indexed buffer line for the cell header (required for
+ *               non-idle states; omitting skips placement silently).
+ * @spec-id europa.render.cell-exec-state-sign
+ */
+export async function renderCellExecState(
+  denops: Denops,
+  bufnr: number,
+  cellId: string,
+  state: CellExecState,
+  lnum?: number,
+): Promise<void> {
+  const caps = await detectCapabilities(denops);
+  const group = `europa_cell_${cellId}`;
+  const markKey = `${bufnr}:${cellId}`;
+
+  if (state === "idle") {
+    if (caps.host === "vim") {
+      await denops.call("sign_unplace", group, { buffer: bufnr });
+    } else {
+      // Retrieve namespace id (idempotent, same name → same id).
+      const ns = await denops.call(
+        "nvim_create_namespace",
+        "europa_cell_exec",
+      ) as number;
+      const markId = _nvimMarkIds.get(markKey);
+      if (markId !== undefined) {
+        await denops.call("nvim_buf_del_extmark", bufnr, ns, markId);
+        _nvimMarkIds.delete(markKey);
+      }
+    }
+    return;
+  }
+
+  const cfg = CELL_SIGN_CONFIG[state as keyof typeof CELL_SIGN_CONFIG];
+  if (!cfg || lnum === undefined) return;
+
+  if (caps.host === "vim") {
+    await denops.call("sign_place", 0, group, cfg.name, bufnr, { lnum });
+  } else {
+    const ns = await denops.call(
+      "nvim_create_namespace",
+      "europa_cell_exec",
+    ) as number;
+    const existing = _nvimMarkIds.get(markKey);
+    if (existing !== undefined) {
+      await denops.call("nvim_buf_del_extmark", bufnr, ns, existing);
+    }
+    const newId = await denops.call(
+      "nvim_buf_set_extmark",
+      bufnr,
+      ns,
+      lnum - 1,
+      0,
+      { sign_text: cfg.text, sign_hl_group: cfg.hl },
+    ) as number;
+    _nvimMarkIds.set(markKey, newId);
+  }
 }
