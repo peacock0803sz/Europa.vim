@@ -808,22 +808,22 @@ How to call:
 
 A runtime method contract (TypeBox is not feasible because it includes `AsyncIterable`). An exceptional hand-written interface (see 4.4):
 
-**Phase 3.2 implementation scope**: Only `start`, `shutdown`, and `onMessage` are implemented and declared in `contracts/kernel-client.ts`. The remaining methods (`execute`, `kernelInfo`, `complete`, `inspect`, `interrupt`, `restart`) are reserved for Phase 3.3+ and are **not** in the current interface. Adding them in a future phase is purely additive.
+**Phase 3.3 implementation scope**: `start`, `shutdown`, `onMessage`, `execute`, `kernelInfo`, `interrupt`, and `restart` are all implemented. `complete` and `inspect` remain reserved for Phase 3 item 9+.
 
 ```typescript
-// Phase 3.2 interface (contracts/kernel-client.ts)
+// Phase 3.3 interface (contracts/kernel-client.ts)
 export interface KernelClient {
   start(opts: { kernelName: string; cwd?: string; signal?: AbortSignal }): Promise<KernelRuntime>;
   shutdown():                                                               Promise<void>;
   onMessage(handler: (msg: KernelMessage) => void):                        () => void;
+  execute(code: string, opts?: { signal?: AbortSignal; msgId?: string }):  AsyncIterable<KernelMessage>;
+  kernelInfo():                                                             Promise<KernelInfoReply>;
+  interrupt():                                                              Promise<void>;
+  restart():                                                                Promise<void>;
 
-  // Phase 3.3+ reserved (not in current interface):
-  // execute(code: string, opts?: ExecuteOptions):     AsyncIterable<KernelMessage>;
-  // kernelInfo():                                     Promise<KernelInfoReply>;
+  // Phase 3 item 9+ reserved:
   // complete(code: string, cursorPos: number):        Promise<CompleteReply>;
   // inspect(code: string, cursorPos: number, detail: 0|1): Promise<InspectReply>;
-  // interrupt():                                      Promise<void>;
-  // restart():                                        Promise<void>;
 }
 ```
 
@@ -2227,10 +2227,11 @@ let g:europa_ws_reconnect_multiplier          = 2.0    " exponential backoff fac
 | `:EuropaStartKernel [name]` | Start or attach to a Jupyter kernel for the current buffer (Phase 3.2) |
 | `:EuropaShutdownKernel` | Shut down the kernel attached to the current buffer (Phase 3.2) |
 | `:EuropaKernelStatus` | Display kernel connection status in `:messages` (Phase 3.2) |
-| `:EuropaRestartKernel` | Restart Kernel (Phase 3.3+, not yet implemented) |
-| `:EuropaInterrupt` | Interrupt execution (Phase 3) |
-| `:EuropaRunCell` | Execute cell at cursor location (Phase 3) |
-| `:EuropaRunAll` | Execute all cells (Phase 3) |
+| `:EuropaRunCell` | Execute the code cell at the cursor position (Phase 3.3) |
+| `:EuropaRunAll` | Execute all code cells top-to-bottom, stopping on the first error (Phase 3.3) |
+| `:EuropaInterrupt` | Send REST interrupt to the kernel, cancelling the running cell (Phase 3.3) |
+| `:EuropaRestartKernel` | Restart the kernel, clearing all variables and execution_count (Phase 3.3) |
+| `:EuropaCancelCell` | Drop the queued cell at the cursor from the pending-requests queue (Phase 3.3) |
 | `:EuropaAttach {connection.json}` | Attach to existing kernel (Phase 4, ZMQ) |
 
 ### 9.3 Key Mappings (`<Plug>(europa-*)`)
@@ -2250,8 +2251,12 @@ nnoremap <silent> <Plug>(europa-edit-cell)       :<C-u>EuropaEditCell<CR>
 nnoremap <silent> <Plug>(europa-split-cell)      :<C-u>EuropaSplitCell<CR>
 nnoremap <silent> <Plug>(europa-join-cell)       :<C-u>EuropaJoinCell<CR>
 
-" Phase 3 (run-cell, not yet implemented)
+" Phase 3.3 (kernel execution)
 nnoremap <silent> <Plug>(europa-run-cell)        :<C-u>EuropaRunCell<CR>
+nnoremap <silent> <Plug>(europa-run-all)         :<C-u>EuropaRunAll<CR>
+nnoremap <silent> <Plug>(europa-interrupt)       :<C-u>EuropaInterrupt<CR>
+nnoremap <silent> <Plug>(europa-restart-kernel)  :<C-u>EuropaRestartKernel<CR>
+nnoremap <silent> <Plug>(europa-cancel-cell)     :<C-u>EuropaCancelCell<CR>
 ```
 
 Users bind freely, e.g., `nmap <buffer><silent> <localleader>ec <Plug>(europa-edit-cell)`.

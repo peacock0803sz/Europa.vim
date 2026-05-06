@@ -122,6 +122,59 @@ Prerequisites: `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`
 
 If `jupyter` is not in `$PATH`, the suite exits with a clear error message.
 
+CELL EXECUTION (PHASE 3.3)				*europa-kernel-execute*
+
+`:EuropaRunCell` sends a single `execute_request` over the WebSocket and
+collects all iopub messages (`status`, `execute_input`, `stream`, `display_data`,
+`execute_result`, `error`) until `execute_reply` is received.
+
+The cell source is snapshotted at call time — edits during execution do not
+affect the in-flight request (Q-edit). Each call generates a unique Jupyter
+`msg_id` shared between the `execute_request` and the `pendingRequests` entry
+(FR-003 shared UUID, SC-007 exactly-one-request gate).
+
+Stream outputs from the same channel (`stdout` or `stderr`) that arrive
+consecutively are concatenated into a single entry (per-message late-merge,
+R03). The sign column shows `*` (busy), `…` (queued), or `!` (aborted).
+
+Wire-level message flow: see `contracts/execute-message-flow.md` and
+DESIGN.md §8.4 for the full sequence diagram.
+
+INTERRUPT (PHASE 3.3)					*europa-kernel-interrupt*
+
+`:EuropaInterrupt` sends `REST POST /api/kernels/{id}/interrupt` with the
+current auth token. The kernel raises `KeyboardInterrupt` in the running
+cell; the traceback is appended to the cell outputs.
+
+When called while the kernel is idle the REST call still succeeds (the server
+returns 204) and an informational message is printed. When called during a
+reconnect cycle the REST request is skipped and the reconnect is aborted
+instead (FR-011).
+
+The token is sent both in the `Authorization` header and as `?token=` in the
+request URL for broad server compatibility.
+
+RESTART (PHASE 3.3)					*europa-kernel-restart*
+
+`:EuropaRestartKernel` follows this sequence (FR-012):
+
+  1. `AbortController.abort()` to cancel any in-progress execute.
+  2. REST `POST /api/kernels/{id}/restart` (30 s timeout).
+  3. On 200: close the old WebSocket (code 1000), open a new one.
+  4. Exchange `kernel_info_request` / `kernel_info_reply` (re-handshake).
+  5. Reset all cell `execution_count` to `null` and clear `cellStates`.
+
+On REST failure (5xx, FR-013) the old WebSocket is left open so the kernel
+remains usable without data loss. A "Kernel restart failed: …" message is
+shown.
+
+CANCEL QUEUED CELL (PHASE 3.3)				*europa-kernel-cancel*
+
+`:EuropaCancelCell` drops the cell at the cursor from the pending-requests
+queue without sending any network message (Q-cancel). Only cells in the
+`queued` state (enqueued by `:EuropaRunAll` but not yet sent to the kernel)
+can be cancelled. Cells in the `busy` state require |:EuropaInterrupt|.
+
 FUTURE SCOPE						*europa-kernel-future*
 
 The following features are planned for later phases and are not yet available:

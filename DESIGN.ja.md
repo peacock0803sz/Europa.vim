@@ -808,22 +808,22 @@ export type EuropaDispatcher = {
 
 実行時メソッド契約 (`AsyncIterable` を含むため TypeBox 不可)。例外的な手書き interface (4.4 参照):
 
-**Phase 3.2 実装スコープ**: `start`、`shutdown`、`onMessage` の 3 メソッドのみ実装・宣言済み (`contracts/kernel-client.ts`)。残りのメソッド (`execute`、`kernelInfo`、`complete`、`inspect`、`interrupt`、`restart`) は Phase 3.3+ の追加 (additive) で、現在の interface には含まない。
+**Phase 3.3 実装スコープ**: `start`、`shutdown`、`onMessage`、`execute`、`kernelInfo`、`interrupt`、`restart` の 7 メソッドを実装済み。`complete` / `inspect` は Phase 3 item 9+ の予約。
 
 ```typescript
-// Phase 3.2 interface (contracts/kernel-client.ts)
+// Phase 3.3 interface (contracts/kernel-client.ts)
 export interface KernelClient {
   start(opts: { kernelName: string; cwd?: string; signal?: AbortSignal }): Promise<KernelRuntime>;
   shutdown():                                                               Promise<void>;
   onMessage(handler: (msg: KernelMessage) => void):                        () => void;
+  execute(code: string, opts?: { signal?: AbortSignal; msgId?: string }):  AsyncIterable<KernelMessage>;
+  kernelInfo():                                                             Promise<KernelInfoReply>;
+  interrupt():                                                              Promise<void>;
+  restart():                                                                Promise<void>;
 
-  // Phase 3.3+ 予約 (現在の interface には含まない):
-  // execute(code: string, opts?: ExecuteOptions):     AsyncIterable<KernelMessage>;
-  // kernelInfo():                                     Promise<KernelInfoReply>;
+  // Phase 3 item 9+ 予約:
   // complete(code: string, cursorPos: number):        Promise<CompleteReply>;
   // inspect(code: string, cursorPos: number, detail: 0|1): Promise<InspectReply>;
-  // interrupt():                                      Promise<void>;
-  // restart():                                        Promise<void>;
 }
 ```
 
@@ -2227,10 +2227,11 @@ let g:europa_ws_reconnect_multiplier          = 2.0    " exponential backoff 乗
 | `:EuropaStartKernel [name]` | 現在のバッファに Jupyter kernel を起動または attach (Phase 3.2) |
 | `:EuropaShutdownKernel` | 現在のバッファに接続中の kernel を停止 (Phase 3.2) |
 | `:EuropaKernelStatus` | kernel 接続状態を `:messages` に表示 (Phase 3.2) |
-| `:EuropaRestartKernel` | Kernel 再起動 (Phase 3.3+、未実装) |
-| `:EuropaInterrupt` | 実行中断 (Phase 3) |
-| `:EuropaRunCell` | カーソル位置のセル実行 (Phase 3) |
-| `:EuropaRunAll` | 全セル実行 (Phase 3) |
+| `:EuropaRunCell` | カーソル位置の code cell を実行する (Phase 3.3) |
+| `:EuropaRunAll` | 全 code cell を上から順に実行する (Phase 3.3) |
+| `:EuropaInterrupt` | REST interrupt で実行中の cell を中断する (Phase 3.3) |
+| `:EuropaRestartKernel` | Kernel を再起動し変数空間をクリアする (Phase 3.3) |
+| `:EuropaCancelCell` | queued 状態の cell を pending-requests から drop する (Phase 3.3) |
 | `:EuropaAttach {connection.json}` | 既存 kernel に attach (Phase 4, ZMQ) |
 
 ### 9.3 キーマップ (`<Plug>(europa-*)`)
@@ -2250,8 +2251,12 @@ nnoremap <silent> <Plug>(europa-edit-cell)       :<C-u>EuropaEditCell<CR>
 nnoremap <silent> <Plug>(europa-split-cell)      :<C-u>EuropaSplitCell<CR>
 nnoremap <silent> <Plug>(europa-join-cell)       :<C-u>EuropaJoinCell<CR>
 
-" Phase 3 (run-cell、未実装)
+" Phase 3.3 (kernel 実行)
 nnoremap <silent> <Plug>(europa-run-cell)        :<C-u>EuropaRunCell<CR>
+nnoremap <silent> <Plug>(europa-run-all)         :<C-u>EuropaRunAll<CR>
+nnoremap <silent> <Plug>(europa-interrupt)       :<C-u>EuropaInterrupt<CR>
+nnoremap <silent> <Plug>(europa-restart-kernel)  :<C-u>EuropaRestartKernel<CR>
+nnoremap <silent> <Plug>(europa-cancel-cell)     :<C-u>EuropaCancelCell<CR>
 ```
 
 ユーザーは `nmap <buffer><silent> <localleader>ec <Plug>(europa-edit-cell)` のように好きにバインドする。

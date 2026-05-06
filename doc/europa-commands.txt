@@ -192,6 +192,62 @@ KERNEL COMMANDS~
 
 	See also: |:EuropaStartKernel|, |:EuropaShutdownKernel|
 
+KERNEL EXECUTION COMMANDS~
+					*europa-commands-execution*
+
+							*:EuropaRunCell*
+:EuropaRunCell
+	Execute the code cell at the cursor position.
+
+	The cell source is snapshotted at call time (edits made while the kernel
+	is busy do not affect the in-flight request). Outputs are appended after
+	the kernel replies. The sign column shows `*` (busy) or `…` (queued).
+
+	Non-code cells (markdown, raw) produce a warning and are not executed.
+
+	See also: |<Plug>(europa-run-cell)|, |:EuropaInterrupt|
+
+							*:EuropaRunAll*
+:EuropaRunAll
+	Execute all code cells in the buffer sequentially from top to bottom.
+
+	Markdown and raw cells are skipped. An error reply cancels the remaining
+	queued cells and prints: `"Run all stopped at cell N/M due to error"`.
+	Use |:EuropaCancelCell| to drop individual cells before they execute.
+
+	See also: |<Plug>(europa-run-all)|, |:EuropaCancelCell|
+
+							*:EuropaInterrupt*
+:EuropaInterrupt
+	Send a REST interrupt request to the kernel (SIGINT equivalent).
+
+	The running cell receives `KeyboardInterrupt`; the traceback is appended
+	to the cell outputs. Calling this while idle shows an informational
+	message without raising an error.
+
+	See also: |<Plug>(europa-interrupt)|, |:EuropaRestartKernel|
+
+							*:EuropaRestartKernel*
+:EuropaRestartKernel
+	Restart the kernel, clearing all variables.
+
+	Sequence: abort pending execute → REST `POST /restart` → close old
+	WebSocket → open new WebSocket → `kernel_info_request` / `kernel_info_reply`
+	re-handshake. All cell `execution_count` fields reset to `null`. Completes
+	within 10 s on a local server (SC-004). On REST failure the old
+	WebSocket stays open so the kernel remains usable.
+
+	See also: |<Plug>(europa-restart-kernel)|, |:EuropaInterrupt|
+
+							*:EuropaCancelCell*
+:EuropaCancelCell
+	Drop the queued cell at the cursor from the pending-requests queue.
+
+	Only `queued` cells (not yet sent to the kernel) can be cancelled; `busy`
+	cells require |:EuropaInterrupt|. No network message is sent.
+
+	See also: |<Plug>(europa-cancel-cell)|, |:EuropaRunAll|
+
 FUTURE COMMANDS~
 						*europa-commands-future*
 The following commands are planned for a later phase.
