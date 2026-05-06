@@ -101,17 +101,17 @@ Phase 3.3 adds the following areas and topics to the allowlist in `scripts/lint-
 
 ## 9. Debugging and reporting issues
 
-Reproduce bugs with `mini.vimrc` at the repository root before reporting them. It loads `denops.vim` and Europa.vim itself — plus `capture.vim` if installed — and enables `g:denops#debug` and `g:denops#trace`.
+Reproduce bugs with `sample.vimrc` at the repository root before reporting them. It loads `denops.vim` and Europa.vim itself — plus `capture.vim` if installed — and enables `g:denops#debug` and `g:denops#trace`.
 
-`capture.vim` is optional. `mini.vimrc` skips it when the directory is missing. Install it when you want to dump `:messages` to a file and attach the log to an issue.
+`capture.vim` is optional. `sample.vimrc` skips it when the directory is missing. Install it when you want to dump `:messages` to a file and attach the log to an issue.
 
 Set `VIM_PLUGINS_DIR` to the directory containing the plugin checkouts, then launch:
 
 ```sh
-VIM_PLUGINS_DIR=~/.local/share/nvim/lazy nvim -u mini.vimrc ./tests/fixtures/hello.ipynb
+VIM_PLUGINS_DIR=~/.local/share/nvim/lazy nvim -u sample.vimrc ./tests/fixtures/hello.ipynb
 ```
 
-A GitHub issue should include the reproduction steps on `mini.vimrc`, the Vim or Neovim version from `:version`, the terminal emulator and its version, and the `:messages` output after the failure. Attach a `capture.vim` dump when the bug involves denops trace output.
+A GitHub issue should include the reproduction steps on `sample.vimrc`, the Vim or Neovim version from `:version`, the terminal emulator and its version, and the `:messages` output after the failure. Attach a `capture.vim` dump when the bug involves denops trace output.
 
 ## 10. License and contact
 

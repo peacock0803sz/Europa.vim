@@ -73,7 +73,7 @@ JUPYTERLAB-FLAVORED BINDINGS			*europa-jupyterlab-mappings*
 A drop-in keymap that mirrors the JupyterLab default command-mode keys. Place
 the bindings inside a `FileType` autocmd so that `<buffer>` attaches to the
 actual ipynb buffer set by `ftdetect/ipynb.vim`, not the startup `[No Name]`
-buffer. The repository ships a runnable copy in `mini.vimrc`.
+buffer. The repository ships a runnable copy in `sample.vimrc`.
 
 KEY TABLE~
 

@@ -24,7 +24,7 @@ let g:europa_jupyter_executable = s:here .. '/tests/.venv/bin/jupyter'
 " JupyterLab-flavored keymap, scoped to europa buffers only.
 " Mappings live inside a FileType autocmd so that <buffer> attaches to the
 " actual ipynb buffer set by ftdetect/ipynb.vim, not the startup [No Name].
-augroup europa_mini_vimrc_keymap
+augroup europa_sample_vimrc_keymap
   autocmd!
   autocmd FileType europa call s:europa_keymap()
 augroup END
