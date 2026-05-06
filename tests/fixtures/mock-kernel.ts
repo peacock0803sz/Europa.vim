@@ -171,6 +171,22 @@ export type MockKernelOptions = {
   closeAfterOpen?: boolean;
   /** Scripted replies for execute_request messages (Phase 3.3). */
   executeScript?: MockExecuteScript;
+  /**
+   * If set, delay (ms) before sending execute_reply (for busy-restart tests).
+   * Allows a runCell to stay in-flight while restartKernel is called.
+   */
+  executeReplyDelayMs?: number;
+  /**
+   * If set, stop responding to kernel_info_request after this many replies.
+   * Allows start() to succeed on the first reply while subsequent kernelInfo()
+   * calls time out (for KERNEL_INFO_TIMEOUT test coverage).
+   */
+  kernelInfoReplyLimit?: number;
+  /**
+   * HTTP status to return for POST /api/kernels/:kid/restart.
+   * Defaults to 200. Set to 500 to test the FR-013 5xx fallback path.
+   */
+  restartReplyStatus?: number;
 };
 
 export type MockKernelHandle = {
@@ -182,12 +198,16 @@ export type MockKernelHandle = {
   deletedSessions: string[];
   /** REST interrupt call count (POST /api/kernels/:kid/interrupt). */
   interruptCallTimestamps: number[];
+  /** REST restart call count (POST /api/kernels/:kid/restart). */
+  restartCallCount: number;
   /** All execute_request messages received over the WebSocket. */
   executeRequestCalls: MockKernelMessage[];
   /** All inbound wire messages received (diagnostic API). */
   allWireMessages: MockKernelMessage[];
   /** Stop the server and clean up. */
   close(): Promise<void>;
+  /** Close all active WebSocket connections (simulates network drop for reconnect tests). */
+  forceWsClose(): void;
 };
 
 const V1_SUBPROTOCOL = "v1.kernel.websocket.jupyter.org";
@@ -219,8 +239,10 @@ export function makeMockKernel(
   const sessionId = crypto.randomUUID();
   const deletedSessions: string[] = [];
   const interruptCallTimestamps: number[] = [];
+  let restartCallCount = 0;
   const executeRequestCalls: MockKernelMessage[] = [];
   const allWireMessages: MockKernelMessage[] = [];
+  const activeSockets = new Set<WebSocket>();
   let executionCount = 0;
 
   const kernelInfoReply: Record<string, unknown> = opts.kernelInfoReply ?? {
@@ -285,8 +307,13 @@ export function makeMockKernel(
       return new Response(null, { status: 204 });
     }
 
-    // POST /api/kernels/:kid/restart → 200 + kernel JSON
+    // POST /api/kernels/:kid/restart → 200 + kernel JSON (or restartReplyStatus if set)
     if (req.method === "POST" && path.endsWith("/restart")) {
+      restartCallCount++;
+      const status = opts.restartReplyStatus ?? 200;
+      if (status !== 200) {
+        return new Response("Server Error", { status });
+      }
       const kernelJson = {
         id: kernelId,
         name: "python3",
@@ -340,7 +367,12 @@ export function makeMockKernel(
 
       // Abort any in-flight delay when the socket closes (prevents timer leaks)
       const socketAbort = new AbortController();
-      socket.onclose = () => { socketAbort.abort(); };
+      let kernelInfoRepliesSent = 0;
+      activeSockets.add(socket);
+      socket.onclose = () => {
+        activeSockets.delete(socket);
+        socketAbort.abort();
+      };
 
       const sendMsg = (
         msgType: string,
@@ -402,6 +434,17 @@ export function makeMockKernel(
             "iopub",
           );
 
+          // Optional delay before sending execute_reply (for busy-restart tests)
+          if (opts.executeReplyDelayMs && opts.executeReplyDelayMs > 0) {
+            try {
+              await delay(opts.executeReplyDelayMs, {
+                signal: socketAbort.signal,
+              });
+            } catch {
+              return;
+            }
+          }
+
           // Scripted replies (iopub messages before execute_reply)
           if (opts.executeScript) {
             const script = opts.executeScript;
@@ -437,6 +480,15 @@ export function makeMockKernel(
         }
 
         if (msg.header.msg_type !== "kernel_info_request") return;
+
+        // Honour kernelInfoReplyLimit: stop responding after N replies.
+        if (
+          opts.kernelInfoReplyLimit !== undefined &&
+          kernelInfoRepliesSent >= opts.kernelInfoReplyLimit
+        ) {
+          return;
+        }
+        kernelInfoRepliesSent++;
 
         if (opts.replyDelayMs && opts.replyDelayMs > 0) {
           try {
@@ -476,10 +528,20 @@ export function makeMockKernel(
     token,
     deletedSessions,
     interruptCallTimestamps,
+    get restartCallCount() { return restartCallCount; },
     executeRequestCalls,
     allWireMessages,
     async close(): Promise<void> {
       await serverController?.shutdown();
+    },
+    forceWsClose(): void {
+      for (const s of activeSockets) {
+        try {
+          s.close(1011, "test disconnect");
+        } catch {
+          // ignore if already closed
+        }
+      }
     },
   };
 }

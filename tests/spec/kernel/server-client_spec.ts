@@ -408,16 +408,15 @@ describe("ServerKernelClient.shutdown", () => {
 describe("ServerKernelClient.start — abort race (SC-010a)", () => {
   it("external signal abort propagates before start completes", async () => {
     const mk = makeMockKernel({ replyDelayMs: 5000 }); // very slow reply
+    const pool = new ServerPool();
+    const config = {
+      ...BASE_CONFIG,
+      jupyter_url: mk.url,
+      jupyter_token: mk.token,
+    };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool);
     try {
-      const pool = new ServerPool();
-      const config = {
-        ...BASE_CONFIG,
-        jupyter_url: mk.url,
-        jupyter_token: mk.token,
-      };
-      const denops = makeMockDenops({});
-      const client = new ServerKernelClient(denops as never, config, pool);
-
       const ac = new AbortController();
       const startPromise = client.start({
         kernelName: "python3",
@@ -437,6 +436,10 @@ describe("ServerKernelClient.start — abort race (SC-010a)", () => {
         assertEquals(elapsed < 200, true, `abort took ${elapsed}ms`);
       }
     } finally {
+      // Safety net: even if start() rejected and reset internal state,
+      // a stray socket from a future regression would be caught here
+      // before mk.close() ends the test scope.
+      await client.shutdown().catch(() => {});
       await mk.close();
     }
   });
@@ -445,18 +448,18 @@ describe("ServerKernelClient.start — abort race (SC-010a)", () => {
 describe("ServerKernelClient.reconnection — option 3 cases", () => {
   it("max_retries=0 disables reconnect (immediate disconnect)", async () => {
     const mk = makeMockKernel({ closeAfterOpen: true });
+    const pool = new ServerPool();
+    const config = {
+      ...BASE_CONFIG,
+      jupyter_url: mk.url,
+      jupyter_token: mk.token,
+      wsReconnectMaxRetries: 0,
+    };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool, {
+      kernelInfoTimeoutMs: 3000,
+    });
     try {
-      const pool = new ServerPool();
-      const config = {
-        ...BASE_CONFIG,
-        jupyter_url: mk.url,
-        jupyter_token: mk.token,
-        wsReconnectMaxRetries: 0,
-      };
-      const denops = makeMockDenops({});
-      const client = new ServerKernelClient(denops as never, config, pool, {
-        kernelInfoTimeoutMs: 3000,
-      });
       // With closeAfterOpen, the WS closes after kernel_info_reply
       // but since closeAfterOpen is before the reply, start will fail
       const err = await assertRejects(
@@ -472,6 +475,7 @@ describe("ServerKernelClient.reconnection — option 3 cases", () => {
         true,
       );
     } finally {
+      await client.shutdown().catch(() => {});
       await mk.close();
     }
   });
@@ -553,6 +557,90 @@ describe("ServerKernelClient.start — external attach (US5 SC-014)", () => {
       EuropaKernelError,
     );
     assertEquals((err as EuropaKernelError).code, "CONNECTION_REFUSED");
+  });
+});
+
+describe("ServerKernelClient.kernelInfo — public method (US5)", () => {
+  /**
+   * @spec-id europa.kernel.server-client.kernel-info-public
+   *
+   * Verifies that kernelInfo() is a callable public method that sends a
+   * kernel_info_request on the open WebSocket channel and returns the
+   * KernelInfoReply within the configured timeout. R04: single-shot.
+   */
+
+  it("(a) kernelInfo() resolves with KernelInfoReply after start", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+      const reply = await client.kernelInfo();
+      assertEquals(reply.status, "ok");
+      assertEquals(reply.language_info.name, "python");
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("(b) kernelInfo() rejects with KERNEL_INFO_TIMEOUT when kernel is silent", async () => {
+    // Mock responds only once (during start); subsequent kernelInfo() calls time out.
+    const mk = makeMockKernel({ kernelInfoReplyLimit: 1 });
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool, {
+        kernelInfoTimeoutMs: 200,
+      });
+      await client.start({ kernelName: "python3" }); // gets the one allowed reply
+      const err = await assertRejects(
+        () => client.kernelInfo(), // no reply → KERNEL_INFO_TIMEOUT
+        EuropaKernelError,
+      );
+      assertEquals((err as EuropaKernelError).code, "KERNEL_INFO_TIMEOUT");
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("(c) start() and kernelInfo() both send kernel_info_request (DRY path)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      await client.start({ kernelName: "python3" });
+      await client.kernelInfo(); // explicit public call
+      const kiRequests = mk.allWireMessages.filter(
+        (m) => m.header.msg_type === "kernel_info_request",
+      );
+      assertEquals(
+        kiRequests.length >= 2,
+        true,
+        `Expected >= 2 kernel_info_request messages, got ${kiRequests.length}`,
+      );
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
   });
 });
 

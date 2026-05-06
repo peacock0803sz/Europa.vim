@@ -408,6 +408,33 @@ describe("Phase 3.3 dispatcher method presence (europa.contract.dispatcher-phase
   });
 });
 
+describe("ServerKernelClient.kernelInfo — runtime contract (US5)", () => {
+  /**
+   * @spec-id europa.contract.kernel-client-interface
+   *
+   * Runtime sanity: kernelInfo exists as a callable function on ServerKernelClient.
+   * TypeScript compile already guarantees this via the KernelClient interface;
+   * this spec adds a runtime check for defence-in-depth.
+   */
+  it("ServerKernelClient has a callable kernelInfo method", async () => {
+    const { ServerKernelClient } = await import(
+      "../../denops/europa/kernel/server-client.ts"
+    );
+    const { ServerPool } = await import(
+      "../../denops/europa/kernel/server-pool.ts"
+    );
+    const pool = new ServerPool();
+    const denops = mockVim();
+    const config = await loadConfig(denops);
+    const client = new ServerKernelClient(denops as never, config, pool);
+    assertEquals(
+      typeof client.kernelInfo,
+      "function",
+      "kernelInfo must be a callable method on ServerKernelClient instances",
+    );
+  });
+});
+
 describe(":EuropaPreviewOutput command definition", () => {
   it("plugin/commands.vim defines the EuropaPreviewOutput command", async () => {
     const content = await Deno.readTextFile(

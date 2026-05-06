@@ -22,3 +22,5 @@ nnoremap <silent> <Plug>(europa-join-cell)       :<C-u>EuropaJoinCell<CR>
 nnoremap <silent> <Plug>(europa-run-cell)        :<C-u>EuropaRunCell<CR>
 nnoremap <silent> <Plug>(europa-run-all)         :<C-u>EuropaRunAll<CR>
 nnoremap <silent> <Plug>(europa-cancel-cell)     :<C-u>EuropaCancelCell<CR>
+nnoremap <silent> <Plug>(europa-interrupt)       :<C-u>EuropaInterrupt<CR>
+nnoremap <silent> <Plug>(europa-restart-kernel)  :<C-u>EuropaRestartKernel<CR>

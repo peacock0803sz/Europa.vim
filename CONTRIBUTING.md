@@ -76,6 +76,23 @@ BDD specs and TSDoc are linked via `@spec-id`, never via heading names. Heading-
 
 Phase 1 establishes the operational rule only. The lint that enforces the bijection lands in Phase 2 alongside the rest of the in-house lint suite, rules 1 and 2 of `scripts/lint-no-handwritten-types.ts`.
 
+### Active `@spec-id` areas (Phase 3.3)
+
+Phase 3.3 adds the following areas and topics to the allowlist in `scripts/lint-spec-id-bijection.ts`:
+
+| Area | Topics added in Phase 3.3 |
+|------|--------------------------|
+| `kernel.execute` | `request-msg-id-unique`, `iopub-stream`, `execute-result`, `error-content`, `execute-reply-ok`, `execute-reply-error`, `abort-mid-stream`, `wire-message-count`, `conformance-*` |
+| `kernel.interrupt` | `rest-204`, `idle-no-op`, `reconnect-mid`, `token-header`, `conformance-running` |
+| `kernel.restart` | `rest-200`, `websocket-reopen`, `kernel-info-resync`, `5xx-fallback`, `exec-count-reset`, `conformance-state-reset` |
+| `kernel.correlation` | `cross-buffer-drop`, `pending-state-queued-to-sent`, `pending-remove-on-reply`, `parent-header-filter` |
+| `kernel.server-client` | `kernel-info-public` (topic added to existing area) |
+| `contract` | `dispatcher-phase3-3-alignment` |
+| `session.state` | `pending-requests-set`, `pending-requests-remove`, `exec-state-transition`, `cell-states-update` |
+| `dispatcher` | `run-cell`, `run-cell-queued-on-busy`, `run-all`, `interrupt-kernel`, `restart-kernel`, `cancel-cell`, `conformance-cancel-queued` |
+| `config` | `kernel-info-timeout-defaults` |
+| `render` | `cell-exec-state-sign` (topic added to existing area) |
+
 ## 8. Commit and PR conventions
 
 - Documentation, in-code comments, and commit subjects are written in English.

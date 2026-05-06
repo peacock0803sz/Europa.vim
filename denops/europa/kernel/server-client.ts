@@ -34,6 +34,7 @@ import { decodeV1, encodeV1 } from "./wire/protocol-v1.ts";
 import { decodeDefault, encodeDefault } from "./wire/protocol-default.ts";
 import { execute as executeImpl } from "./execute.ts";
 import { interrupt as interruptImpl } from "./interrupt.ts";
+import { restart as restartImpl } from "./restart.ts";
 
 type ServerClientOptions = {
   kernelInfoTimeoutMs?: number;
@@ -49,6 +50,11 @@ type ConnectResult = {
   content: Record<string, unknown>;
 };
 
+type OpenResult = {
+  socket: WebSocket;
+  subprotocol: "v1" | "default";
+};
+
 /**
  * Kernel client for Jupyter Server HTTP+WebSocket mode.
  *
@@ -56,6 +62,7 @@ type ConnectResult = {
  * Idempotent shutdown: second call is a no-op.
  *
  * @category Kernel
+ * @spec-id europa.contract.kernel-client-interface
  */
 export class ServerKernelClient implements KernelClient {
   private readonly denops: Denops;
@@ -75,7 +82,15 @@ export class ServerKernelClient implements KernelClient {
   private _messageHandlers = new Set<(msg: KernelMessage) => void>();
   private _wsUrl: string | null = null;
   private _subprotocols: string[] = [];
+  private _subprotocol: "v1" | "default" | null = null;
   private _runtime: KernelRuntime | null = null;
+  /**
+   * Persistent message dispatcher attached after WS open. Stored so it can be
+   * removed via removeEventListener on shutdown / kernelInfo failure / WS swap;
+   * anonymous attach would leak the receive op past the test boundary and
+   * trip Deno's `sanitizeOps` checker (SC-010a).
+   */
+  private _persistentMessageHandler: ((e: MessageEvent) => void) | null = null;
 
   constructor(
     denops: Denops,
@@ -180,6 +195,14 @@ export class ServerKernelClient implements KernelClient {
     const kernelId = sessionData.kernel.id;
 
     const abort = new AbortController();
+    // Propagate opts.signal into the internal abort controller so that
+    // kernelInfo() (called after _openWS returns) is also cancelled promptly
+    // when the caller aborts the start operation.
+    if (opts.signal) {
+      opts.signal.addEventListener("abort", () => abort.abort(), {
+        once: true,
+      });
+    }
     const combinedSignal = opts.signal
       ? AbortSignal.any([abort.signal, opts.signal])
       : abort.signal;
@@ -193,19 +216,58 @@ export class ServerKernelClient implements KernelClient {
       baseUrl.replace(/^http/, "ws")
     }/api/kernels/${kernelId}/channels?token=${encodeURIComponent(token)}`;
 
-    let wsResult: ConnectResult;
+    // Open the WebSocket (subprotocol negotiation only; no kernel_info yet).
+    let openResult: OpenResult;
     try {
-      wsResult = await this._connectWS(wsUrl, subprotocols, combinedSignal);
+      openResult = await this._openWS(wsUrl, subprotocols, combinedSignal);
     } catch (e) {
       await this.pool.release(serverKey);
       throw e;
     }
 
-    const { socket, subprotocol, content } = wsResult;
+    const { socket, subprotocol } = openResult;
 
-    const langInfo = content.language_info as
-      | Record<string, string>
-      | undefined;
+    // Save state before calling kernelInfo() so its onMessage handler fires.
+    this._serverKey = serverKey;
+    this._sessionId = sessionId;
+    this._socket = socket;
+    this._abort = abort;
+    this._token = token;
+    this._baseUrl = baseUrl;
+    this._wsUrl = wsUrl;
+    this._subprotocols = subprotocols;
+    this._subprotocol = subprotocol;
+    this._state = "connected";
+    this._attachMessageListener(socket);
+
+    // DRY: use public kernelInfo() for the handshake (shared with restart path).
+    let reply: import("../../../schema/message.ts").KernelInfoReply;
+    try {
+      reply = await this.kernelInfo();
+    } catch (e) {
+      // Reset all state on handshake failure to leave the client clean.
+      // Detach the persistent message listener and await the WS close event
+      // before releasing the pool handle so that Deno's test sanitizer does
+      // not flag a dangling receive op when the caller aborts mid-handshake
+      // (SC-010a leak).
+      this._detachMessageListener(socket);
+      this._serverKey = null;
+      this._sessionId = null;
+      this._socket = null;
+      this._abort = null;
+      this._token = null;
+      this._baseUrl = null;
+      this._wsUrl = null;
+      this._subprotocols = [];
+      this._subprotocol = null;
+      this._state = "idle";
+      abort.abort();
+      await this._closeAndWait(socket, 1000, "kernel_info failed");
+      await this.pool.release(serverKey);
+      throw e;
+    }
+
+    const langInfo = reply.language_info;
     const info: KernelInfo = {
       kernelId,
       sessionId,
@@ -216,26 +278,14 @@ export class ServerKernelClient implements KernelClient {
       startedAt: new Date().toISOString(),
       languageInfo: langInfo
         ? {
-          name: langInfo.name ?? "",
-          version: langInfo.version ?? "",
+          name: langInfo.name,
+          version: langInfo.version,
           mimetype: langInfo.mimetype,
           file_extension: langInfo.file_extension,
         }
         : undefined,
-      banner: typeof content.banner === "string" ? content.banner : undefined,
+      banner: reply.banner,
     };
-
-    this._serverKey = serverKey;
-    this._sessionId = sessionId;
-    this._socket = socket;
-    this._abort = abort;
-    this._token = token;
-    this._baseUrl = baseUrl;
-    this._wsUrl = wsUrl;
-    this._subprotocols = subprotocols;
-    this._state = "connected";
-
-    this._attachMessageListener(socket);
 
     // @spec-id europa.session.state.exec-state-transition
     // @spec-id europa.session.state.cell-states-update
@@ -299,8 +349,11 @@ export class ServerKernelClient implements KernelClient {
 
     abort?.abort();
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.close(1000, "shutdown");
+    if (socket) {
+      this._detachMessageListener(socket);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close(1000, "shutdown");
+      }
     }
 
     if (serverKey && sessionId && baseUrl) {
@@ -331,7 +384,7 @@ export class ServerKernelClient implements KernelClient {
   }
 
   private _attachMessageListener(socket: WebSocket): void {
-    socket.addEventListener("message", (e) => {
+    const handler = (e: MessageEvent): void => {
       let msg: KernelMessage;
       try {
         if (e.data instanceof ArrayBuffer) {
@@ -342,7 +395,44 @@ export class ServerKernelClient implements KernelClient {
       } catch {
         return;
       }
-      for (const handler of this._messageHandlers) handler(msg);
+      for (const h of this._messageHandlers) h(msg);
+    };
+    this._persistentMessageHandler = handler;
+    socket.addEventListener("message", handler);
+  }
+
+  // Callers must invoke this before reassigning _socket (e.g. on reconnect
+  // WS swap, kernelInfo failure, or shutdown) to release the receive op.
+  private _detachMessageListener(socket: WebSocket): void {
+    const handler = this._persistentMessageHandler;
+    if (handler !== null) {
+      socket.removeEventListener("message", handler);
+      this._persistentMessageHandler = null;
+    }
+  }
+
+  /**
+   * Closes a WebSocket and resolves once the close event fires (or
+   * immediately if it is already CLOSED). Mirrors the close-await pattern in
+   * `_connectWS.rejectAfterClose` so callers in error / shutdown paths do not
+   * leak in-flight WS receive ops past the test boundary.
+   */
+  private _closeAndWait(
+    socket: WebSocket,
+    code: number,
+    reason: string,
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (socket.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+      socket.addEventListener("close", () => resolve(), { once: true });
+      try {
+        socket.close(code, reason);
+      } catch {
+        // already closing — close listener will still fire
+      }
     });
   }
 
@@ -400,9 +490,16 @@ export class ServerKernelClient implements KernelClient {
           this._subprotocols,
           signal,
         );
+        const oldSocket = this._socket;
         runtime.socket = result.socket;
         runtime.info.state = "idle";
         delete runtime.reconnect;
+        // Release the persistent message listener bound to the old socket
+        // before reattaching to the new one; otherwise the receive op on
+        // the dropped WS lingers until GC.
+        if (oldSocket !== null) {
+          this._detachMessageListener(oldSocket);
+        }
         this._socket = result.socket;
         this._attachMessageListener(result.socket);
         this._attachReconnectLoop(result.socket);
@@ -445,6 +542,7 @@ export class ServerKernelClient implements KernelClient {
 
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       let resendIntervalId: ReturnType<typeof setInterval> | undefined;
+      let onMessage: ((e: MessageEvent) => void) | undefined;
       let opened = false;
 
       const cleanup = () => {
@@ -456,6 +554,12 @@ export class ServerKernelClient implements KernelClient {
         if (resendIntervalId !== undefined) {
           clearInterval(resendIntervalId);
           resendIntervalId = undefined;
+        }
+        if (onMessage !== undefined) {
+          // Detach on every reject path (abort/close/timeout) so Deno's
+          // test sanitizer does not flag a dangling message receive op.
+          ws.removeEventListener("message", onMessage);
+          onMessage = undefined;
         }
       };
 
@@ -538,7 +642,7 @@ export class ServerKernelClient implements KernelClient {
           );
         }, this.kernelInfoTimeoutMs);
 
-        const onMessage = (e: MessageEvent) => {
+        onMessage = (e: MessageEvent) => {
           let msg: KernelMessage;
           try {
             if (e.data instanceof ArrayBuffer) {
@@ -552,7 +656,6 @@ export class ServerKernelClient implements KernelClient {
 
           if (msg.header.msg_type !== "kernel_info_reply") return;
 
-          ws.removeEventListener("message", onMessage);
           settle(() => {
             cleanup();
             resolve({
@@ -599,8 +702,175 @@ export class ServerKernelClient implements KernelClient {
     });
   }
 
+  /**
+   * Opens a WebSocket and resolves on the "open" event with socket + subprotocol.
+   * Does NOT perform the kernel_info handshake — use kernelInfo() for that.
+   */
+  private _openWS(
+    wsUrl: string,
+    subprotocols: string[],
+    signal: AbortSignal,
+  ): Promise<OpenResult> {
+    return new Promise<OpenResult>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(
+          new EuropaKernelError(
+            "KERNEL_INFO_TIMEOUT",
+            "Aborted before WebSocket connect",
+          ),
+        );
+        return;
+      }
+
+      let settled = false;
+      const done = (fn: () => void) => {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          fn();
+        }
+      };
+
+      const rejectAfterClose = (err: EuropaKernelError) => {
+        done(() => {
+          if (ws.readyState === WebSocket.CLOSED) {
+            reject(err);
+          } else {
+            ws.addEventListener("close", () => reject(err), { once: true });
+            try {
+              ws.close();
+            } catch { /* already closing */ }
+          }
+        });
+      };
+
+      const onAbort = () =>
+        rejectAfterClose(
+          new EuropaKernelError(
+            "KERNEL_INFO_TIMEOUT",
+            "Start aborted by signal",
+          ),
+        );
+      signal.addEventListener("abort", onAbort, { once: true });
+
+      const ws = new WebSocket(wsUrl, subprotocols);
+      ws.binaryType = "arraybuffer";
+
+      ws.addEventListener("error", () => {
+        const err = new EuropaKernelError(
+          "CONNECTION_REFUSED",
+          "WebSocket connection failed",
+        );
+        if (ws.readyState === WebSocket.CLOSED) {
+          done(() => reject(err));
+        } else {
+          ws.addEventListener("close", () => done(() => reject(err)), {
+            once: true,
+          });
+        }
+      });
+
+      ws.addEventListener("close", (ev) => {
+        // Only reject before open fires; after open the reconnect loop owns close.
+        done(() =>
+          reject(
+            new EuropaKernelError(
+              "CONNECTION_REFUSED",
+              `WebSocket closed before open: ${ev.code}`,
+            ),
+          )
+        );
+      });
+
+      ws.addEventListener("open", () => {
+        const proto = ws.protocol;
+        const isV1 = proto !== "" && proto.startsWith("v1");
+        done(() =>
+          resolve({ socket: ws, subprotocol: isV1 ? "v1" : "default" })
+        );
+      });
+    });
+  }
+
+  /**
+   * Sends a kernel_info_request on the current socket and returns the reply.
+   *
+   * Retries every 1 s until a matching kernel_info_reply arrives. No timeout
+   * is applied here — the caller (kernelInfo()) wraps with AbortSignal.timeout.
+   * Uses the onMessage pub/sub so the socket message listener must be attached.
+   */
+  private _kernelInfoInner(signal: AbortSignal): Promise<
+    import("../../../schema/message.ts").KernelInfoReply
+  > {
+    type KernelInfoReply = import("../../../schema/message.ts").KernelInfoReply;
+    const socket = this._socket;
+    const isV1 = this._subprotocol === "v1";
+
+    return new Promise<KernelInfoReply>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+
+      const msgId = crypto.randomUUID();
+      const clientSession = crypto.randomUUID();
+      let resendId: ReturnType<typeof setInterval> | undefined;
+
+      const cleanup = () => {
+        signal.removeEventListener("abort", onAbort);
+        unsub();
+        if (resendId !== undefined) {
+          clearInterval(resendId);
+          resendId = undefined;
+        }
+      };
+
+      const unsub = this.onMessage((msg) => {
+        if (msg.header.msg_type !== "kernel_info_reply") return;
+        const parentMsgId = (msg.parent_header as Record<string, unknown>)
+          ?.msg_id;
+        if (parentMsgId !== msgId) return;
+        cleanup();
+        resolve(msg.content as unknown as KernelInfoReply);
+      });
+
+      const onAbort = () => {
+        cleanup();
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+
+      const sendRequest = () => {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        const req: KernelMessage = {
+          header: {
+            msg_id: msgId,
+            msg_type: "kernel_info_request",
+            username: "europa",
+            session: clientSession,
+            date: new Date().toISOString(),
+            version: "5.3",
+          },
+          parent_header: {},
+          metadata: {},
+          content: {},
+          buffers: [],
+        };
+        if (isV1) {
+          socket.send(new Uint8Array(encodeV1(req)));
+        } else {
+          socket.send(encodeDefault(req));
+        }
+      };
+
+      // Send immediately, then retry every 1 s until the reply arrives.
+      sendRequest();
+      resendId = setInterval(sendRequest, 1_000);
+    });
+  }
+
   // ---------------------------------------------------------------------------
-  // Phase 3.3 stubs — full implementations added in Phase 3 US1/US3/US5/US4
+  // Phase 3.3 methods
   // ---------------------------------------------------------------------------
 
   /**
@@ -620,15 +890,40 @@ export class ServerKernelClient implements KernelClient {
   }
 
   /**
-   * Fetch kernel_info_reply (single-shot, no retry).
+   * Fetch kernel_info_reply on the open channel (single API call, no reconnect retry).
    *
-   * Stub: DRY refactor into public method done in T052 (US5).
+   * Sends one kernel_info_request and resends every 1 s until a reply arrives
+   * or `kernelInfoTimeoutMs` elapses (KERNEL_INFO_TIMEOUT). The "no retry"
+   * refers to connection-level reconnects, not message-level resends.
+   * Both start() and restart() delegate their handshakes here (DRY).
+   *
+   * @spec-id europa.kernel.server-client.kernel-info-public
    */
-  kernelInfo(): Promise<import("../../../schema/message.ts").KernelInfoReply> {
-    // Implemented in T052 (US5)
-    return Promise.reject(
-      new Error("kernelInfo: not yet public (Phase 3.3 US5)"),
-    );
+  async kernelInfo(): Promise<
+    import("../../../schema/message.ts").KernelInfoReply
+  > {
+    if (!this._socket || this._socket.readyState !== WebSocket.OPEN) {
+      throw new EuropaKernelError(
+        "KERNEL_INFO_FAILED",
+        "kernelInfo: not connected — call start() first",
+      );
+    }
+    const signals: AbortSignal[] = [
+      AbortSignal.timeout(this.kernelInfoTimeoutMs),
+    ];
+    if (this._abort) signals.push(this._abort.signal);
+    const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+    try {
+      return await this._kernelInfoInner(signal);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "TimeoutError") {
+        throw new EuropaKernelError(
+          "KERNEL_INFO_TIMEOUT",
+          `kernel_info_reply not received within ${this.kernelInfoTimeoutMs}ms`,
+        );
+      }
+      throw e;
+    }
   }
 
   /**
@@ -647,14 +942,47 @@ export class ServerKernelClient implements KernelClient {
   }
 
   /**
-   * Restart kernel via REST + WebSocket re-open + kernelInfo() handshake.
+   * Restart kernel via REST + WebSocket re-open + kernelInfo() re-handshake.
    *
-   * Stub: full impl in T044/T045 (US4).
+   * Delegates to kernel/restart.ts. The onSocketReopen callback updates this
+   * client's internal socket reference and re-attaches the message listener
+   * before kernelInfo() subscribes, ensuring the reply is seen on the new WS.
    */
   restart(): Promise<void> {
-    // Implemented in T044/T045 (US4)
-    return Promise.reject(
-      new Error("restart: not yet implemented (Phase 3.3 US4)"),
+    if (!this._runtime || !this._baseUrl || !this._token || !this._wsUrl) {
+      return Promise.reject(
+        new Error("restart: client not connected — call start() first"),
+      );
+    }
+    return restartImpl(
+      this._runtime,
+      this._baseUrl,
+      this._token,
+      this._wsUrl,
+      this._subprotocols,
+      (socket) => {
+        this._socket = socket;
+        // Sync the fresh AbortController that restart.ts created so that
+        // subsequent kernelInfo() does not see the already-aborted old signal.
+        this._abort = this._runtime!.abort;
+        // Re-attach the abort→state propagation listener to the new controller.
+        // The original { once: true } listener on the old signal was consumed by
+        // restart step (a); without this, external abort() calls after restart
+        // would not update runtime.info.state to "disconnected" (SC-010a).
+        this._abort.signal.addEventListener("abort", () => {
+          const r = this._runtime;
+          if (r && r.info.state !== "disconnected") {
+            r.info.state = "disconnected";
+            delete r.reconnect;
+          }
+        }, { once: true });
+        this._subprotocol = (socket.protocol !== "" &&
+            socket.protocol.startsWith("v1"))
+          ? "v1"
+          : "default";
+        this._attachMessageListener(socket);
+        this._attachReconnectLoop(socket);
+      },
     );
   }
 }

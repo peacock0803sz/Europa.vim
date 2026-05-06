@@ -1436,8 +1436,13 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       codeCell.outputs = [];
       kr.execState = "busy";
       markSent(kr, msgId);
+      // Capture signal at dispatch time so restart/interrupt can abort this
+      // specific execute via runtime.abort.abort() (FR-012).
+      const execSignal = kr.abort.signal;
       try {
-        for await (const msg of kernelExecute(kr, code, { msgId })) {
+        for await (
+          const msg of kernelExecute(kr, code, { msgId, signal: execSignal })
+        ) {
           applyMessageToCell(codeCell, msg);
         }
       } catch (e) {
@@ -1449,7 +1454,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
       } finally {
         complete(kr, msgId);
-        kr.execState = "idle";
+        // Guard against clobbering "restarting" set by a concurrent restartKernel (FR-011).
+        if (kr.execState === "busy") kr.execState = "idle";
         // Full re-render once execution completes (incremental rendering is Phase 5+)
         try {
           const config = await loadConfig(denops);
@@ -1540,9 +1546,15 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           codeCell.outputs = [];
 
           markSent(kr, msgId);
+          const runAllSignal = kr.abort.signal;
           let execStatus = "ok";
           try {
-            for await (const msg of kernelExecute(kr, code, { msgId })) {
+            for await (
+              const msg of kernelExecute(kr, code, {
+                msgId,
+                signal: runAllSignal,
+              })
+            ) {
               applyMessageToCell(codeCell, msg);
               if (
                 msg.header.msg_type === "execute_reply" &&
@@ -1580,7 +1592,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           }
         }
       } finally {
-        kr.execState = "idle";
+        // Guard against clobbering "restarting" set by a concurrent restartKernel (FR-011).
+        if (kr.execState === "busy") kr.execState = "idle";
         // Re-render after all cells executed
         try {
           const config = await loadConfig(denops);
@@ -1613,21 +1626,72 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
       }
     },
-    restartKernel(_bufnr: unknown): Promise<void> {
+    /**
+     * @spec-id europa.dispatcher.restart-kernel
+     * @spec-id europa.kernel.restart.exec-count-reset
+     */
+    async restartKernel(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
       if (!Number.isInteger(bn) || bn < 1) {
-        return Promise.reject(
-          new EuropaKernelError(
-            "INVALID_ARGS",
-            `restartKernel: invalid bufnr '${_bufnr}'`,
-          ),
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `restartKernel: invalid bufnr '${_bufnr}'`,
         );
       }
-      return Promise.reject(new UnimplementedError("restartKernel"));
+
+      const session = sessionStore.get(bn);
+      const kr = session?.kernelRuntime;
+      if (!kr) {
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: No kernel attached.")}`,
+        );
+        return;
+      }
+
+      // Signal restart-in-progress so interruptKernel guards skip (FR-011)
+      kr.execState = "restarting";
+
+      try {
+        await kr.client.restart();
+
+        // Reset execution_count for all code cells (Story 4 acceptance #1)
+        for (const cell of session!.notebook.cells) {
+          if (cell.cell_type === "code") {
+            (cell as CodeCell).execution_count = null;
+          }
+        }
+
+        // Full re-render to show cleared execution counts
+        try {
+          const config = await loadConfig(denops);
+          const caps = await detectCapabilities(denops);
+          const plan = buildRenderPlan(
+            session!.notebook,
+            caps,
+            renderPlanOpts(config),
+          );
+          sessionStore.setRenderPlan(bn, plan);
+          await applyRenderPlan(denops, bn, plan);
+        } catch {
+          // Re-render failure is non-fatal
+        }
+
+        await denops.cmd(
+          `echom ${vimSingleQuote("Europa: Kernel restarted")}`,
+        );
+      } catch (e) {
+        // Safety: reset execState if restart failed before restart.ts could reset it
+        if (kr.execState === "restarting") kr.execState = "idle";
+        const msg = e instanceof EuropaKernelError ? e.message : String(e);
+        await denops.cmd(
+          `echom ${vimSingleQuote(`Europa: Kernel restart failed: ${msg}`)}`,
+        );
+      }
     },
     /**
      * @spec-id europa.dispatcher.interrupt-kernel
      * @spec-id europa.kernel.interrupt.idle-no-op
+     * @spec-id europa.kernel.interrupt.reconnect-mid
      */
     async interruptKernel(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
