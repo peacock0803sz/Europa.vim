@@ -965,6 +965,21 @@ export class ServerKernelClient implements KernelClient {
         // Sync the fresh AbortController that restart.ts created so that
         // subsequent kernelInfo() does not see the already-aborted old signal.
         this._abort = this._runtime!.abort;
+        // Re-attach the abort→state propagation listener to the new controller.
+        // The original { once: true } listener on the old signal was consumed by
+        // restart step (a); without this, external abort() calls after restart
+        // would not update runtime.info.state to "disconnected" (SC-010a).
+        this._abort.signal.addEventListener("abort", () => {
+          const r = this._runtime;
+          if (r && r.info.state !== "disconnected") {
+            r.info.state = "disconnected";
+            delete r.reconnect;
+          }
+        }, { once: true });
+        this._subprotocol = (socket.protocol !== "" &&
+            socket.protocol.startsWith("v1"))
+          ? "v1"
+          : "default";
         this._attachMessageListener(socket);
         this._attachReconnectLoop(socket);
       },
