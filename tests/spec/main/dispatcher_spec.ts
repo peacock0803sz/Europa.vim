@@ -2176,8 +2176,23 @@ describe(
         // Force WS disconnect → reconnect loop starts, kr.reconnect is set immediately
         currentMkInt.forceWsClose();
 
-        // Yield to allow close event to propagate and reconnect loop to begin
-        await new Promise<void>((r) => setTimeout(r, 20));
+        // Wait for the close event to propagate and the reconnect loop to set
+        // runtime.reconnect. A fixed sleep is flaky on slow CI runners.
+        const reconnectDeadline = Date.now() + 2000;
+        let reconnectStarted = false;
+        while (Date.now() < reconnectDeadline) {
+          const report = await dispatcher.kernelStatus(INT_BUFNR);
+          if (report.reconnect) {
+            reconnectStarted = true;
+            break;
+          }
+          await new Promise<void>((r) => setTimeout(r, 5));
+        }
+        assertEquals(
+          reconnectStarted,
+          true,
+          "reconnect loop did not start within 2s",
+        );
 
         await dispatcher.interruptKernel(INT_BUFNR);
 
