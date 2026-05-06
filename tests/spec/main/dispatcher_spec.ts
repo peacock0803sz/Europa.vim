@@ -2278,6 +2278,22 @@ describe(
           true,
           "must show 'Kernel restarted' message",
         );
+        // Verify execution_count cleared (spec: europa.kernel.restart.exec-count-reset)
+        // startKernelForRst() clears rstHost.calls, so all setbufline calls here are
+        // from the re-render triggered by restartKernel().
+        const rerenderedLines = rstHost.callsTo("setbufline")
+          .filter((c) => c.args[1] === RST_BUFNR)
+          .flatMap((c) => c.args[3] as string[]);
+        assertEquals(
+          rerenderedLines.some((l) => /In \[\d+\]/.test(l)),
+          false,
+          "no 'In [N]' lines after restart — execution_count must be null",
+        );
+        assertEquals(
+          rerenderedLines.some((l) => l.includes("In [ ]")),
+          true,
+          "'In [ ]' present after restart confirms cleared execution_count",
+        );
       },
     );
 
