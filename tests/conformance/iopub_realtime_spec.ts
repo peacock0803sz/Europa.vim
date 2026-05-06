@@ -96,7 +96,6 @@ describe(
         };
 
         const kr = runtime;
-        enqueue(kr, 0, cell.id);
         const msgId = enqueue(kr, 0, cell.id);
         markSent(kr, msgId);
         kr.execState = "busy";
