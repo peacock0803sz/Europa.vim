@@ -200,5 +200,8 @@ export async function restart(
 
   // (g) Clear cell states (pendingRequests were cleared by abortAll in step a)
   runtime.cellStates.clear();
+  // Restore state: abort in step (a) set info.state = "disconnected" via the
+  // abort listener; new WS is open and handshake succeeded, so restore "idle".
+  runtime.info.state = "idle";
   runtime.execState = "idle";
 }
