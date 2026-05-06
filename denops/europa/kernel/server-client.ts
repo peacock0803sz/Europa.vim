@@ -84,6 +84,13 @@ export class ServerKernelClient implements KernelClient {
   private _subprotocols: string[] = [];
   private _subprotocol: "v1" | "default" | null = null;
   private _runtime: KernelRuntime | null = null;
+  /**
+   * Persistent message dispatcher attached after WS open. Stored so it can be
+   * removed via removeEventListener on shutdown / kernelInfo failure / WS swap;
+   * anonymous attach would leak the receive op past the test boundary and
+   * trip Deno's `sanitizeOps` checker (SC-010a).
+   */
+  private _persistentMessageHandler: ((e: MessageEvent) => void) | null = null;
 
   constructor(
     denops: Denops,
@@ -239,6 +246,11 @@ export class ServerKernelClient implements KernelClient {
       reply = await this.kernelInfo();
     } catch (e) {
       // Reset all state on handshake failure to leave the client clean.
+      // Detach the persistent message listener and await the WS close event
+      // before releasing the pool handle so that Deno's test sanitizer does
+      // not flag a dangling receive op when the caller aborts mid-handshake
+      // (SC-010a leak).
+      this._detachMessageListener(socket);
       this._serverKey = null;
       this._sessionId = null;
       this._socket = null;
@@ -250,7 +262,7 @@ export class ServerKernelClient implements KernelClient {
       this._subprotocol = null;
       this._state = "idle";
       abort.abort();
-      socket.close(1000, "kernel_info failed");
+      await this._closeAndWait(socket, 1000, "kernel_info failed");
       await this.pool.release(serverKey);
       throw e;
     }
@@ -337,8 +349,11 @@ export class ServerKernelClient implements KernelClient {
 
     abort?.abort();
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.close(1000, "shutdown");
+    if (socket) {
+      this._detachMessageListener(socket);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close(1000, "shutdown");
+      }
     }
 
     if (serverKey && sessionId && baseUrl) {
@@ -369,7 +384,7 @@ export class ServerKernelClient implements KernelClient {
   }
 
   private _attachMessageListener(socket: WebSocket): void {
-    socket.addEventListener("message", (e) => {
+    const handler = (e: MessageEvent): void => {
       let msg: KernelMessage;
       try {
         if (e.data instanceof ArrayBuffer) {
@@ -380,7 +395,44 @@ export class ServerKernelClient implements KernelClient {
       } catch {
         return;
       }
-      for (const handler of this._messageHandlers) handler(msg);
+      for (const h of this._messageHandlers) h(msg);
+    };
+    this._persistentMessageHandler = handler;
+    socket.addEventListener("message", handler);
+  }
+
+  // Callers must invoke this before reassigning _socket (e.g. on reconnect
+  // WS swap, kernelInfo failure, or shutdown) to release the receive op.
+  private _detachMessageListener(socket: WebSocket): void {
+    const handler = this._persistentMessageHandler;
+    if (handler !== null) {
+      socket.removeEventListener("message", handler);
+      this._persistentMessageHandler = null;
+    }
+  }
+
+  /**
+   * Closes a WebSocket and resolves once the close event fires (or
+   * immediately if it is already CLOSED). Mirrors the close-await pattern in
+   * `_connectWS.rejectAfterClose` so callers in error / shutdown paths do not
+   * leak in-flight WS receive ops past the test boundary.
+   */
+  private _closeAndWait(
+    socket: WebSocket,
+    code: number,
+    reason: string,
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (socket.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+      socket.addEventListener("close", () => resolve(), { once: true });
+      try {
+        socket.close(code, reason);
+      } catch {
+        // already closing — close listener will still fire
+      }
     });
   }
 
@@ -438,9 +490,16 @@ export class ServerKernelClient implements KernelClient {
           this._subprotocols,
           signal,
         );
+        const oldSocket = this._socket;
         runtime.socket = result.socket;
         runtime.info.state = "idle";
         delete runtime.reconnect;
+        // Release the persistent message listener bound to the old socket
+        // before reattaching to the new one; otherwise the receive op on
+        // the dropped WS lingers until GC.
+        if (oldSocket !== null) {
+          this._detachMessageListener(oldSocket);
+        }
         this._socket = result.socket;
         this._attachMessageListener(result.socket);
         this._attachReconnectLoop(result.socket);

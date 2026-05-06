@@ -408,16 +408,15 @@ describe("ServerKernelClient.shutdown", () => {
 describe("ServerKernelClient.start — abort race (SC-010a)", () => {
   it("external signal abort propagates before start completes", async () => {
     const mk = makeMockKernel({ replyDelayMs: 5000 }); // very slow reply
+    const pool = new ServerPool();
+    const config = {
+      ...BASE_CONFIG,
+      jupyter_url: mk.url,
+      jupyter_token: mk.token,
+    };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool);
     try {
-      const pool = new ServerPool();
-      const config = {
-        ...BASE_CONFIG,
-        jupyter_url: mk.url,
-        jupyter_token: mk.token,
-      };
-      const denops = makeMockDenops({});
-      const client = new ServerKernelClient(denops as never, config, pool);
-
       const ac = new AbortController();
       const startPromise = client.start({
         kernelName: "python3",
@@ -437,6 +436,10 @@ describe("ServerKernelClient.start — abort race (SC-010a)", () => {
         assertEquals(elapsed < 200, true, `abort took ${elapsed}ms`);
       }
     } finally {
+      // Safety net: even if start() rejected and reset internal state,
+      // a stray socket from a future regression would be caught here
+      // before mk.close() ends the test scope.
+      await client.shutdown().catch(() => {});
       await mk.close();
     }
   });
@@ -445,18 +448,18 @@ describe("ServerKernelClient.start — abort race (SC-010a)", () => {
 describe("ServerKernelClient.reconnection — option 3 cases", () => {
   it("max_retries=0 disables reconnect (immediate disconnect)", async () => {
     const mk = makeMockKernel({ closeAfterOpen: true });
+    const pool = new ServerPool();
+    const config = {
+      ...BASE_CONFIG,
+      jupyter_url: mk.url,
+      jupyter_token: mk.token,
+      wsReconnectMaxRetries: 0,
+    };
+    const denops = makeMockDenops({});
+    const client = new ServerKernelClient(denops as never, config, pool, {
+      kernelInfoTimeoutMs: 3000,
+    });
     try {
-      const pool = new ServerPool();
-      const config = {
-        ...BASE_CONFIG,
-        jupyter_url: mk.url,
-        jupyter_token: mk.token,
-        wsReconnectMaxRetries: 0,
-      };
-      const denops = makeMockDenops({});
-      const client = new ServerKernelClient(denops as never, config, pool, {
-        kernelInfoTimeoutMs: 3000,
-      });
       // With closeAfterOpen, the WS closes after kernel_info_reply
       // but since closeAfterOpen is before the reply, start will fail
       const err = await assertRejects(
@@ -472,6 +475,7 @@ describe("ServerKernelClient.reconnection — option 3 cases", () => {
         true,
       );
     } finally {
+      await client.shutdown().catch(() => {});
       await mk.close();
     }
   });
