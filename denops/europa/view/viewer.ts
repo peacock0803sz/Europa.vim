@@ -311,6 +311,7 @@ export async function applyRenderPlan(
      * the cellId is not found in `plan.cellRanges`.
      *
      * @spec-id europa.render.partial.below-cell-line-offset-reattach
+     * @spec-id europa.render.partial.above-cell-bit-identical
      */
     fromCellId?: string;
   },

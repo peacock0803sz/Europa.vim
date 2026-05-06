@@ -14,6 +14,7 @@ import type { Notebook } from "../../../schema/notebook.ts";
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { IopubBatchScheduler } from "../../../contracts/iopub-batch-scheduler.ts";
 import { applyPartialRenderPlan } from "./partial-render.ts";
+import type { BuildRenderPlanOpts } from "../../../schema/render-plan.ts";
 
 // 16ms is the DESIGN.md §8.4/§11.2 hard-coded value (Q1=A); making it
 // configurable was rejected as YAGNI.
@@ -32,9 +33,10 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
   constructor(
     private readonly denops: Denops,
     private readonly bufnr: number,
-    private readonly notebook: Notebook,
+    private readonly getNotebook: () => Notebook,
     private readonly caps: Capabilities,
     private readonly tickMs: number,
+    private readonly renderOpts?: BuildRenderPlanOpts,
   ) {}
 
   /**
@@ -43,9 +45,12 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
    * Starts the 16 ms flush timer on the first enqueue. Messages arriving
    * while a flush is in flight are queued but do NOT join the in-flight
    * batch (Q-back-pressure). After the flush completes, a new timer is
-   * started automatically if the queue is still non-empty.
+   * started automatically if the queue is still non-empty. The queue has
+   * no size limit — no items are ever shed or dropped before processing.
    *
    * @spec-id europa.render.iopub-batch.queue-accumulate
+   * @spec-id europa.render.iopub-batch.accumulate-during-flush
+   * @spec-id europa.render.iopub-batch.no-shed-no-drop
    */
   enqueue(msg: KernelMessage, cellId: string): void {
     if (this._disposed) return; // Q-disposed: silent drop
@@ -131,9 +136,10 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
       }
 
       // F-affected: find the topmost affected cell for the partial render
+      const notebook = this.getNotebook();
       const cellIds = new Set(entries.map((e) => e.cellId));
       let fromCellId: string | undefined;
-      for (const cell of this.notebook.cells) {
+      for (const cell of notebook.cells) {
         if (cellIds.has(cell.id)) {
           fromCellId = cell.id;
           break;
@@ -145,9 +151,10 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
         await applyPartialRenderPlan(
           helper,
           this.bufnr,
-          this.notebook,
+          notebook,
           fromCellId,
           this.caps,
+          this.renderOpts ? { renderOpts: this.renderOpts } : undefined,
         );
       });
     } catch {
@@ -177,15 +184,17 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
 export function createIopubBatchScheduler(deps: {
   denops: Denops;
   bufnr: number;
-  notebook: Notebook;
+  getNotebook: () => Notebook;
   caps: Capabilities;
+  renderOpts?: BuildRenderPlanOpts;
   tickMs?: number;
 }): IopubBatchScheduler {
   return new IopubBatchSchedulerImpl(
     deps.denops,
     deps.bufnr,
-    deps.notebook,
+    deps.getNotebook,
     deps.caps,
     deps.tickMs ?? DEFAULT_TICK_MS,
+    deps.renderOpts,
   );
 }

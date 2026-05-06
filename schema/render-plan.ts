@@ -98,6 +98,19 @@ export const CellRangeSchema = Type.Object({
 });
 export type CellRange = Static<typeof CellRangeSchema>;
 
+/** Options controlling cell borders and output limits passed to buildRenderPlan. */
+export const BuildRenderPlanOptsSchema = Type.Object({
+  maxOutputLines: Type.Optional(Type.Integer({ minimum: 0 })),
+  mimePriority: Type.Optional(Type.Array(Type.String())),
+  cellBorderChars: Type.Optional(Type.Array(Type.String())),
+  cellBorderPadding: Type.Optional(Type.Integer({ minimum: 0 })),
+  cellBorderAlign: Type.Optional(Type.Union([
+    Type.Literal("center"),
+    Type.Literal("left"),
+  ])),
+});
+export type BuildRenderPlanOpts = Static<typeof BuildRenderPlanOptsSchema>;
+
 export const RenderPlanSchema = Type.Object({
   lines: Type.Array(Type.String()),
   highlights: Type.Array(HighlightSchema),

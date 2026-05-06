@@ -546,6 +546,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `deleteCell: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
       await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const cid = String(cellId);
       const prePlan = sessionStore.getRenderPlan(bn);
@@ -633,6 +634,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `moveCell: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
       await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const cid = String(cellId);
       const validDirections = ["up", "down"] as const;
@@ -776,6 +778,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
       await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       if (await refuseIfScratchDirty(viewerBufnr, cid)) return;
       const prePlan = sessionStore.getRenderPlan(viewerBufnr);
@@ -869,6 +872,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `joinCell: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
       await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const cid = String(cellId);
       const idx = session.notebook.cells.findIndex((c) => c.id === cid);
@@ -1038,6 +1042,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `changeCellType: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
       await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const validTypes = ["code", "markdown", "raw"] as const;
       const typeStr = String(newType);
@@ -1116,6 +1121,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       if (!lookup) return;
       const session = sessionStore.get(lookup.viewerBufnr);
       if (!session) return;
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
       await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const lines = await denops.call(
         "getbufline",
@@ -1238,14 +1244,16 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       try {
         const cwd = await denops.call("expand", `#${bn}:p:h`) as string;
         const runtime = await client.start({ kernelName: kn, cwd });
-        // T017: create scheduler immediately after start() returns so that
-        // runCell/runAll can call enqueue() as soon as execute() yields messages.
+        // Scheduler is created here (not in server-client.ts) because bufnr,
+        // notebook, and caps are only available in the dispatcher layer
+        // (research.md §4 / §8). The instance lives for the full kernel session.
         const caps = await detectCapabilities(denops);
         runtime.iopubBatchScheduler = createIopubBatchScheduler({
           denops,
           bufnr: bn,
-          notebook: sessionStore.get(bn)!.notebook,
+          getNotebook: () => sessionStore.get(bn)!.notebook,
           caps,
+          renderOpts: renderPlanOpts(config),
         });
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
@@ -1468,8 +1476,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         for await (
           const msg of kernelExecute(kr, code, { msgId, signal: execSignal })
         ) {
-          // cell.outputs update runs first (Phase 3.3 existing path); the
-          // scheduler only drives the viewer RPC, not the in-memory state.
+          // applyMessageToCell owns in-memory state; scheduler only drives
+          // the viewer RPC (SC-005 / Q1=A separation of concerns).
           applyMessageToCell(codeCell, msg);
           kr.iopubBatchScheduler?.enqueue(msg, cellId);
           // Q3=C: flush immediately on execute_reply (hybrid tick+reply path)

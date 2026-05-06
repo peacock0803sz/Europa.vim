@@ -175,11 +175,32 @@ queue without sending any network message (Q-cancel). Only cells in the
 `queued` state (enqueued by `:EuropaRunAll` but not yet sent to the kernel)
 can be cancelled. Cells in the `busy` state require |:EuropaInterrupt|.
 
+REAL-TIME OUTPUT STREAMING (PHASE 3.4)		*europa-kernel-streaming*
+
+During cell execution, iopub messages (`stream`, `display_data`,
+`execute_result`) are buffered and flushed to the viewer every 16 ms via an
+internal batch scheduler.  This reduces Vim RPC round-trips without
+sacrificing responsiveness.  The 16 ms timer coalesces all queued messages
+into one `denops#batch` call per tick (Q1=A / DESIGN.md §8.4); additional
+immediate flushes are triggered on `execute_reply`, `status: idle`, and
+structural cell operations.
+
+When the viewer buffer is hidden (not visible in any window), the scheduler
+skips the viewer RPC but continues accumulating outputs in memory so no data
+is lost.  When the buffer becomes visible again — triggered by `BufWinEnter`
+— a full re-render synchronises the display with the accumulated in-memory
+state (Q-hidden-buffer).
+
+Structural cell operations (|:EuropaInsertCell|, |:EuropaDeleteCell|,
+|:EuropaMoveCell|, etc.) call an immediate flush at their entry point so that
+any pending partial render completes before the line buffer is mutated.  This
+prevents cell-marker offsets from drifting after the operation
+(Q-structural-conflict).
+
 FUTURE SCOPE						*europa-kernel-future*
 
 The following features are planned for later phases and are not yet available:
 
-  - iopub stream output rendered inline into the viewer buffer.
   - ZMQ connection mode for low-latency local kernels (Phase 4).
 
 vim:tw=78:ts=8:noet:ft=help:norl:

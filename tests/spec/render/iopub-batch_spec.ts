@@ -89,7 +89,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 500, // long tick so timer doesn't fire during test
       });
@@ -110,7 +110,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 10,
       });
@@ -129,7 +129,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 100,
       });
@@ -152,7 +152,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 500,
       });
@@ -171,7 +171,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 500,
       });
@@ -200,7 +200,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 500,
       });
@@ -230,7 +230,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 500,
       });
@@ -255,7 +255,7 @@ describe("IopubBatchScheduler", () => {
       const sched = createIopubBatchScheduler({
         denops: host,
         bufnr: 1,
-        notebook: nb,
+        getNotebook: () => nb,
         caps,
         tickMs: 500,
       });
