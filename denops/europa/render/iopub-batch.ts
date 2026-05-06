@@ -24,7 +24,9 @@ type QueueEntry = { msg: KernelMessage; cellId: string; arrivedAt: number };
 class IopubBatchSchedulerImpl implements IopubBatchScheduler {
   private readonly queue: QueueEntry[] = [];
   private timer: number | null = null;
-  private _flushing = false;
+  // Holds the Promise of the active batch so re-entrant flushNow() callers can
+  // await it instead of returning before the RPC completes (F-reentrant-await).
+  private _flushingPromise: Promise<void> | null = null;
   private _disposed = false;
 
   constructor(
@@ -48,9 +50,9 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
   enqueue(msg: KernelMessage, cellId: string): void {
     if (this._disposed) return; // Q-disposed: silent drop
     this.queue.push({ msg, cellId, arrivedAt: Date.now() });
-    // Start timer only when no flush is in flight; if _flushing, the finally
-    // block of _doFlush will reschedule after the batch completes.
-    if (this.timer === null && !this._flushing) {
+    // Start timer only when no flush is in flight; if flushing, the finally
+    // block of _runFlush will reschedule after the batch completes.
+    if (this.timer === null && this._flushingPromise === null) {
       this.timer = setTimeout(() => {
         void this._doFlush();
       }, this.tickMs);
@@ -60,20 +62,21 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
   /**
    * Drain the queue immediately without waiting for the next timer tick.
    *
-   * Re-entrant calls return immediately while a flush is already in progress
-   * (F-reentrant-no guard). This is the correct semantics for the execute_reply
-   * trigger: the caller awaits flushNow() and the Promise resolves only after
-   * the batch RPC has been sent (or the queue was empty / buffer hidden).
+   * If a batch is already in flight, awaits its completion first
+   * (F-reentrant-await), then flushes any items that arrived during it.
+   * The returned Promise resolves only after all pending output has been
+   * sent to the viewer (or skipped due to hidden buffer).
    *
-   * Also used by the WS `onclose` handler (Q-ws-close): the caller awaits
-   * flushNow() before calling `runtime.abort.abort()` so partial output is
-   * always reflected in the viewer before the execute loop sees AbortError.
+   * Used by the execute_reply trigger and the WS `onclose` handler
+   * (Q-ws-close): callers await flushNow() so partial output is always
+   * reflected before the execute loop sees AbortError.
    *
    * @spec-id europa.render.iopub-batch.empty-tick-skip
    * @spec-id europa.render.iopub-batch.reply-flush-immediate
    * @spec-id europa.render.iopub-batch.close-flush-sync
    */
   async flushNow(): Promise<void> {
+    if (this._flushingPromise !== null) await this._flushingPromise;
     await this._doFlush();
   }
 
@@ -90,12 +93,13 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    if (this._flushingPromise !== null) await this._flushingPromise;
     await this._doFlush();
   }
 
-  private async _doFlush(): Promise<void> {
-    // F-reentrant-no: gate concurrent flush calls
-    if (this._flushing) return;
+  private _doFlush(): Promise<void> {
+    // Timer callers are fire-and-forget; skip the tick if a batch is running.
+    if (this._flushingPromise !== null) return Promise.resolve();
 
     // F-clear: cancel the pending timer before draining
     if (this.timer !== null) {
@@ -104,9 +108,15 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
     }
 
     // F-empty: nothing to do when queue is empty — no RPC issued
-    if (this.queue.length === 0) return;
+    if (this.queue.length === 0) return Promise.resolve();
 
-    this._flushing = true;
+    // Assign synchronously before the first await so concurrent _doFlush()
+    // calls see the in-flight promise immediately (JS single-thread guarantee).
+    this._flushingPromise = this._runFlush();
+    return this._flushingPromise;
+  }
+
+  private async _runFlush(): Promise<void> {
     // Snapshot the queue (Q-back-pressure: messages arriving during this flush
     // go to this.queue and are processed by the next tick, not the current batch)
     const entries = this.queue.splice(0);
@@ -143,7 +153,7 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
     } catch {
       // F-error: non-fatal — the execute loop must not die due to a render error
     } finally {
-      this._flushing = false;
+      this._flushingPromise = null;
       // Reschedule if new items were enqueued while this batch was in flight
       if (!this._disposed && this.queue.length > 0 && this.timer === null) {
         this.timer = setTimeout(() => {
