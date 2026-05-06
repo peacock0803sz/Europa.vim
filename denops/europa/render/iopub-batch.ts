@@ -43,9 +43,12 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
    * Starts the 16 ms flush timer on the first enqueue. Messages arriving
    * while a flush is in flight are queued but do NOT join the in-flight
    * batch (Q-back-pressure). After the flush completes, a new timer is
-   * started automatically if the queue is still non-empty.
+   * started automatically if the queue is still non-empty. The queue has
+   * no size limit — no items are ever shed or dropped before processing.
    *
    * @spec-id europa.render.iopub-batch.queue-accumulate
+   * @spec-id europa.render.iopub-batch.accumulate-during-flush
+   * @spec-id europa.render.iopub-batch.no-shed-no-drop
    */
   enqueue(msg: KernelMessage, cellId: string): void {
     if (this._disposed) return; // Q-disposed: silent drop
