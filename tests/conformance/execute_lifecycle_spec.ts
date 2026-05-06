@@ -254,6 +254,7 @@ describe("conformance: 100-cell runAll within 30s (SC-002)", () => {
         makeMockDenops() as never,
         config,
         pool,
+        { kernelInfoTimeoutMs: 60_000 },
       );
       const runtime = await client.start({ kernelName: "python3" });
 

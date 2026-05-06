@@ -16,6 +16,7 @@
 import type { ScratchLookup, Session } from "../../../schema/session.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
 import type { SessionRuntime } from "../../../contracts/session-runtime.ts";
+import type { IopubBatchScheduler } from "../../../contracts/iopub-batch-scheduler.ts";
 export type { SessionRuntime };
 
 /**
@@ -82,6 +83,18 @@ export class SessionStore {
 
   all(): SessionRuntime[] {
     return [...this.store.values()];
+  }
+
+  /**
+   * Convenience accessor for the IOPub batch scheduler attached to a session.
+   *
+   * Returns `undefined` when no session is registered for `bufnr`, when no
+   * kernel runtime is attached, or when the scheduler has not been created yet
+   * (the brief window between `client.start()` and `createIopubBatchScheduler`
+   * in `startKernel`).
+   */
+  getIopubScheduler(bufnr: number): IopubBatchScheduler | undefined {
+    return this.get(bufnr)?.kernelRuntime?.iopubBatchScheduler;
   }
 
   // --- Phase 3.1: cellEditBuffers map ---

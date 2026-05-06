@@ -16,6 +16,7 @@ import type {
   KernelInfo,
   PendingRequestEntry,
 } from "../schema/session.ts";
+import type { IopubBatchScheduler } from "./iopub-batch-scheduler.ts";
 
 /**
  * Runtime augment field bag returned by `KernelClient.start()`.
@@ -38,6 +39,10 @@ export interface KernelRuntime {
   pendingRequests: Map<string, PendingRequestEntry>;
   execState: KernelExecState;
   cellStates: Map<string, CellExecState>;
+  // Phase 3.4 addition (data-model.md §1): optional because it is assigned
+  // immediately after start() returns; undefined only between start() and the
+  // first createIopubBatchScheduler() call inside startKernel().
+  iopubBatchScheduler?: IopubBatchScheduler;
 }
 
 /**
