@@ -1251,7 +1251,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         runtime.iopubBatchScheduler = createIopubBatchScheduler({
           denops,
           bufnr: bn,
-          notebook: sessionStore.get(bn)!.notebook,
+          getNotebook: () => sessionStore.get(bn)!.notebook,
           caps,
         });
         sessionStore.update(bn, { kernelRuntime: runtime });

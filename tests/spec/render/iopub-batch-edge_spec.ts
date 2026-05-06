@@ -94,7 +94,7 @@ describe("IopubBatchScheduler — edge paths", () => {
         const sched = createIopubBatchScheduler({
           denops: host,
           bufnr: 1,
-          notebook: nb,
+          getNotebook: () => nb,
           caps,
           tickMs: 500, // long tick so the timer does not auto-fire during test
         });
@@ -154,7 +154,7 @@ describe("IopubBatchScheduler — edge paths", () => {
         const sched = createIopubBatchScheduler({
           denops: host,
           bufnr: 1,
-          notebook: nb,
+          getNotebook: () => nb,
           caps,
           tickMs: 10,
         });
@@ -215,7 +215,7 @@ describe("IopubBatchScheduler — edge paths", () => {
         const sched = createIopubBatchScheduler({
           denops: host,
           bufnr: 1,
-          notebook: nb,
+          getNotebook: () => nb,
           caps,
           tickMs: 500,
         });

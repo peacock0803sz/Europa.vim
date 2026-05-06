@@ -77,7 +77,7 @@ describe("hidden buffer: scheduler RPC skip", () => {
     const sched = createIopubBatchScheduler({
       denops: host,
       bufnr: 1,
-      notebook: nb,
+      getNotebook: () => nb,
       caps,
       tickMs: 500,
     });
@@ -103,7 +103,7 @@ describe("hidden buffer: scheduler RPC skip", () => {
     const sched = createIopubBatchScheduler({
       denops: host,
       bufnr: 1,
-      notebook: nb,
+      getNotebook: () => nb,
       caps,
       tickMs: 500,
     });
@@ -139,7 +139,7 @@ describe("hidden buffer: BufWinEnter resync", () => {
     const schedHidden = createIopubBatchScheduler({
       denops: host,
       bufnr: 1,
-      notebook: nb,
+      getNotebook: () => nb,
       caps,
       tickMs: 500,
     });
@@ -156,7 +156,7 @@ describe("hidden buffer: BufWinEnter resync", () => {
     const schedVisible = createIopubBatchScheduler({
       denops: host,
       bufnr: 1,
-      notebook: nb,
+      getNotebook: () => nb,
       caps,
       tickMs: 500,
     });

@@ -32,7 +32,7 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
   constructor(
     private readonly denops: Denops,
     private readonly bufnr: number,
-    private readonly notebook: Notebook,
+    private readonly getNotebook: () => Notebook,
     private readonly caps: Capabilities,
     private readonly tickMs: number,
   ) {}
@@ -134,9 +134,10 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
       }
 
       // F-affected: find the topmost affected cell for the partial render
+      const notebook = this.getNotebook();
       const cellIds = new Set(entries.map((e) => e.cellId));
       let fromCellId: string | undefined;
-      for (const cell of this.notebook.cells) {
+      for (const cell of notebook.cells) {
         if (cellIds.has(cell.id)) {
           fromCellId = cell.id;
           break;
@@ -148,7 +149,7 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
         await applyPartialRenderPlan(
           helper,
           this.bufnr,
-          this.notebook,
+          notebook,
           fromCellId,
           this.caps,
         );
@@ -180,14 +181,14 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
 export function createIopubBatchScheduler(deps: {
   denops: Denops;
   bufnr: number;
-  notebook: Notebook;
+  getNotebook: () => Notebook;
   caps: Capabilities;
   tickMs?: number;
 }): IopubBatchScheduler {
   return new IopubBatchSchedulerImpl(
     deps.denops,
     deps.bufnr,
-    deps.notebook,
+    deps.getNotebook,
     deps.caps,
     deps.tickMs ?? DEFAULT_TICK_MS,
   );
