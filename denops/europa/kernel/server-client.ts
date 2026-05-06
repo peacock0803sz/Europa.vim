@@ -437,11 +437,18 @@ export class ServerKernelClient implements KernelClient {
   }
 
   private _attachReconnectLoop(socket: WebSocket): void {
-    socket.addEventListener("close", (ev) => {
+    socket.addEventListener("close", async (ev) => {
       if (ev.code === 1000 || !this._runtime) return;
+      const runtime = this._runtime;
+      // Q-ws-close: flush any pending iopub output so partial results are
+      // visible before the abort or reconnect loop fires. Errors are silent
+      // because a failed flush must not suppress the reconnect path.
+      try {
+        await runtime.iopubBatchScheduler?.flushNow();
+      } catch { /* silent — flush failure must not block reconnect */ }
       // Abort listener already set state to "disconnected"; skip the loop to
       // avoid a transient "reconnecting" flicker after teardown.
-      if (this._runtime.abort.signal.aborted) return;
+      if (runtime.abort.signal.aborted) return;
       this._runReconnectLoop();
     }, { once: true });
   }
