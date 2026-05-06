@@ -47,7 +47,7 @@ The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
     <Plug>(europa-shutdown-kernel)        Shutdown the active kernel
     <Plug>(europa-kernel-status)          Show kernel status
 
-Note: `:EuropaStartKernel {name}` accepts an optional kernel name argument; the
+Note: `:EuropaStartKernel [{name}]` accepts an optional kernel name argument; the
 `<Plug>(europa-start-kernel)` handle starts the default kernel. For non-default
 kernels, invoke the command directly.
 
