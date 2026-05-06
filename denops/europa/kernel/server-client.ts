@@ -449,7 +449,7 @@ export class ServerKernelClient implements KernelClient {
       // Abort listener already set state to "disconnected"; skip the loop to
       // avoid a transient "reconnecting" flicker after teardown.
       if (runtime.abort.signal.aborted) return;
-      this._runReconnectLoop();
+      void this._runReconnectLoop().catch(() => {});
     }, { once: true });
   }
 
