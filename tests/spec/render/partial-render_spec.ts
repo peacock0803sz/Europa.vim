@@ -171,21 +171,26 @@ describe("applyPartialRenderPlan — above-cell-bit-identical (SC-003)", () => {
 
       await applyPartialRenderPlan(host, 1, nb, "cell-2", caps);
 
-      // Direct cursor-movement Vim functions must not be called during partial
-      // render. win_execute() is used only for window options (conceallevel),
-      // not cursor movement, so it is excluded from this check.
-      const cursorCalls = host.calls.filter(
-        (c) =>
-          c.method === "call" &&
-          ["cursor", "setpos", "nvim_win_set_cursor"].includes(
+      // Cursor-movement must not be called during partial render — checked
+      // across both the denops.call() path (cursor/setpos/nvim_win_set_cursor)
+      // and the denops.cmd() path used by restoreCursor() in viewer.ts
+      // ("call cursor(...)" / win_execute(..., 'call cursor(...)')).
+      const cursorCalls = host.calls.filter((c) => {
+        if (c.method === "call") {
+          return ["cursor", "setpos", "nvim_win_set_cursor"].includes(
             c.args[0] as string,
-          ),
-      );
+          );
+        }
+        if (c.method === "cmd") {
+          return /\bcursor\s*\(|\bsetpos\s*\(/.test(c.args[0] as string);
+        }
+        return false;
+      });
 
       assertEquals(
         cursorCalls.length,
         0,
-        "partial render must not call cursor-position-changing functions",
+        "partial render must not call cursor-position-changing functions (call or cmd path)",
       );
     },
   );
