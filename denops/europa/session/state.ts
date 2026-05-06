@@ -16,6 +16,7 @@
 import type { ScratchLookup, Session } from "../../../schema/session.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
 import type { SessionRuntime } from "../../../contracts/session-runtime.ts";
+import type { IopubBatchScheduler } from "../../../contracts/iopub-batch-scheduler.ts";
 export type { SessionRuntime };
 
 /**
@@ -92,7 +93,7 @@ export class SessionStore {
    * (the brief window between `client.start()` and `createIopubBatchScheduler`
    * in `startKernel`).
    */
-  getIopubScheduler(bufnr: number) {
+  getIopubScheduler(bufnr: number): IopubBatchScheduler | undefined {
     return this.get(bufnr)?.kernelRuntime?.iopubBatchScheduler;
   }
 
