@@ -80,6 +80,10 @@ class UndoHistoryImpl implements UndoHistory {
 
   setProcessor(processor: UndoHistoryProcessor): void {
     this.processor = processor;
+    // Restart draining if items were enqueued before the processor was registered.
+    if (!this.inFlight && this.requestQueue.length > 0) {
+      this.processNext();
+    }
   }
 
   peekUndo(): UndoEntry | undefined {
