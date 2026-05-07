@@ -248,6 +248,32 @@ KERNEL EXECUTION COMMANDS~
 
 	See also: |<Plug>(europa-cancel-cell)|, |:EuropaRunAll|
 
+							*:EuropaUndo*
+:EuropaUndo
+	Roll back the most recent structural mutation in the current ft=europa
+	buffer.  Equivalent to pressing `u` when |g:europa_disable_default_mappings|
+	is not set.
+
+	Operates on cell-level operations (insert, delete, move, split, join,
+	change-type, edit).  Kernel outputs and execution counts are preserved
+	across undo (they are intentionally not included in the undo snapshot).
+
+	The undo history is per-buffer and reset when the buffer is wiped out.
+	Stack depth is controlled by |g:europa_undo_max_history| (default 100).
+
+	See also: |:EuropaRedo|, |<Plug>(europa-undo)|
+
+							*:EuropaRedo*
+:EuropaRedo
+	Re-apply the most recently undone structural mutation in the current
+	ft=europa buffer.  Equivalent to pressing `<C-r>` when
+	|g:europa_disable_default_mappings| is not set.
+
+	The redo stack is cleared whenever a new mutation is committed (matching
+	Vim's native undo behaviour).
+
+	See also: |:EuropaUndo|, |<Plug>(europa-redo)|
+
 FUTURE COMMANDS~
 						*europa-commands-future*
 The following commands are planned for a later phase.
