@@ -5,13 +5,12 @@
  * serialises concurrent undo/redo keystrokes into one-at-a-time processing.
  *
  * Design decisions (from plan.md Q3 / FR-023):
- * - Each keystroke maps 1:1 to a step in the queue. Coalescing was rejected
- *   because "pressed N times, rolled back fewer" is unintuitive.
  * - FR-023: per-buffer FIFO queue. Each keystroke maps 1:1 to a step.
  *   Coalescing was rejected because "pressed N times, rolled back fewer"
  *   is unintuitive.
- * - The queue drains via a `processNext` loop; async tail-call recursion is
- *   avoided by using a while-loop to prevent stack overflow under fast input.
+ * - The queue drains via Promise-based tail recursion in `processNext`.
+ *   Each step schedules the next via `.then()`, so the JS call stack is
+ *   never extended regardless of queue depth.
  *
  * @module denops/europa/session/undo-history
  * @category Session
