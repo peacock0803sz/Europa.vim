@@ -69,6 +69,8 @@ function attachConfig(url: string, token: string): EuropaConfig {
     wsReconnectInitialIntervalMs: 1000,
     wsReconnectMultiplier: 2.0,
     kernelInfoTimeoutMs: 10000,
+    undo_max_history: 100,
+    disable_default_mappings: false,
   };
 }
 
