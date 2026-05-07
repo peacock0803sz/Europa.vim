@@ -228,10 +228,9 @@ export async function restoreCursor(
   newCellRanges: readonly CellRange[],
   hint?: { preferCellId?: string },
 ): Promise<void> {
+  if (winid <= 0) return;
   const cursorCmd = (line: number, col = 1) =>
-    winid > 0
-      ? `call win_execute(${winid}, 'call cursor(${line}, ${col})')`
-      : `call cursor(${line}, ${col})`;
+    `call win_execute(${winid}, 'call cursor(${line}, ${col})')`;
   // (1) hint overrides everything
   if (hint?.preferCellId) {
     const r = newCellRanges.find((r) => r.cellId === hint.preferCellId);

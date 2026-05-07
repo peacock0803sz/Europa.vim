@@ -38,6 +38,18 @@ const WHITELIST = new Set([
   // Phase 3.4: QueueEntry is an internal scheduler implementation detail
   // (KernelMessage + metadata) — not a domain entity and not exported.
   "denops/europa/render/iopub-batch.ts",
+  // Dispatcher split: context shape and cell mutation operator result are
+  // RPC-layer glue types, not schema/domain data.
+  "denops/europa/dispatcher/context.ts",
+  "denops/europa/dispatcher/cell/_operator.ts",
+  // ws-types.ts defines WSConnectionState, the behavioral contract that lets
+  // ServerKernelClient expose its mutable connection state to ws-helper
+  // functions without creating circular imports. Not a domain data type.
+  "denops/europa/kernel/ws-types.ts",
+  // ws-handshake.ts uses ConnectResult and OpenResult as local return type
+  // aliases for the WS negotiation functions — internal implementation detail,
+  // not a domain entity.
+  "denops/europa/kernel/ws-handshake.ts",
 ]);
 
 // Argument parsing: --target <path> runs rule 1+2 on that path instead of
