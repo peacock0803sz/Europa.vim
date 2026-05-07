@@ -133,6 +133,12 @@ describe("restoreCursor", () => {
     const cursorCmds = h.cmdsMatching("cursor(1, 1)");
     assertEquals(cursorCmds.length > 0, true);
   });
+
+  it("does nothing when viewer window is not visible (winid <= 0)", async () => {
+    const h = mockVim();
+    await restoreCursor(h, -1, "cell-a", newRanges, newRanges);
+    assertEquals(h.calls.length, 0, "no Vim calls when winid <= 0");
+  });
 });
 
 // --- resolveScratchFiletype (europa.view.viewer.resolve-filetype) ---
