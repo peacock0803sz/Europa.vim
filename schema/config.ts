@@ -80,7 +80,7 @@ export const EuropaConfigSchema = Type.Object({
     maximum: 60000,
   }),
 
-  // FR-009: per-buffer undo / redo stack cap; out-of-range falls back to 100 (FR-022).
+  // FR-009: per-buffer undo / redo stack cap; out-of-range values are rejected with EuropaConfigError.
   undo_max_history: Type.Integer({ minimum: 10, maximum: 1000, default: 100 }),
 
   // FR-004: opt-out for ft=europa default u / <C-r> override.

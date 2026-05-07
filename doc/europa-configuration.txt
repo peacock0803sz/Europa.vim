@@ -183,8 +183,8 @@ g:europa_undo_max_history
 	Entries are evicted in FIFO order when the limit is exceeded (oldest
 	mutation is dropped first).
 
-	Values outside the range [10, 1000] fall back to the default with
-	a |WarningMsg|.
+	Values outside the range [10, 1000] are rejected with an error at
+	startup (EuropaConfigError).
 
 	Type: integer  Range: 10-1000  Default: `100`
 
