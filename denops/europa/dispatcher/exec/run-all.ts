@@ -49,7 +49,7 @@ export function buildRunAllDispatcher(
 
       const allCells = session!.notebook.cells;
       const codeCells = allCells.filter((c) => c.cell_type === "code");
-      const markdownSkipped = allCells.length - codeCells.length;
+      const nonCodeSkipped = allCells.length - codeCells.length;
 
       const entries: Array<{ cell: typeof codeCells[0]; msgId: string }> = [];
       for (const cell of codeCells) {
@@ -134,7 +134,7 @@ export function buildRunAllDispatcher(
 
       if (!errorStopped) {
         const skipParts: string[] = [];
-        if (markdownSkipped > 0) skipParts.push(`${markdownSkipped} markdown`);
+        if (nonCodeSkipped > 0) skipParts.push(`${nonCodeSkipped} non-code`);
         if (cancelledSkipped > 0) {
           skipParts.push(`${cancelledSkipped} cancelled`);
         }

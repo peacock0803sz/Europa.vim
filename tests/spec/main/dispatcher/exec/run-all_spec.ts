@@ -87,7 +87,7 @@ describe(
           true,
           "must show 'Ran 3 code cells' completion message",
         );
-        const skippedMsgs = run2Host.cmdsMatching("skipped 2 markdown");
+        const skippedMsgs = run2Host.cmdsMatching("skipped 2 non-code");
         assertEquals(
           skippedMsgs.length > 0,
           true,
