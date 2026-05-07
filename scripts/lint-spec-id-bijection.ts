@@ -45,6 +45,16 @@ const AREA_ALLOWLIST = new Set([
   //   dispatcher.{run-cell,run-all,interrupt-kernel,restart-kernel,cancel-cell}
   //   config.kernel-info-timeout-defaults
   //   render.cell-exec-state-sign
+  // Phase 008 (undo/redo) additions — all under existing top-level areas:
+  //   session.undo-history.{push,pop-undo,pop-redo,clear-redo,fifo-overflow,enqueue-undo,enqueue-redo,
+  //     queue-overflow,empty-stack,sequential-processing,set-processor,push-undo-front,push-redo-front,dispose}
+  //   session.state.{undo-history-init,undo-history-gc-on-bufwipeout,last-saved-snapshot-init}
+  //   notebook.structural-snapshot.{take,restore-keep-outputs,restore-resurrect-empty-outputs,
+  //     restore-keep-execution-count,restore-resurrect-null-execution-count}
+  //   dispatcher.{europa-undo,europa-redo,europa-undo-render-failure,europa-redo-render-failure,
+  //     europa-undo-scratch-dirty-refuse,europa-undo-empty-stack-warn,europa-redo-invalidate-on-mutation,
+  //     europa-undo-affected-cell-cursor,europa-undo-iopub-flush}
+  //   config.{undo-max-history-default,undo-max-history-out-of-range,disable-default-mappings-default}
 ]);
 
 type Occurrence = { id: string; file: string; line: number };
