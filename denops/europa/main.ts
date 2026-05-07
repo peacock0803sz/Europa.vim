@@ -368,8 +368,24 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
       }
 
-      // ⑨ Snapshot swap: push current (pre-undo) state onto the opposite stack
-      const oppositeEntry: UndoEntry = { ...entry, snapshot: savedPreSnapshot };
+      // ⑨ Snapshot swap: push current (pre-undo) state onto the opposite stack.
+      // For saveCellEdit entries, preSource must be taken from savedPreSnapshot so
+      // that applying the opposite direction writes the correct text to scratch.
+      const oppositeSync = entry.scratchSync
+        ? (() => {
+          const snapCell = savedPreSnapshot.cells.find(
+            (c) => c.id === entry.scratchSync!.cellId,
+          );
+          return snapCell
+            ? { cellId: entry.scratchSync.cellId, preSource: snapCell.source }
+            : entry.scratchSync;
+        })()
+        : undefined;
+      const oppositeEntry: UndoEntry = {
+        ...entry,
+        snapshot: savedPreSnapshot,
+        scratchSync: oppositeSync,
+      };
       if (kind === "undo") {
         session.undoHistory.pushRedoFront(oppositeEntry);
       } else {
