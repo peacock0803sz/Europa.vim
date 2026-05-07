@@ -506,7 +506,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         notebookPath: pathStr,
         notebook,
         cellMap: plan.cellMap,
-      });
+      }, config.undo_max_history);
       // Wire the undo processor immediately after add() (T024)
       sessionStore.get(bufnrNum)!.undoHistory.setProcessor(
         (kind) => processOne(bufnrNum, kind),

@@ -52,11 +52,14 @@ export class SessionStore {
   /**
    * Register a new session and initialise its undo history.
    *
+   * @param session - The session to register.
+   * @param maxHistory - Override the store-level cap for this buffer. Defaults
+   *   to the value passed to the constructor (100 if not set).
    * @spec-id europa.session.state.undo-history-init
    * @spec-id europa.session.state.last-saved-snapshot-init
    */
-  add(session: Session): void {
-    const undoHistory = createUndoHistory(this.maxHistory);
+  add(session: Session, maxHistory?: number): void {
+    const undoHistory = createUndoHistory(maxHistory ?? this.maxHistory);
     const lastSavedSnapshot = takeStructuralSnapshot(session.notebook);
     this.store.set(session.bufnr, {
       ...session,
