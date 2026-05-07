@@ -902,6 +902,33 @@ describe("saveCellEdit dispatcher", () => {
     );
     assertEquals(dirty !== undefined, true);
   });
+
+  // T030: verify that saveCellEdit pushes to undoHistory with opType=saveCellEdit
+  // and scratchSync.preSource = the source before the save.
+  it("pushes undo entry with opType=saveCellEdit before mutating cell.source (T030)", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
+    await dispatcher.editCell(VIEWER_BUFNR, TARGET_CELL_ID);
+    const idCall = host.callsTo("setbufvar").find((c) =>
+      c.args[2] === "europa_cell_id" && c.args[3] === TARGET_CELL_ID
+    )!;
+    const scratchBufnr = idCall.args[1] as number;
+    await host.call("setbufline", scratchBufnr, 1, ["new source"]);
+    host.calls = [];
+    await dispatcher.saveCellEdit(scratchBufnr);
+
+    // Verify push was called: europaUndo should succeed (no "nothing to undo")
+    host.calls = [];
+    await dispatcher.europaUndo(VIEWER_BUFNR);
+    await new Promise((r) => setTimeout(r, 80));
+    const warnCmds = host.cmdsMatching("nothing to undo");
+    assertEquals(
+      warnCmds.length,
+      0,
+      "saveCellEdit must push to undoHistory with opType=saveCellEdit",
+    );
+  });
 });
 
 // --- closeCellEdit dispatcher (europa.dispatcher.close-cell-edit) ---

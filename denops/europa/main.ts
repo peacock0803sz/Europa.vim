@@ -227,6 +227,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
    * @spec-id europa.dispatcher.europa-undo-render-failure
    * @spec-id europa.dispatcher.europa-redo-render-failure
    * @spec-id europa.dispatcher.europa-redo-invalidate-on-mutation
+   * @spec-id europa.dispatcher.europa-undo-scratch-dirty-refuse
    */
   async function processOne(
     bufnr: number,
@@ -238,7 +239,44 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     // ① Save the current state so we can swap it onto the opposite stack later
     const savedPreSnapshot = takeStructuralSnapshot(session.notebook);
 
-    // ② US3 skeleton: US1 structural ops never set scratchSync → pass-through.
+    // ② Scratch dirty check (FR-010): refuse undo if an unrelated scratch has unsaved edits.
+    // saveCellEdit entries are exempt — they represent the scratch's own write (dirty=false
+    // invariant holds because :w was just executed before push was called).
+    {
+      const peekEntry = kind === "undo"
+        ? session.undoHistory.peekUndo()
+        : session.undoHistory.peekRedo();
+      if (peekEntry) {
+        const affectedId = resolveAffectedCellId(
+          peekEntry.beforeHint,
+          session.notebook,
+        );
+        if (affectedId) {
+          const scrBn = sessionStore.getScratchBufnr(bufnr, affectedId);
+          if (scrBn !== undefined) {
+            const isSelfSave = peekEntry.opType === "saveCellEdit" &&
+              peekEntry.scratchSync?.cellId === affectedId;
+            if (!isSelfSave) {
+              const modified = await denops.call(
+                "getbufvar",
+                scrBn,
+                "&modified",
+              );
+              if (modified === 1 || modified === "1") {
+                await denops.cmd(
+                  `echohl ErrorMsg | echom ${
+                    vimSingleQuote(
+                      `Europa: undo refused — scratch buffer for cell '${affectedId}' is dirty`,
+                    )
+                  } | echohl None`,
+                );
+                return;
+              }
+            }
+          }
+        }
+      }
+    }
 
     // ③ iopub flush — defensive optional chain (FR-013, Phase 3.4 non-dependency)
     await session.kernelRuntime?.iopubBatchScheduler?.flushNow?.();
@@ -283,6 +321,33 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       );
       sessionStore.update(bufnr, { cellMap: plan.cellMap });
       sessionStore.setRenderPlan(bufnr, plan);
+
+      // ⑥ Scratch sync (US3): write preSource back to open scratch buffer
+      if (entry.scratchSync) {
+        const scrBn = sessionStore.getScratchBufnr(
+          bufnr,
+          entry.scratchSync.cellId,
+        );
+        if (scrBn !== undefined) {
+          const newLines = entry.scratchSync.preSource.split("\n");
+          await denops.call("setbufline", scrBn, 1, newLines);
+          await denops.call("setbufvar", scrBn, "&modified", 0);
+          // Remove excess lines if new source is shorter
+          const existingCount = (await denops.call(
+            "getbufinfo",
+            scrBn,
+          ) as { linecount: number }[])[0]?.linecount ?? newLines.length;
+          if (existingCount > newLines.length) {
+            await denops.call(
+              "deletebufline",
+              scrBn,
+              newLines.length + 1,
+              existingCount,
+            );
+          }
+        }
+      }
+
       await applyRenderPlan(denops, bufnr, plan);
 
       // ⑧ Move cursor to affected cell
@@ -1354,6 +1419,22 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         "$",
       ) as string[];
       const newSource = lines.join("\n");
+      // Push undo entry before mutation — preSource = cell.source before the save
+      const cellIdx = session.notebook.cells.findIndex(
+        (c) => c.id === lookup.cellId,
+      );
+      if (cellIdx >= 0) {
+        session.undoHistory.push({
+          opType: "saveCellEdit",
+          snapshot: takeStructuralSnapshot(session.notebook),
+          beforeHint: { kind: "single", cellId: lookup.cellId },
+          afterHint: { kind: "single", cellId: lookup.cellId },
+          scratchSync: {
+            cellId: lookup.cellId,
+            preSource: session.notebook.cells[cellIdx].source,
+          },
+        });
+      }
       const newNotebook = updateCellSource(
         session.notebook,
         lookup.cellId,
