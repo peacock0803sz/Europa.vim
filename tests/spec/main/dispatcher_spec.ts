@@ -2638,7 +2638,7 @@ describe(
 // Behavioral proof: mutation + europaUndo reverts state without "nothing to undo".
 // ---------------------------------------------------------------------------
 
-describe("undoHistory.push — called by all 6 structural mutation dispatchers (T018)", () => {
+describe("undoHistory.push — called by 4 structural mutation dispatchers (T018)", () => {
   const VIEWER_BUFNR = 900;
   const ANCHOR_ID = "018f1a2b-3c4d-7e5f-6a7b-8c9d0e1f2a3b";
   let dispatcher: Awaited<ReturnType<typeof buildDispatcher>>;
