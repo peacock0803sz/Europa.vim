@@ -1,5 +1,11 @@
 set nocompatible
 
+" Required for ftplugin/europa.vim to load (= buffer-local `u` / `<C-r>` undo
+" bindings under FR-004). Vim leaves filetype plugin loading off by default;
+" Neovim already enables it, which is why Vim hits E21 on `u` while Neovim
+" does not when this directive is missing.
+filetype plugin on
+
 set runtimepath+=$VIM_PLUGINS_DIR/denops.vim/
 if isdirectory($VIM_PLUGINS_DIR .. '/capture.vim')
   set runtimepath+=$VIM_PLUGINS_DIR/capture.vim/ " Optional, for capturing messages
