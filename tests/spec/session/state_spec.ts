@@ -8,10 +8,14 @@
  * @spec-id europa.session.state.kernel-runtime-update
  * @spec-id europa.session.state.kernel-runtime-remove
  * @spec-id europa.session.state.by-kernel-many
+ * @spec-id europa.session.state.undo-history-init
+ * @spec-id europa.session.state.last-saved-snapshot-init
+ * @spec-id europa.session.state.undo-history-gc-on-bufwipeout
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
 import { SessionStore } from "../../../denops/europa/session/state.ts";
+import { takeStructuralSnapshot } from "../../../denops/europa/notebook/structural-snapshot.ts";
 import type { Session } from "../../../schema/session.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
 import type { KernelRuntime } from "../../../contracts/kernel-client.ts";
@@ -42,10 +46,14 @@ describe("SessionStore", () => {
     assertEquals(store.get(99), undefined);
   });
 
-  it("add then get returns the session", () => {
+  it("add then get returns the session (with undo history augmented)", () => {
     const s = makeSession(1);
     store.add(s);
-    assertEquals(store.get(1), s);
+    const got = store.get(1);
+    assertEquals(got?.bufnr, s.bufnr);
+    assertEquals(got?.notebookPath, s.notebookPath);
+    // undoHistory must be initialised (Phase 008)
+    assertEquals(typeof got?.undoHistory, "object");
   });
 
   it("update merges a partial patch", () => {
@@ -390,5 +398,63 @@ describe("KernelRuntime — cellStates Map", () => {
     const kr = makeKernelRuntime();
     kr.cellStates.set("cell-c", "aborted");
     assertEquals(kr.cellStates.get("cell-c"), "aborted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 008: undo history init / GC (T011) — spec-ids in file header above
+// ---------------------------------------------------------------------------
+
+describe("SessionStore — undoHistory lifecycle (Phase 008)", () => {
+  let store2: SessionStore;
+
+  beforeEach(() => {
+    store2 = new SessionStore(100);
+  });
+
+  it("add() initialises session.undoHistory as an empty stack", () => {
+    const s = makeSession(60);
+    store2.add(s);
+    const session = store2.get(60)!;
+    assertEquals(session.undoHistory.getStackSizes(), {
+      undoSize: 0,
+      redoSize: 0,
+    });
+    assertEquals(session.undoHistory.peekUndo(), undefined);
+  });
+
+  it("add() sets lastSavedSnapshot matching takeStructuralSnapshot(notebook)", () => {
+    const s = makeSession(61);
+    store2.add(s);
+    const session = store2.get(61)!;
+    const expected = takeStructuralSnapshot(s.notebook);
+    assertEquals(session.lastSavedSnapshot, expected);
+  });
+
+  it("remove() disposes undoHistory before session is deleted", () => {
+    const s = makeSession(62);
+    store2.add(s);
+    const session = store2.get(62)!;
+    const history = session.undoHistory;
+    store2.remove(62);
+    // After dispose, enqueueUndo returns false
+    assertEquals(history.enqueueUndo(), false);
+    // Session is removed
+    assertEquals(store2.get(62), undefined);
+  });
+
+  it("remove() then add() for same bufnr gives independent undo stack", () => {
+    const s = makeSession(63);
+    store2.add(s);
+    const firstHistory = store2.get(63)!.undoHistory;
+    store2.remove(63);
+    // Add again (simulating :bdelete then :e)
+    store2.add({ ...s });
+    const secondHistory = store2.get(63)!.undoHistory;
+    // Independent instances
+    assertEquals(firstHistory === secondHistory, false);
+    assertEquals(secondHistory.peekUndo(), undefined);
+    // Old instance is disposed
+    assertEquals(firstHistory.enqueueUndo(), false);
   });
 });

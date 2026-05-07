@@ -16,6 +16,8 @@
 import type { ScratchLookup, Session } from "../../../schema/session.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
 import type { SessionRuntime } from "../../../contracts/session-runtime.ts";
+import { createUndoHistory } from "./undo-history.ts";
+import { takeStructuralSnapshot } from "../notebook/structural-snapshot.ts";
 export type { SessionRuntime };
 
 /**
@@ -40,12 +42,26 @@ export class SessionStore {
   /** viewerBufnr → most recent RenderPlan */
   private readonly renderPlans = new Map<number, RenderPlan>();
 
+  constructor(private readonly maxHistory: number = 100) {}
+
   get(bufnr: number): SessionRuntime | undefined {
     return this.store.get(bufnr);
   }
 
+  /**
+   * Register a new session and initialise its undo history.
+   *
+   * @spec-id europa.session.state.undo-history-init
+   * @spec-id europa.session.state.last-saved-snapshot-init
+   */
   add(session: Session): void {
-    this.store.set(session.bufnr, { ...session });
+    const undoHistory = createUndoHistory(this.maxHistory);
+    const lastSavedSnapshot = takeStructuralSnapshot(session.notebook);
+    this.store.set(session.bufnr, {
+      ...session,
+      undoHistory,
+      lastSavedSnapshot,
+    });
   }
 
   update(
@@ -58,7 +74,14 @@ export class SessionStore {
     }
   }
 
+  /**
+   * Remove a session and dispose its undo history to prevent memory leaks.
+   *
+   * @spec-id europa.session.state.undo-history-gc-on-bufwipeout
+   */
   remove(bufnr: number): void {
+    // Dispose the undo history before deleting the session (FR-009 GC)
+    this.store.get(bufnr)?.undoHistory.dispose();
     this.store.delete(bufnr);
     this.cellEditBuffers.delete(bufnr);
     this.renderPlans.delete(bufnr);
