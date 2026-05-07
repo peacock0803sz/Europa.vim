@@ -7,6 +7,7 @@
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { Notebook, Output } from "../../../schema/notebook.ts";
 import type {
+  BuildRenderPlanOpts,
   CellRange,
   RenderFragment,
   RenderPlan,
@@ -224,13 +225,7 @@ function appendCellOutputs(
 export function buildRenderPlan(
   nb: Notebook,
   caps: Capabilities,
-  opts?: {
-    maxOutputLines?: number;
-    mimePriority?: string[];
-    cellBorderChars?: readonly string[];
-    cellBorderPadding?: number;
-    cellBorderAlign?: "center" | "left";
-  },
+  opts?: BuildRenderPlanOpts,
 ): RenderPlan {
   const maxOutputLines = opts?.maxOutputLines ?? DEFAULT_MAX_OUTPUT_LINES;
   const cellBorderChars = opts?.cellBorderChars ?? DEFAULT_CELL_BORDER_CHARS;

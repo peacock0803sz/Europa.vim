@@ -155,6 +155,17 @@ export type EuropaDispatcher = {
    */
   cancelCell(bufnr: unknown, cellId: unknown): Promise<void>;
 
+  // Phase 3.4: hidden-buffer resync (Q-hidden-buffer)
+  /**
+   * Full re-render of the viewer buffer when it becomes visible again.
+   * Triggered by `BufWinEnter *.ipynb` autocmd registered in `session/events.ts`.
+   * The scheduler continues updating `cell.outputs` while the buffer is hidden,
+   * so a single full-path `applyRenderPlan` on re-entry is sufficient to sync.
+   *
+   * @spec-id europa.session.hidden-buffer.bufwinenter-resync
+   */
+  onBufWinEnter(bufnr: unknown): Promise<void>;
+
   // Phase 4: ZMQ attach
   attachKernel(connectionFile: unknown): Promise<void>;
 

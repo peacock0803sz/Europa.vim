@@ -84,6 +84,7 @@ import {
   applyMessageToCell,
   execute as kernelExecute,
 } from "./kernel/execute.ts";
+import { createIopubBatchScheduler } from "./render/iopub-batch.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
@@ -451,6 +452,10 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `insertCell: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict (clarify 2026-05-06): partial render must drain
+      // before line buffer mutates so cell-marker re-attach lands on consistent state
+      // @spec-id europa.dispatcher.cellops-flush-on-entry
+      await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const validTypes = ["code", "markdown", "raw"] as const;
       const validPositions = ["before", "after"] as const;
       const typeStr = String(type);
@@ -541,6 +546,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `deleteCell: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
+      await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const cid = String(cellId);
       const prePlan = sessionStore.getRenderPlan(bn);
       const preCellRanges = prePlan?.cellRanges ?? [];
@@ -627,6 +634,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `moveCell: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
+      await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const cid = String(cellId);
       const validDirections = ["up", "down"] as const;
       const dirStr = String(direction);
@@ -769,6 +778,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
+      await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       if (await refuseIfScratchDirty(viewerBufnr, cid)) return;
       const prePlan = sessionStore.getRenderPlan(viewerBufnr);
       const preCellRanges = prePlan?.cellRanges ?? [];
@@ -861,6 +872,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `joinCell: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
+      await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const cid = String(cellId);
       const idx = session.notebook.cells.findIndex((c) => c.id === cid);
       if (idx === -1) {
@@ -1029,6 +1042,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `changeCellType: no session for buffer ${bn}`);
         return;
       }
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
+      await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const validTypes = ["code", "markdown", "raw"] as const;
       const typeStr = String(newType);
       if (!validTypes.includes(typeStr as typeof validTypes[number])) {
@@ -1106,6 +1121,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       if (!lookup) return;
       const session = sessionStore.get(lookup.viewerBufnr);
       if (!session) return;
+      // Q-structural-conflict: drain iopub batch before line buffer mutates
+      await session.kernelRuntime?.iopubBatchScheduler?.flushNow();
       const lines = await denops.call(
         "getbufline",
         sbn,
@@ -1227,6 +1244,17 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       try {
         const cwd = await denops.call("expand", `#${bn}:p:h`) as string;
         const runtime = await client.start({ kernelName: kn, cwd });
+        // Scheduler is created here (not in server-client.ts) because bufnr,
+        // notebook, and caps are only available in the dispatcher layer
+        // (research.md §4 / §8). The instance lives for the full kernel session.
+        const caps = await detectCapabilities(denops);
+        runtime.iopubBatchScheduler = createIopubBatchScheduler({
+          denops,
+          bufnr: bn,
+          getNotebook: () => sessionStore.get(bn)!.notebook,
+          caps,
+          renderOpts: renderPlanOpts(config),
+        });
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
         const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
@@ -1249,7 +1277,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       const bn = Number(bufnr);
       const session = sessionStore.get(bn);
       if (!session?.kernelRuntime) return;
-      const { client } = session.kernelRuntime;
+      const { client, iopubBatchScheduler } = session.kernelRuntime;
+      // Drain any pending iopub batch before tearing down the connection
+      await iopubBatchScheduler?.dispose();
       try {
         await client.shutdown();
       } catch (e) {
@@ -1317,6 +1347,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           .filter((s) => s.kernelRuntime != null)
           .map(async (s) => {
             try {
+              await s.kernelRuntime!.iopubBatchScheduler?.dispose();
               await s.kernelRuntime!.client.shutdown();
             } catch { /* shutdown errors during exit are best-effort */ }
           }),
@@ -1439,11 +1470,30 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       // Capture signal at dispatch time so restart/interrupt can abort this
       // specific execute via runtime.abort.abort() (FR-012).
       const execSignal = kr.abort.signal;
+      // @spec-id europa.dispatcher.runcell-batch-driven
+      // @spec-id europa.session.hidden-buffer.outputs-still-update
       try {
         for await (
           const msg of kernelExecute(kr, code, { msgId, signal: execSignal })
         ) {
+          // applyMessageToCell owns in-memory state; scheduler only drives
+          // the viewer RPC (SC-005 / Q1=A separation of concerns).
           applyMessageToCell(codeCell, msg);
+          kr.iopubBatchScheduler?.enqueue(msg, cellId);
+          // Q3=C: flush immediately on execute_reply (hybrid tick+reply path)
+          if (msg.header.msg_type === "execute_reply") {
+            await kr.iopubBatchScheduler?.flushNow();
+          }
+          // IOPub status:idle — confirm idle and drain any residual queue
+          if (
+            msg.header.msg_type === "status" &&
+            (msg.content as { execution_state?: string })
+                .execution_state === "idle" &&
+            (msg.parent_header as { msg_id?: string }).msg_id === msgId
+          ) {
+            await kr.iopubBatchScheduler?.flushNow();
+            if (kr.execState === "busy") kr.execState = "idle";
+          }
         }
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
@@ -1454,22 +1504,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         }
       } finally {
         complete(kr, msgId);
-        // Guard against clobbering "restarting" set by a concurrent restartKernel (FR-011).
+        // Guard for AbortError / restart cases where status:idle was never
+        // received — prevents execState from staying "busy" permanently.
         if (kr.execState === "busy") kr.execState = "idle";
-        // Full re-render once execution completes (incremental rendering is Phase 5+)
-        try {
-          const config = await loadConfig(denops);
-          const caps = await detectCapabilities(denops);
-          const plan = buildRenderPlan(
-            session!.notebook,
-            caps,
-            renderPlanOpts(config),
-          );
-          sessionStore.setRenderPlan(bn, plan);
-          await applyRenderPlan(denops, bn, plan);
-        } catch {
-          // Re-render failure is non-fatal
-        }
       }
     },
     // @spec-id europa.dispatcher.run-all
@@ -1548,6 +1585,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           markSent(kr, msgId);
           const runAllSignal = kr.abort.signal;
           let execStatus = "ok";
+          // @spec-id europa.dispatcher.runall-batch-driven
           try {
             for await (
               const msg of kernelExecute(kr, code, {
@@ -1556,11 +1594,12 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
               })
             ) {
               applyMessageToCell(codeCell, msg);
-              if (
-                msg.header.msg_type === "execute_reply" &&
-                (msg.content as { status?: string }).status
-              ) {
-                execStatus = (msg.content as { status: string }).status;
+              kr.iopubBatchScheduler?.enqueue(msg, codeCell.id);
+              if (msg.header.msg_type === "execute_reply") {
+                await kr.iopubBatchScheduler?.flushNow();
+                if ((msg.content as { status?: string }).status) {
+                  execStatus = (msg.content as { status: string }).status;
+                }
               }
             }
           } catch {
@@ -1594,20 +1633,6 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       } finally {
         // Guard against clobbering "restarting" set by a concurrent restartKernel (FR-011).
         if (kr.execState === "busy") kr.execState = "idle";
-        // Re-render after all cells executed
-        try {
-          const config = await loadConfig(denops);
-          const caps = await detectCapabilities(denops);
-          const plan = buildRenderPlan(
-            session!.notebook,
-            caps,
-            renderPlanOpts(config),
-          );
-          sessionStore.setRenderPlan(bn, plan);
-          await applyRenderPlan(denops, bn, plan);
-        } catch {
-          // Re-render failure is non-fatal
-        }
       }
 
       if (!errorStopped) {
@@ -1816,6 +1841,36 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
           )
         }`,
       );
+    },
+
+    /**
+     * Full re-render when a viewer buffer becomes visible after being hidden.
+     *
+     * Triggered by `BufWinEnter *.ipynb` autocmd. Because the scheduler
+     * continues updating `cell.outputs` in memory while the buffer is hidden,
+     * one full `applyRenderPlan` call on BufWinEnter is sufficient to sync
+     * everything the user sees.
+     *
+     * @spec-id europa.session.hidden-buffer.bufwinenter-resync
+     */
+    async onBufWinEnter(_bufnr: unknown): Promise<void> {
+      const bn = Number(_bufnr);
+      if (!Number.isInteger(bn) || bn < 1) return;
+      const session = sessionStore.get(bn);
+      if (!session) return;
+      try {
+        const config = await loadConfig(denops);
+        const caps = await detectCapabilities(denops);
+        const plan = buildRenderPlan(
+          session.notebook,
+          caps,
+          renderPlanOpts(config),
+        );
+        sessionStore.setRenderPlan(bn, plan);
+        await applyRenderPlan(denops, bn, plan);
+      } catch {
+        // Re-render failure is non-fatal
+      }
     },
 
     // Phase 4: ZMQ attach

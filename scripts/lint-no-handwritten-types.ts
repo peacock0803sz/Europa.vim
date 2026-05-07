@@ -35,6 +35,9 @@ const WHITELIST = new Set([
   "denops/europa/kernel/watchdog.ts",
   "denops/europa/kernel/server-client.ts",
   "denops/europa/kernel/server-pool.ts",
+  // Phase 3.4: QueueEntry is an internal scheduler implementation detail
+  // (KernelMessage + metadata) — not a domain entity and not exported.
+  "denops/europa/render/iopub-batch.ts",
 ]);
 
 // Argument parsing: --target <path> runs rule 1+2 on that path instead of

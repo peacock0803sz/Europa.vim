@@ -104,6 +104,10 @@ export async function* execute(
   const buffer: KernelMessage[] = [];
   let resolveNext: ((msg: KernelMessage) => void) | null = null;
   let receivedReply = false;
+  // receivedIdle: set when IOPub status:idle arrives for this msg_id.
+  // Prevents the iterator from exiting before status:idle is delivered when
+  // execute_reply (shell channel) arrives first (T016a invariant).
+  let receivedIdle = false;
 
   // Check before subscribing to avoid an orphaned onMessage listener: if the
   // signal is already aborted, the throw happens before the try/finally block
@@ -115,6 +119,10 @@ export async function* execute(
     if (!ph || ph.msg_id !== msgId) return;
 
     if (msg.header.msg_type === "execute_reply") receivedReply = true;
+    if (
+      msg.header.msg_type === "status" &&
+      (msg.content as { execution_state?: string }).execution_state === "idle"
+    ) receivedIdle = true;
 
     if (resolveNext) {
       const resolve = resolveNext;
@@ -132,7 +140,7 @@ export async function* execute(
 
   try {
     runtime.socket.send(encoded);
-    while (!receivedReply || buffer.length > 0) {
+    while (!receivedReply || !receivedIdle || buffer.length > 0) {
       opts?.signal?.throwIfAborted();
 
       const msg = buffer.shift() ??

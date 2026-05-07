@@ -303,15 +303,36 @@ export async function applyRenderPlan(
   opts?: {
     viewport?: { topLine: number; bottomLine: number };
     _magickConverter?: MagickConverter;
+    /**
+     * When provided, only lines from the given cell's startLine onwards are
+     * written via setbufline. Lines above are left untouched so that Vim
+     * text-property and Neovim extmark IDs for those cells remain
+     * bit-identical (SC-003 / Q2=B). Falls back to the full-render path when
+     * the cellId is not found in `plan.cellRanges`.
+     *
+     * @spec-id europa.render.partial.below-cell-line-offset-reattach
+     * @spec-id europa.render.partial.above-cell-bit-identical
+     */
+    fromCellId?: string;
   },
 ): Promise<void> {
   await host.call("setbufvar", bufnr, "&modifiable", 1);
 
+  // Determine the first line to write. When fromCellId is provided and found
+  // in the plan, skip all lines above that cell (bit-identical preservation).
+  const firstAffectedLine = (() => {
+    if (!opts?.fromCellId) return 0;
+    const range = plan.cellRanges?.find((r) => r.cellId === opts.fromCellId);
+    return range ? range.startLine : 0; // not found → full render
+  })();
+
   try {
-    const topOffset = opts?.viewport ? opts.viewport.topLine : 0;
+    const topOffset = opts?.viewport
+      ? opts.viewport.topLine
+      : firstAffectedLine;
     const lines = opts?.viewport
       ? plan.lines.slice(opts.viewport.topLine, opts.viewport.bottomLine + 1)
-      : plan.lines;
+      : plan.lines.slice(firstAffectedLine);
 
     if (lines.length > 0) {
       await host.call("setbufline", bufnr, topOffset + 1, lines);
