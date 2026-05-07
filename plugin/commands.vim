@@ -52,3 +52,9 @@ command! -nargs=0 EuropaInterrupt
       \ call europa#interrupt()
 command! -nargs=0 EuropaRestartKernel
       \ call europa#restart_kernel()
+
+" Phase 008: undo / redo (T012)
+command! -nargs=0 EuropaUndo
+      \ call denops#notify('europa', 'europaUndo', [bufnr('%')])
+command! -nargs=0 EuropaRedo
+      \ call denops#notify('europa', 'europaRedo', [bufnr('%')])

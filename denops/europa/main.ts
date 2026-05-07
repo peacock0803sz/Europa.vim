@@ -1822,6 +1822,42 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     attachKernel(_connectionFile: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("attachKernel"));
     },
+
+    // Phase 008: spec-id added in T024 once dispatcher-undo_spec.ts exists.
+    async europaUndo(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `no open session for buffer ${bn}`);
+        return;
+      }
+      const accepted = session.undoHistory.enqueueUndo();
+      if (!accepted) {
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote("Europa: undo busy, retry")
+          } | echohl None`,
+        );
+      }
+    },
+
+    // Phase 008: spec-id added in T024 once dispatcher-undo_spec.ts exists.
+    async europaRedo(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `no open session for buffer ${bn}`);
+        return;
+      }
+      const accepted = session.undoHistory.enqueueRedo();
+      if (!accepted) {
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote("Europa: redo busy, retry")
+          } | echohl None`,
+        );
+      }
+    },
   };
 }
 
