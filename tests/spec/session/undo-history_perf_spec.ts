@@ -36,7 +36,9 @@ function makeEntry(): UndoEntry {
 }
 
 function drain(): Promise<void> {
-  return new Promise((r) => setTimeout(r, 80));
+  // setTimeout(0) fires after all pending microtasks are flushed, which is
+  // sufficient since mockVim resolves every denops.call() synchronously.
+  return new Promise((r) => setTimeout(r, 0));
 }
 
 // ---------------------------------------------------------------------------
