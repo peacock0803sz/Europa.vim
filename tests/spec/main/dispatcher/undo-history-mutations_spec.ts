@@ -2,10 +2,11 @@
  * BDD specs for undoHistory.push — called by 4 structural mutation dispatchers (T018).
  *
  * Phase 008 addition (T018):
- * Verifies that each of the 6 structural mutation dispatchers calls
- * session.undoHistory.push() before mutating the notebook. Verified
+ * Verifies that each of the 4 structural mutation dispatchers (insert/delete/move/changeType)
+ * calls session.undoHistory.push() before mutating the notebook. Verified
  * behaviorally: after a mutation, europaUndo reverses the change, confirming
  * an entry was pushed (a missing push would yield "nothing to undo").
+ * Note: splitCell and joinCell undo push coverage is tracked separately.
  */
 import { beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertExists } from "@std/assert";
