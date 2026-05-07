@@ -1,0 +1,74 @@
+import type { EuropaDispatcher } from "../../../../contracts/dispatcher.ts";
+import { deleteCell as deleteNotebookCell } from "../../notebook/cell.ts";
+import { takeStructuralSnapshot } from "../../notebook/structural-snapshot.ts";
+import { closeCellEditAutocmds, lineToCellId } from "../../view/viewer.ts";
+import { type DispatcherContext, echomError } from "../context.ts";
+import { operateCell } from "./_operator.ts";
+
+export function buildDeleteCellDispatcher(
+  ctx: DispatcherContext,
+): Pick<EuropaDispatcher, "deleteCell"> {
+  const { denops, sessionStore } = ctx;
+  return {
+    /**
+     * Delete the cell with the given id from the notebook.
+     *
+     * @spec-id europa.dispatcher.delete-cell
+     */
+    async deleteCell(bufnr: unknown, cellId: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `deleteCell: no session for buffer ${bn}`);
+        return;
+      }
+      const cid = String(cellId);
+      const prePlan = sessionStore.getRenderPlan(bn);
+      const preCellRanges = prePlan?.cellRanges ?? [];
+      const winid = await denops.call("bufwinid", bn) as number;
+      const cursorPos = winid > 0
+        ? await denops.call("getcurpos", winid) as number[]
+        : [0, 1, 0, 0, 0];
+      const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const preSnapshot = takeStructuralSnapshot(session.notebook);
+      const newNotebook = deleteNotebookCell(session.notebook, cid);
+      if (Object.is(newNotebook, session.notebook)) {
+        await echomError(denops, `deleteCell: cell '${cid}' not found`);
+        return;
+      }
+
+      session.undoHistory.push({
+        opType: "deleteCell",
+        snapshot: preSnapshot,
+        beforeHint: { kind: "delete-resurrect", cellId: cid },
+        afterHint: { kind: "single", cellId: preCellId ?? cid },
+      });
+
+      const scratchBufnr = sessionStore.getScratchBufnr(bn, cid);
+      if (scratchBufnr !== undefined) {
+        const exists = await denops.call("bufexists", scratchBufnr);
+        if (exists) {
+          await denops.call("setbufvar", scratchBufnr, "&modifiable", 1);
+          await denops.call(
+            "appendbufline",
+            scratchBufnr,
+            "$",
+            "[Cell deleted from notebook]",
+          );
+          await denops.call("setbufvar", scratchBufnr, "&modifiable", 0);
+          await denops.call("setbufvar", scratchBufnr, "&modified", 0);
+          await denops.call("setbufvar", scratchBufnr, "&buftype", "nofile");
+        }
+        await closeCellEditAutocmds(denops, scratchBufnr);
+        sessionStore.removeCellEditBuffer(bn, cid);
+      }
+
+      await operateCell(ctx, {
+        bufnr: bn,
+        opName: "deleteCell",
+        session,
+        mutate: () => ({ notebook: newNotebook }),
+      });
+    },
+  };
+}
