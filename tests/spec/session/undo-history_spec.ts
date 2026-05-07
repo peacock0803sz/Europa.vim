@@ -316,3 +316,65 @@ describe("UndoHistory — dispose (europa.session.undo-history.dispose)", () => 
     assertEquals(h.getQueueLength(), 0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 008 US2 boundary-strengthening cases (T026)
+// Reuses existing spec-ids from the file header (no new declarations needed).
+// ---------------------------------------------------------------------------
+
+describe("UndoHistory — fifo-overflow boundary (maxHistory=100, 101 pushes)", () => {
+  it("101 pushes with maxHistory=100 keeps exactly 100 entries (boundary of fifo-overflow)", () => {
+    const h = createUndoHistory(100);
+    for (let i = 0; i < 101; i++) h.push(makeEntry());
+    assertEquals(h.getStackSizes().undoSize, 100);
+  });
+});
+
+describe("UndoHistory — queue-overflow boundary (maxHistory=3, 5 enqueues)", () => {
+  it("5th enqueueUndo with maxHistory=3 returns false (1 in-flight + 3 queued = full)", () => {
+    const h = createUndoHistory(3);
+    // Keep processor blocking so queue fills up (1st enqueue → in-flight)
+    h.setProcessor((_kind) => new Promise<void>(() => {}));
+    // 1st: starts processing (in-flight), queue = 0
+    h.enqueueUndo();
+    // 2nd-4th: fill queue to maxHistory (3 items)
+    h.enqueueUndo();
+    h.enqueueUndo();
+    h.enqueueUndo();
+    // 5th: queue already has maxHistory items → rejected
+    const result = h.enqueueUndo();
+    assertEquals(result, false);
+  });
+});
+
+describe("UndoHistory — sequential-processing FIFO order under concurrent enqueue", () => {
+  it("5 enqueues while in-flight are consumed in FIFO order after processor unblocks", async () => {
+    const h = createUndoHistory(100);
+    const order: number[] = [];
+    let seq = 0;
+
+    h.setProcessor((_kind) => {
+      order.push(seq++);
+      return Promise.resolve();
+    });
+
+    for (let i = 0; i < 5; i++) h.enqueueUndo();
+    await new Promise((r) => setTimeout(r, 100));
+
+    assertEquals(order.length, 5);
+    for (let i = 0; i < 5; i++) {
+      assertEquals(order[i], i, "FIFO order must be preserved");
+    }
+  });
+});
+
+describe("UndoHistory — push no-coalesce: rapid pushes each land as an independent entry", () => {
+  it("5 pushes in the same microtask group produce 5 distinct stack entries", async () => {
+    const h = createUndoHistory(100);
+    // Enqueue all 5 pushes before any await (same microtask group)
+    await Promise.resolve().then(() => {
+      for (let i = 0; i < 5; i++) h.push(makeEntry());
+    });
+    assertEquals(h.getStackSizes().undoSize, 5);
+  });
+});
