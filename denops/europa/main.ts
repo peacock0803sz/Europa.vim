@@ -553,6 +553,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       try {
         await Deno.writeTextFile(session.notebookPath, serialized);
         await denops.call("setbufvar", bufnrNum, "&modified", 0);
+        sessionStore.update(bufnrNum, {
+          lastSavedSnapshot: takeStructuralSnapshot(session.notebook),
+        });
       } catch (e) {
         await echomError(
           denops,
