@@ -2317,7 +2317,7 @@ The completion criteria are as follows. `pre-commit run --all-files` PASSes, `gi
 
 ### Phase 3 - Editing + Execution
 
-1. Cell operation commands (Insert/Delete/Move/Edit/Split/Join)
+1. Cell editing + undo (Insert/Delete/Move/Edit/Split/Join + operation-level undo/redo)
 2. Jupyter Server spawn + connection
 3. WebSocket v1 protocol implementation
 4. kernel_info / execute / interrupt / restart
