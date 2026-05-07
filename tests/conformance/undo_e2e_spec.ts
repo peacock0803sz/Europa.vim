@@ -8,8 +8,8 @@
  * - T031: saveCellEdit round-trip / FR-021 scratch-native u independence
  * - T043: FR-017 multi-window sync
  *
- * Skips early when vim/nvim are not in PATH.
- * Full subprocess interaction will be wired in a follow-up PR.
+ * All cases are marked it.ignore until the Vim/Neovim subprocess harness is
+ * implemented in a follow-up PR. Subprocess interaction will replace the stubs.
  *
  * @spec-id europa.conformance.undo-e2e.round-trip
  * @spec-id europa.conformance.undo-e2e.opt-out
@@ -19,35 +19,6 @@
  */
 
 import { describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
-
-// ---------------------------------------------------------------------------
-// Host availability detection
-// ---------------------------------------------------------------------------
-
-async function hasExecutable(name: string): Promise<boolean> {
-  try {
-    const cmd = Deno.build.os === "windows" ? "where" : "which";
-    const result = await new Deno.Command(cmd, {
-      args: [name],
-      stdout: "null",
-      stderr: "null",
-    }).output();
-    return result.success;
-  } catch {
-    return false;
-  }
-}
-
-const vimPresent = await hasExecutable("vim");
-const nvimPresent = await hasExecutable("nvim");
-
-if (!vimPresent && !nvimPresent) {
-  console.warn(
-    "[europa] undo_e2e: neither 'vim' nor 'nvim' found — all cases are skipped.\n" +
-      "[europa] Install vim 9.1.1646+ or neovim 0.11.3+ to run conformance tests.",
-  );
-}
 
 // ---------------------------------------------------------------------------
 // T019: 6 mutation × undo/redo round-trip
@@ -65,16 +36,13 @@ describe("conformance: undo/redo round-trip — 6 mutations (T019)", () => {
   ] as const;
 
   for (const mutation of mutations) {
-    it(`${mutation}: undo reverts, redo re-applies (Vim)`, () => {
-      if (!vimPresent) return;
+    it.ignore(`${mutation}: undo reverts, redo re-applies (Vim)`, () => {
       // TODO: spawn vim, open hello.ipynb, call mutation, press u, assert
       // getbufline(), press <C-r>, assert again. Requires Vim subprocess harness.
-      assertEquals(vimPresent, true);
     });
 
-    it(`${mutation}: undo reverts, redo re-applies (Neovim)`, () => {
-      if (!nvimPresent) return;
-      assertEquals(nvimPresent, true);
+    it.ignore(`${mutation}: undo reverts, redo re-applies (Neovim)`, () => {
+      // TODO: same as Vim path but with nvim.
     });
   }
 });
@@ -85,37 +53,29 @@ describe("conformance: undo/redo round-trip — 6 mutations (T019)", () => {
 // ---------------------------------------------------------------------------
 
 describe("conformance: SC-007 opt-out — disable_default_mappings (T020)", () => {
-  it("u is not bound to <Plug>(europa-undo) when opt-out is set (Vim)", () => {
-    if (!vimPresent) return;
+  it.ignore("u is not bound to <Plug>(europa-undo) when opt-out is set (Vim)", () => {
     // TODO: inject g:europa_disable_default_mappings=v:true, open .ipynb,
     // capture :nmap u, assert no <Plug>(europa-undo).
-    assertEquals(vimPresent, true);
   });
 
-  it("u is not bound to <Plug>(europa-undo) when opt-out is set (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("u is not bound to <Plug>(europa-undo) when opt-out is set (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 
-  it("FR-019: :earlier is a no-op (line buffer has no undo entries) (Vim)", () => {
-    if (!vimPresent) return;
-    assertEquals(vimPresent, true);
+  it.ignore("FR-019: :earlier is a no-op (line buffer has no undo entries) (Vim)", () => {
+    // TODO: run :earlier N, assert viewer unchanged.
   });
 
-  it("FR-019: :earlier is a no-op (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("FR-019: :earlier is a no-op (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 
-  it("FR-020: <Plug>(europa-undo) exists only in normal mode (Vim)", () => {
-    if (!vimPresent) return;
-    // :vmap / :imap must NOT show <Plug>(europa-undo); :nmap must show it.
-    assertEquals(vimPresent, true);
+  it.ignore("FR-020: <Plug>(europa-undo) exists only in normal mode (Vim)", () => {
+    // TODO: :vmap / :imap must NOT show <Plug>(europa-undo); :nmap must show it.
   });
 
-  it("FR-020: <Plug>(europa-undo) exists only in normal mode (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("FR-020: <Plug>(europa-undo) exists only in normal mode (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 });
 
@@ -125,26 +85,22 @@ describe("conformance: SC-007 opt-out — disable_default_mappings (T020)", () =
 // ---------------------------------------------------------------------------
 
 describe("conformance: SC-005 100×undo×redo round-trip (T027)", () => {
-  it("100 mutations → 100 undos → 100 redos: notebook matches at both ends (Vim)", () => {
-    if (!vimPresent) return;
-    assertEquals(vimPresent, true);
+  it.ignore("100 mutations → 100 undos → 100 redos: notebook matches at both ends (Vim)", () => {
+    // TODO: subprocess harness.
   });
 
-  it("100 mutations → 100 undos → 100 redos: notebook matches at both ends (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("100 mutations → 100 undos → 100 redos: notebook matches at both ends (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 });
 
 describe("conformance: SC-006 kernel-running undo no freeze (T027)", () => {
-  it("undo during long-running cell does not freeze viewer (Vim)", () => {
-    if (!vimPresent) return;
-    assertEquals(vimPresent, true);
+  it.ignore("undo during long-running cell does not freeze viewer (Vim)", () => {
+    // TODO: subprocess harness.
   });
 
-  it("undo during long-running cell does not freeze viewer (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("undo during long-running cell does not freeze viewer (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 });
 
@@ -154,24 +110,20 @@ describe("conformance: SC-006 kernel-running undo no freeze (T027)", () => {
 // ---------------------------------------------------------------------------
 
 describe("conformance: saveCellEdit undo round-trip (T031)", () => {
-  it("editCell → write → undo: source rolls back in viewer and scratch (Vim)", () => {
-    if (!vimPresent) return;
-    assertEquals(vimPresent, true);
+  it.ignore("editCell → write → undo: source rolls back in viewer and scratch (Vim)", () => {
+    // TODO: subprocess harness.
   });
 
-  it("editCell → write → undo: source rolls back in viewer and scratch (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("editCell → write → undo: source rolls back in viewer and scratch (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 
-  it("FR-021: scratch native u does not consume viewer undo stack (Vim)", () => {
-    if (!vimPresent) return;
-    assertEquals(vimPresent, true);
+  it.ignore("FR-021: scratch native u does not consume viewer undo stack (Vim)", () => {
+    // TODO: subprocess harness.
   });
 
-  it("FR-021: scratch native u does not consume viewer undo stack (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("FR-021: scratch native u does not consume viewer undo stack (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 });
 
@@ -181,24 +133,19 @@ describe("conformance: saveCellEdit undo round-trip (T031)", () => {
 // ---------------------------------------------------------------------------
 
 describe("conformance: FR-017 multi-window sync (T043)", () => {
-  it("undo from window A is reflected in window B (Vim)", () => {
-    if (!vimPresent) return;
+  it.ignore("undo from window A is reflected in window B (Vim)", () => {
     // TODO: spawn vim, :vsplit, mutate from A, undo from A, check both windows.
-    assertEquals(vimPresent, true);
   });
 
-  it("undo from window A is reflected in window B (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("undo from window A is reflected in window B (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 
-  it("undo from window B is reflected in window A (Vim)", () => {
-    if (!vimPresent) return;
-    assertEquals(vimPresent, true);
+  it.ignore("undo from window B is reflected in window A (Vim)", () => {
+    // TODO: subprocess harness.
   });
 
-  it("undo from window B is reflected in window A (Neovim)", () => {
-    if (!nvimPresent) return;
-    assertEquals(nvimPresent, true);
+  it.ignore("undo from window B is reflected in window A (Neovim)", () => {
+    // TODO: same as Vim path but with nvim.
   });
 });
