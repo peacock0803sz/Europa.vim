@@ -219,7 +219,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
   }
 
   /**
-   * Process one undo or redo step (9-step path, FR-018 2-stage try-catch).
+   * Process one undo or redo step (10-step path, FR-018 2-stage try-catch).
    * Called by the UndoHistory FIFO queue processor.
    * @spec-id europa.dispatcher.europa-undo-affected-cell-cursor
    * @spec-id europa.dispatcher.europa-undo-iopub-flush
@@ -307,9 +307,6 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         notebook: restoredNotebook,
         cellMap: sessionStore.getRenderPlan(bufnr)?.cellMap ?? [],
       });
-
-      // ⑥ Scratch sync (US3 skeleton: pass-through when entry.scratchSync is undefined)
-      // FR-010 / FR-011 skeleton: full implementation in US3 (saveCellEdit + scratch buffer sync).
 
       // ⑦ Full re-render
       const config = await loadConfig(denops);
