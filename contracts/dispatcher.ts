@@ -168,4 +168,18 @@ export type EuropaDispatcher = {
 
   // Phase 4: ZMQ attach
   attachKernel(connectionFile: unknown): Promise<void>;
+
+  /**
+   * Roll back the most recent structural mutation for the given buffer.
+   * Enqueues one undo step into the per-buffer FIFO queue (FR-023).
+   * @spec-id europa.dispatcher.europa-undo
+   */
+  europaUndo(bufnr: unknown): Promise<void>;
+
+  /**
+   * Re-apply the most recently undone structural mutation for the given buffer.
+   * Enqueues one redo step into the per-buffer FIFO queue (FR-023).
+   * @spec-id europa.dispatcher.europa-redo
+   */
+  europaRedo(bufnr: unknown): Promise<void>;
 };

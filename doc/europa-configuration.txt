@@ -177,4 +177,34 @@ CONNECTION OPTIONS~
 	failed attempt.  A value of `2.0` doubles the interval each time.
 	Type: float  Range: 1.0-4.0  Default: `2.0`
 
+						*g:europa_undo_max_history*
+g:europa_undo_max_history
+	Maximum number of undo entries retained per ft=europa buffer.
+	Entries are evicted in FIFO order when the limit is exceeded (oldest
+	mutation is dropped first).
+
+	Values outside the range [10, 1000] are rejected with an error at
+	startup (EuropaConfigError).
+
+	Type: integer  Range: 10-1000  Default: `100`
+
+	Example: >
+	  let g:europa_undo_max_history = 200
+<
+
+					*g:europa_disable_default_mappings*
+g:europa_disable_default_mappings
+	When set to `v:true`, `ftplugin/europa.vim` does not bind `u` or
+	`<C-r>` to |<Plug>(europa-undo)| / |<Plug>(europa-redo)|.  The
+	`<Plug>` mappings and |:EuropaUndo| / |:EuropaRedo| commands remain
+	available for custom bindings.
+
+	Type: boolean  Default: `v:false`
+
+	Example: >
+	  let g:europa_disable_default_mappings = v:true
+	  nmap <buffer><silent> <leader>u <Plug>(europa-undo)
+	  nmap <buffer><silent> <leader>r <Plug>(europa-redo)
+<
+
 vim:tw=78:ts=8:noet:ft=help:norl:

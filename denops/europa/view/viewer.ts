@@ -351,6 +351,16 @@ export async function applyRenderPlan(
     await host.call("setbufvar", bufnr, "&modifiable", 0);
   }
 
+  // Force a screen update so dispatcher-driven setbufline / deletebufline
+  // results are visible immediately. Async `denops#notify` paths (insertCell,
+  // undo / redo, etc.) update the buffer text via RPC but Vim defers the
+  // screen redraw until the next keystroke; without this nudge the user
+  // sees stale lines layered over the new render and the operation looks
+  // like it did the wrong thing. `applySixelPlacements` already issues its
+  // own redraw for `screenpos()`, so this is harmlessly redundant on the
+  // sixel path (`:redraw` is idempotent within a frame).
+  await host.cmd("redraw");
+
   if (plan.sixelPlacements && plan.sixelPlacements.length > 0) {
     await applySixelPlacements(
       host,

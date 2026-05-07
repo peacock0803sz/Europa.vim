@@ -86,6 +86,14 @@ import {
 } from "./kernel/execute.ts";
 import { createIopubBatchScheduler } from "./render/iopub-batch.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
+import {
+  restoreStructural,
+  takeStructuralSnapshot,
+} from "./notebook/structural-snapshot.ts";
+import type {
+  UndoAffectedCellHint,
+  UndoEntry,
+} from "../../contracts/undo-history.ts";
 
 /** Thrown by Phase 3+ dispatcher methods that are not yet implemented. */
 export class UnimplementedError extends Error {
@@ -187,6 +195,248 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     return true;
   }
 
+  // Phase 008 undo/redo helpers — kept inside buildDispatcher so they close
+  // over denops, sessionStore, and renderPlanOpts without extra arguments.
+
+  /** Determine which cell to move the cursor to after an undo or redo (FR-005a). */
+  function resolveAffectedCellId(
+    hint: UndoAffectedCellHint,
+    notebook: { cells: { id: string }[] },
+  ): string | null {
+    if (hint.kind === "single" || hint.kind === "delete-resurrect") {
+      return hint.cellId;
+    }
+    if (hint.kind === "split" || hint.kind === "join") {
+      return hint.primaryCellId;
+    }
+    // anchor hint
+    if (hint.cellId === null) {
+      return hint.position === "above"
+        ? (notebook.cells[0]?.id ?? null)
+        : (notebook.cells[notebook.cells.length - 1]?.id ?? null);
+    }
+    return hint.cellId;
+  }
+
+  /**
+   * Process one undo or redo step (10-step path, FR-018 2-stage try-catch).
+   * Called by the UndoHistory FIFO queue processor.
+   * @spec-id europa.dispatcher.europa-undo-affected-cell-cursor
+   * @spec-id europa.dispatcher.europa-undo-iopub-flush
+   * @spec-id europa.dispatcher.europa-undo-empty-stack-warn
+   * @spec-id europa.dispatcher.europa-undo-render-failure
+   * @spec-id europa.dispatcher.europa-redo-render-failure
+   * @spec-id europa.dispatcher.europa-redo-invalidate-on-mutation
+   * @spec-id europa.dispatcher.europa-undo-scratch-dirty-refuse
+   */
+  async function processOne(
+    bufnr: number,
+    kind: "undo" | "redo",
+  ): Promise<void> {
+    const session = sessionStore.get(bufnr);
+    if (!session) return;
+
+    // ① Save the current state so we can swap it onto the opposite stack later
+    const savedPreSnapshot = takeStructuralSnapshot(session.notebook);
+
+    // ② Scratch dirty check (FR-010): refuse undo if an unrelated scratch has unsaved edits.
+    // saveCellEdit entries are exempt — they represent the scratch's own write (dirty=false
+    // invariant holds because :w was just executed before push was called).
+    {
+      const peekEntry = kind === "undo"
+        ? session.undoHistory.peekUndo()
+        : session.undoHistory.peekRedo();
+      if (peekEntry) {
+        const affectedId = resolveAffectedCellId(
+          kind === "undo" ? peekEntry.beforeHint : peekEntry.afterHint,
+          session.notebook,
+        );
+        if (affectedId) {
+          const scrBn = sessionStore.getScratchBufnr(bufnr, affectedId);
+          if (scrBn !== undefined) {
+            const isSelfSave = peekEntry.opType === "saveCellEdit" &&
+              peekEntry.scratchSync?.cellId === affectedId;
+            if (!isSelfSave) {
+              const modified = await denops.call(
+                "getbufvar",
+                scrBn,
+                "&modified",
+              );
+              if (modified === 1 || modified === "1") {
+                await denops.cmd(
+                  `echohl ErrorMsg | echom ${
+                    vimSingleQuote(
+                      `Europa: undo refused — scratch buffer for cell '${affectedId}' is dirty`,
+                    )
+                  } | echohl None`,
+                );
+                return;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ③ iopub flush — defensive optional chain (FR-013, Phase 3.4 non-dependency)
+    await session.kernelRuntime?.iopubBatchScheduler?.flushNow?.();
+
+    // ④ Pop from the appropriate stack
+    const entry = kind === "undo"
+      ? session.undoHistory.popUndo()
+      : session.undoHistory.popRedo();
+    if (!entry) {
+      await denops.cmd(
+        `echohl WarningMsg | echom ${
+          vimSingleQuote(
+            kind === "undo"
+              ? "Europa: nothing to undo"
+              : "Europa: nothing to redo",
+          )
+        } | echohl None`,
+      );
+      return;
+    }
+
+    let restoredNotebook = session.notebook;
+
+    try {
+      // ⑤ Restore structural fields from snapshot
+      restoredNotebook = restoreStructural(session.notebook, entry.snapshot);
+      sessionStore.update(bufnr, {
+        notebook: restoredNotebook,
+        cellMap: sessionStore.getRenderPlan(bufnr)?.cellMap ?? [],
+      });
+
+      // ⑦ Full re-render
+      const config = await loadConfig(denops);
+      const caps = await detectCapabilities(denops);
+      const plan = buildRenderPlan(
+        restoredNotebook,
+        caps,
+        renderPlanOpts(config),
+      );
+      sessionStore.update(bufnr, { cellMap: plan.cellMap });
+      sessionStore.setRenderPlan(bufnr, plan);
+
+      // ⑥ Scratch sync (US3): write preSource back to open scratch buffer
+      if (entry.scratchSync) {
+        const scrBn = sessionStore.getScratchBufnr(
+          bufnr,
+          entry.scratchSync.cellId,
+        );
+        if (scrBn !== undefined) {
+          const newLines = entry.scratchSync.preSource.split("\n");
+          await denops.call("setbufline", scrBn, 1, newLines);
+          await denops.call("setbufvar", scrBn, "&modified", 0);
+          // Remove excess lines if new source is shorter
+          const existingCount = (await denops.call(
+            "getbufinfo",
+            scrBn,
+          ) as { linecount: number }[])[0]?.linecount ?? newLines.length;
+          if (existingCount > newLines.length) {
+            await denops.call(
+              "deletebufline",
+              scrBn,
+              newLines.length + 1,
+              existingCount,
+            );
+          }
+        }
+      }
+
+      await applyRenderPlan(denops, bufnr, plan);
+
+      // ⑧ Move cursor to affected cell
+      const affectedHint = kind === "undo" ? entry.beforeHint : entry.afterHint;
+      const affectedCellId = resolveAffectedCellId(
+        affectedHint,
+        restoredNotebook,
+      );
+      const winid = await denops.call("bufwinid", bufnr) as number;
+      if (winid > 0 && affectedCellId !== null) {
+        const range = plan.cellRanges.find((r) => r.cellId === affectedCellId);
+        if (range) {
+          await denops.call(
+            "win_execute",
+            winid,
+            `normal! ${range.startLine + 1}G`,
+          );
+        }
+      }
+
+      // ⑨ Snapshot swap: push current (pre-undo) state onto the opposite stack.
+      // For saveCellEdit entries, preSource must be taken from savedPreSnapshot so
+      // that applying the opposite direction writes the correct text to scratch.
+      const oppositeSync = entry.scratchSync
+        ? (() => {
+          const snapCell = savedPreSnapshot.cells.find(
+            (c) => c.id === entry.scratchSync!.cellId,
+          );
+          return snapCell
+            ? { cellId: entry.scratchSync.cellId, preSource: snapCell.source }
+            : entry.scratchSync;
+        })()
+        : undefined;
+      const oppositeEntry: UndoEntry = {
+        ...entry,
+        snapshot: savedPreSnapshot,
+        scratchSync: oppositeSync,
+      };
+      if (kind === "undo") {
+        session.undoHistory.pushRedoFront(oppositeEntry);
+      } else {
+        session.undoHistory.pushUndoFront(oppositeEntry);
+      }
+
+      // ⑩ &modified recalculation (FR-015)
+      const newSnap = takeStructuralSnapshot(restoredNotebook);
+      const savedSnap = session.lastSavedSnapshot;
+      const isClean = savedSnap !== undefined &&
+        JSON.stringify(newSnap) === JSON.stringify(savedSnap);
+      await denops.call("setbufvar", bufnr, "&modified", isClean ? 0 : 1);
+    } catch (_renderErr) {
+      // FR-018 first-stage recovery: return entry to its stack, roll back model,
+      // and re-render with the pre-undo model to restore the viewer.
+      if (kind === "undo") {
+        session.undoHistory.pushUndoFront(entry);
+      } else {
+        session.undoHistory.pushRedoFront(entry);
+      }
+      // Roll back model to pre-undo state
+      sessionStore.update(bufnr, {
+        notebook: restoreStructural(
+          session.notebook,
+          savedPreSnapshot,
+        ),
+        cellMap: sessionStore.getRenderPlan(bufnr)?.cellMap ?? [],
+      });
+      const rolledBackSession = sessionStore.get(bufnr);
+      if (!rolledBackSession) return;
+      try {
+        const config2 = await loadConfig(denops);
+        const caps2 = await detectCapabilities(denops);
+        const plan2 = buildRenderPlan(
+          rolledBackSession.notebook,
+          caps2,
+          renderPlanOpts(config2),
+        );
+        sessionStore.setRenderPlan(bufnr, plan2);
+        await applyRenderPlan(denops, bufnr, plan2);
+      } catch {
+        // FR-018 second-stage recovery failed: prompt user to reload
+        const verb = kind === "undo" ? "undo" : "redo";
+        await denops.cmd(
+          `echohl ErrorMsg | echom ${
+            vimSingleQuote(
+              `Europa: ${verb} failed — viewer rendering broken; please run :e! to reload`,
+            )
+          } | echohl None`,
+        );
+      }
+    }
+  }
+
   return {
     // Phase 2: init — wires highlights, config, capabilities, autocmds
     async init(): Promise<void> {
@@ -269,7 +519,11 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         notebookPath: pathStr,
         notebook,
         cellMap: plan.cellMap,
-      });
+      }, config.undo_max_history);
+      // Wire the undo processor immediately after add() (T024)
+      sessionStore.get(bufnrNum)!.undoHistory.setProcessor(
+        (kind) => processOne(bufnrNum, kind),
+      );
       sessionStore.setRenderPlan(bufnrNum, plan);
       await applyRenderPlan(denops, bufnrNum, plan);
     },
@@ -296,6 +550,9 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
       try {
         await Deno.writeTextFile(session.notebookPath, serialized);
         await denops.call("setbufvar", bufnrNum, "&modified", 0);
+        sessionStore.update(bufnrNum, {
+          lastSavedSnapshot: takeStructuralSnapshot(session.notebook),
+        });
       } catch (e) {
         await echomError(
           denops,
@@ -486,6 +743,8 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         ? await denops.call("getcurpos", winid) as number[]
         : [0, 1, 0, 0, 0];
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      // Snapshot before mutation — used in undo entry (T024)
+      const preSnapshot = takeStructuralSnapshot(session.notebook);
       let newNotebook: typeof session.notebook;
       let newCellId: string;
       try {
@@ -504,6 +763,17 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
         return;
       }
+      session.undoHistory.push({
+        opType: "insertCell",
+        snapshot: preSnapshot,
+        beforeHint: {
+          kind: "anchor",
+          cellId: anchorId === "" ? null : anchorId,
+          // "before" = inserted above anchor, "after" = inserted below anchor
+          position: posStr === "before" ? "above" : "below",
+        },
+        afterHint: { kind: "single", cellId: newCellId },
+      });
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
@@ -556,11 +826,18 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         ? await denops.call("getcurpos", winid) as number[]
         : [0, 1, 0, 0, 0];
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const preSnapshot = takeStructuralSnapshot(session.notebook);
       const newNotebook = deleteCell(session.notebook, cid);
       if (Object.is(newNotebook, session.notebook)) {
         await echomError(denops, `deleteCell: cell '${cid}' not found`);
         return;
       }
+      session.undoHistory.push({
+        opType: "deleteCell",
+        snapshot: preSnapshot,
+        beforeHint: { kind: "delete-resurrect", cellId: cid },
+        afterHint: { kind: "single", cellId: preCellId ?? cid },
+      });
       // Clean up any open scratch buffer for the deleted cell. The
       // augroup must be cleared here, not in closeCellEdit: once we
       // remove the session entry, a later BufWipeout cannot reverse-
@@ -649,6 +926,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `moveCell: cell '${cid}' not found`);
         return;
       }
+      const preMoveSnapshot = takeStructuralSnapshot(session.notebook);
       const newNotebook = moveCell(session.notebook, cid, dir);
       if (Object.is(newNotebook, session.notebook)) {
         const guidance = dir === "up" ? "Already at top" : "Already at bottom";
@@ -666,6 +944,12 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         ? await denops.call("getcurpos", winid) as number[]
         : [0, 1, 0, 0, 0];
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      session.undoHistory.push({
+        opType: "moveCell",
+        snapshot: preMoveSnapshot,
+        beforeHint: { kind: "single", cellId: cid },
+        afterHint: { kind: "single", cellId: cid },
+      });
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
@@ -789,6 +1073,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         : [0, 1, 0, 0, 0];
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
 
+      const preSplitSnapshot = takeStructuralSnapshot(session.notebook);
       let newNotebook: typeof session.notebook;
       try {
         newNotebook = splitCell(session.notebook, cid, splitLine);
@@ -799,6 +1084,12 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         );
         return;
       }
+      session.undoHistory.push({
+        opType: "splitCell",
+        snapshot: preSplitSnapshot,
+        beforeHint: { kind: "join", primaryCellId: cid },
+        afterHint: { kind: "split", primaryCellId: cid },
+      });
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
@@ -901,11 +1192,18 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         ? await denops.call("getcurpos", winid) as number[]
         : [0, 1, 0, 0, 0];
       const preCellId = lineToCellId(preCellRanges, cursorPos[1] ?? 1);
+      const preJoinSnapshot = takeStructuralSnapshot(session.notebook);
       const newNotebook = joinCell(session.notebook, cid);
       if (Object.is(newNotebook, session.notebook)) {
         // Already caught by the first-cell guard above; defensive no-op.
         return;
       }
+      session.undoHistory.push({
+        opType: "joinCell",
+        snapshot: preJoinSnapshot,
+        beforeHint: { kind: "split", primaryCellId: prevCellId },
+        afterHint: { kind: "join", primaryCellId: prevCellId },
+      });
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
@@ -1063,11 +1361,18 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         await echomError(denops, `changeCellType: cell '${cid}' not found`);
         return;
       }
+      const preChangeSnapshot = takeStructuralSnapshot(session.notebook);
       const newNotebook = changeCellType(session.notebook, cid, nt);
       if (Object.is(newNotebook, session.notebook)) {
         // same-type no-op; nothing to do
         return;
       }
+      session.undoHistory.push({
+        opType: "changeCellType",
+        snapshot: preChangeSnapshot,
+        beforeHint: { kind: "single", cellId: cid },
+        afterHint: { kind: "single", cellId: cid },
+      });
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
       const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
@@ -1130,6 +1435,22 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         "$",
       ) as string[];
       const newSource = lines.join("\n");
+      // Push undo entry before mutation — preSource = cell.source before the save
+      const cellIdx = session.notebook.cells.findIndex(
+        (c) => c.id === lookup.cellId,
+      );
+      if (cellIdx >= 0) {
+        session.undoHistory.push({
+          opType: "saveCellEdit",
+          snapshot: takeStructuralSnapshot(session.notebook),
+          beforeHint: { kind: "single", cellId: lookup.cellId },
+          afterHint: { kind: "single", cellId: lookup.cellId },
+          scratchSync: {
+            cellId: lookup.cellId,
+            preSource: session.notebook.cells[cellIdx].source,
+          },
+        });
+      }
       const newNotebook = updateCellSource(
         session.notebook,
         lookup.cellId,
@@ -1876,6 +2197,48 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     // Phase 4: ZMQ attach
     attachKernel(_connectionFile: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("attachKernel"));
+    },
+
+    /**
+     * Roll back one structural mutation for the given buffer.
+     * @spec-id europa.dispatcher.europa-undo
+     */
+    async europaUndo(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `no open session for buffer ${bn}`);
+        return;
+      }
+      const accepted = session.undoHistory.enqueueUndo();
+      if (!accepted) {
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote("Europa: undo busy, retry")
+          } | echohl None`,
+        );
+      }
+    },
+
+    /**
+     * Re-apply one undone structural mutation for the given buffer.
+     * @spec-id europa.dispatcher.europa-redo
+     */
+    async europaRedo(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      const session = sessionStore.get(bn);
+      if (!session) {
+        await echomError(denops, `no open session for buffer ${bn}`);
+        return;
+      }
+      const accepted = session.undoHistory.enqueueRedo();
+      if (!accepted) {
+        await denops.cmd(
+          `echohl WarningMsg | echom ${
+            vimSingleQuote("Europa: redo busy, retry")
+          } | echohl None`,
+        );
+      }
     },
   };
 }

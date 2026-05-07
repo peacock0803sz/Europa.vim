@@ -154,6 +154,80 @@ describe("loadConfig — kernelInfoTimeoutMs defaults (europa.config.kernel-info
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 008: undo/redo config fields
+// ---------------------------------------------------------------------------
+
+describe("loadConfig — undo_max_history (europa.config.undo-max-history-default)", () => {
+  /**
+   * @spec-id europa.config.undo-max-history-default
+   */
+  const HISTORY_EXPR = `get(g:, 'europa_undo_max_history', 100)`;
+
+  it("defaults to 100 when not set", async () => {
+    const denops = mockVim();
+    const config = await loadConfig(denops);
+    assertEquals(config.undo_max_history, 100);
+  });
+
+  it("accepts the minimum value 10", async () => {
+    const denops = mockVim();
+    denops.setEval(HISTORY_EXPR, 10);
+    const config = await loadConfig(denops);
+    assertEquals(config.undo_max_history, 10);
+  });
+
+  it("accepts the maximum value 1000", async () => {
+    const denops = mockVim();
+    denops.setEval(HISTORY_EXPR, 1000);
+    const config = await loadConfig(denops);
+    assertEquals(config.undo_max_history, 1000);
+  });
+});
+
+describe("loadConfig — undo_max_history out of range (europa.config.undo-max-history-out-of-range)", () => {
+  /**
+   * @spec-id europa.config.undo-max-history-out-of-range
+   */
+  const HISTORY_EXPR = `get(g:, 'europa_undo_max_history', 100)`;
+
+  it("rejects value below minimum (9 < 10)", async () => {
+    const denops = mockVim();
+    denops.setEval(HISTORY_EXPR, 9);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+
+  it("rejects value above maximum (1001 > 1000)", async () => {
+    const denops = mockVim();
+    denops.setEval(HISTORY_EXPR, 1001);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+
+  it("rejects non-integer (100.5)", async () => {
+    const denops = mockVim();
+    denops.setEval(HISTORY_EXPR, 100.5);
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+});
+
+describe("loadConfig — disable_default_mappings (europa.config.disable-default-mappings-default)", () => {
+  /**
+   * @spec-id europa.config.disable-default-mappings-default
+   */
+  it("defaults to false when not set", async () => {
+    const denops = mockVim();
+    const config = await loadConfig(denops);
+    assertEquals(config.disable_default_mappings, false);
+  });
+
+  it("accepts true when g:europa_disable_default_mappings = v:true", async () => {
+    const denops = mockVim();
+    denops.setEval(`get(g:, 'europa_disable_default_mappings', v:false)`, true);
+    const config = await loadConfig(denops);
+    assertEquals(config.disable_default_mappings, true);
+  });
+});
+
 describe("loadConfig — deprecated g:europa_use_default_mappings", () => {
   /**
    * @spec-id europa.config.deprecated-use-default-mappings

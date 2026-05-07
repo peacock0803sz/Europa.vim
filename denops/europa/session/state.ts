@@ -17,6 +17,8 @@ import type { ScratchLookup, Session } from "../../../schema/session.ts";
 import type { RenderPlan } from "../../../schema/render-plan.ts";
 import type { SessionRuntime } from "../../../contracts/session-runtime.ts";
 import type { IopubBatchScheduler } from "../../../contracts/iopub-batch-scheduler.ts";
+import { createUndoHistory } from "./undo-history.ts";
+import { takeStructuralSnapshot } from "../notebook/structural-snapshot.ts";
 export type { SessionRuntime };
 
 /**
@@ -41,12 +43,29 @@ export class SessionStore {
   /** viewerBufnr → most recent RenderPlan */
   private readonly renderPlans = new Map<number, RenderPlan>();
 
+  constructor(private readonly maxHistory: number = 100) {}
+
   get(bufnr: number): SessionRuntime | undefined {
     return this.store.get(bufnr);
   }
 
-  add(session: Session): void {
-    this.store.set(session.bufnr, { ...session });
+  /**
+   * Register a new session and initialise its undo history.
+   *
+   * @param session - The session to register.
+   * @param maxHistory - Override the store-level cap for this buffer. Defaults
+   *   to the value passed to the constructor (100 if not set).
+   * @spec-id europa.session.state.undo-history-init
+   * @spec-id europa.session.state.last-saved-snapshot-init
+   */
+  add(session: Session, maxHistory?: number): void {
+    const undoHistory = createUndoHistory(maxHistory ?? this.maxHistory);
+    const lastSavedSnapshot = takeStructuralSnapshot(session.notebook);
+    this.store.set(session.bufnr, {
+      ...session,
+      undoHistory,
+      lastSavedSnapshot,
+    });
   }
 
   update(
@@ -59,7 +78,14 @@ export class SessionStore {
     }
   }
 
+  /**
+   * Remove a session and dispose its undo history to prevent memory leaks.
+   *
+   * @spec-id europa.session.state.undo-history-gc-on-bufwipeout
+   */
   remove(bufnr: number): void {
+    // Dispose the undo history before deleting the session (FR-009 GC)
+    this.store.get(bufnr)?.undoHistory.dispose();
     this.store.delete(bufnr);
     this.cellEditBuffers.delete(bufnr);
     this.renderPlans.delete(bufnr);

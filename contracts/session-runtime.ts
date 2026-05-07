@@ -13,13 +13,29 @@
 
 import type { Session } from "../schema/session.ts";
 import type { KernelRuntime } from "./kernel-client.ts";
+import type {
+  NotebookStructuralSnapshot,
+  UndoHistory,
+} from "./undo-history.ts";
 
 /**
- * Runtime session augmented with live kernel connection state.
+ * Runtime session augmented with live kernel connection state and undo history.
  *
  * The base `Session` schema tracks serializable state.
  * `SessionRuntime` adds in-process runtime objects that cannot be serialized.
  */
 export type SessionRuntime = Session & {
   kernelRuntime?: KernelRuntime;
+  /**
+   * Per-buffer undo / redo history.
+   * Initialised by SessionStore.add(), disposed by SessionStore.remove().
+   * @spec-id europa.session.state.undo-history-init
+   */
+  undoHistory: UndoHistory;
+  /**
+   * Structural snapshot of the notebook as of the last disk save (`:w`).
+   * Used by processOne to determine the &modified state after undo/redo (FR-015).
+   * @spec-id europa.session.state.last-saved-snapshot-init
+   */
+  lastSavedSnapshot?: NotebookStructuralSnapshot;
 };

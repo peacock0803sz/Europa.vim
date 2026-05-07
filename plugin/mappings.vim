@@ -39,3 +39,7 @@ nnoremap <silent> <Plug>(europa-restart-kernel)        :<C-u>EuropaRestartKernel
 nnoremap <silent> <Plug>(europa-start-kernel)          :<C-u>EuropaStartKernel<CR>
 nnoremap <silent> <Plug>(europa-shutdown-kernel)       :<C-u>EuropaShutdownKernel<CR>
 nnoremap <silent> <Plug>(europa-kernel-status)         :<C-u>EuropaKernelStatus<CR>
+
+" Phase 008: undo / redo <Plug> mappings — global, buffer-local rebind in ftplugin/europa.vim (T013)
+nnoremap <silent> <Plug>(europa-undo)                  :call denops#notify('europa', 'europaUndo', [bufnr('%')])<CR>
+nnoremap <silent> <Plug>(europa-redo)                  :call denops#notify('europa', 'europaRedo', [bufnr('%')])<CR>

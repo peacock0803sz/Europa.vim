@@ -70,6 +70,8 @@ function makeConfig(
     wsReconnectInitialIntervalMs: 2000, // long initial delay for reliable abort test
     wsReconnectMultiplier: 2.0,
     kernelInfoTimeoutMs: 10000,
+    undo_max_history: 100,
+    disable_default_mappings: false,
   };
 }
 
