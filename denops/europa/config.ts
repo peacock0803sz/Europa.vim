@@ -88,6 +88,21 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
       gvar: "kernel_info_timeout_ms",
       def: 10000,
     },
+    // Phase 008: undo/redo stack cap (FR-009 / FR-022)
+    // @spec-id europa.config.undo-max-history-default
+    // @spec-id europa.config.undo-max-history-out-of-range
+    {
+      key: "undo_max_history",
+      gvar: "undo_max_history",
+      def: 100,
+    },
+    // Phase 008: opt-out for ft=europa default u / <C-r> override (FR-004)
+    // @spec-id europa.config.disable-default-mappings-default
+    {
+      key: "disable_default_mappings",
+      gvar: "disable_default_mappings",
+      def: false,
+    },
   ];
 
 /**
