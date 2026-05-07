@@ -141,7 +141,9 @@ class UndoHistoryImpl implements UndoHistory {
     const kind = this.requestQueue.shift()!;
     const proc = this.processor;
 
-    proc(kind).then(() => {
+    // Wrap in Promise.resolve().then() so a synchronous throw from proc is
+    // converted to a rejection and caught below, keeping inFlight in sync.
+    Promise.resolve().then(() => proc(kind)).then(() => {
       if (!this.disposed && this.requestQueue.length > 0) {
         this.processNext();
       } else {
