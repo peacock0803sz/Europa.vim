@@ -248,7 +248,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
         : session.undoHistory.peekRedo();
       if (peekEntry) {
         const affectedId = resolveAffectedCellId(
-          peekEntry.beforeHint,
+          kind === "undo" ? peekEntry.beforeHint : peekEntry.afterHint,
           session.notebook,
         );
         if (affectedId) {
