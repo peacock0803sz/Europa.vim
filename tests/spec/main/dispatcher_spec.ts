@@ -39,6 +39,7 @@
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import {
   assertEquals,
+  assertExists,
   assertNotEquals,
   assertRejects,
   assertStringIncludes,
@@ -2686,7 +2687,7 @@ describe("undoHistory.push — called by all 6 structural mutation dispatchers (
   it("moveCell: push is called (europaUndo reverts the move)", async () => {
     const linesBefore = [...(host.bufLines.get(VIEWER_BUFNR) ?? [])];
     const cellId2 = await dispatcher.lineToCellId(VIEWER_BUFNR, 8);
-    if (!cellId2) return;
+    assertExists(cellId2, "fixture must have a cell at line 8");
     await dispatcher.moveCell(VIEWER_BUFNR, cellId2, "up");
     host.calls = [];
     await dispatcher.europaUndo(VIEWER_BUFNR);

@@ -17,7 +17,7 @@
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertExists } from "@std/assert";
 import { buildDispatcher } from "../../../denops/europa/main.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
 import type { MockHost } from "../../fixtures/mock-host.ts";
@@ -112,7 +112,7 @@ describe("europaUndo — moveCell round-trip", () => {
     const { d } = await openSession(BUFNR);
     // Get the second cell to move down
     const cellId2 = await d.lineToCellId(BUFNR, 8) as string;
-    if (!cellId2) return; // fixture may not have enough cells — skip
+    assertExists(cellId2, "fixture must have a cell at line 8");
 
     const linesBefore = [...(host.bufLines.get(BUFNR) ?? [])];
     await d.moveCell(BUFNR, cellId2, "up");
