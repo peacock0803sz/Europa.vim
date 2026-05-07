@@ -245,3 +245,72 @@ describe("europaUndo — iopub flush (europa.dispatcher.europa-undo-iopub-flush)
     assertEquals(flushCount, 0, "no scheduler attached — flush not called");
   });
 });
+
+// ---------------------------------------------------------------------------
+// T025: Multi-step round-trip + redo invalidation on new mutation
+// ---------------------------------------------------------------------------
+
+describe("europaUndo — multi-step 5×undo/redo round-trip (US2)", () => {
+  it("5 distinct mutations → 5 undos → back to initial state", async () => {
+    const BUFNR = 200;
+    const { d, cellId } = await openSession(BUFNR);
+    const linesBefore = host.bufLines.get(BUFNR)?.length ?? 0;
+
+    // 5 insertions
+    for (let i = 0; i < 5; i++) {
+      await d.insertCell(BUFNR, "code", "after", cellId);
+    }
+    const linesAfter5 = host.bufLines.get(BUFNR)?.length ?? 0;
+    assertEquals(linesAfter5 > linesBefore, true);
+
+    // 5 undos
+    for (let i = 0; i < 5; i++) {
+      await d.europaUndo(BUFNR);
+      await drain();
+    }
+    assertEquals(
+      host.bufLines.get(BUFNR)?.length ?? 0,
+      linesBefore,
+      "5 undos should revert all 5 insertions",
+    );
+
+    // 5 redos
+    for (let i = 0; i < 5; i++) {
+      await d.europaRedo(BUFNR);
+      await drain();
+    }
+    assertEquals(
+      host.bufLines.get(BUFNR)?.length ?? 0,
+      linesAfter5,
+      "5 redos should replay all 5 insertions",
+    );
+  });
+});
+
+describe("europaRedo — redo stack invalidated on new mutation (europa.dispatcher.europa-redo-invalidate-on-mutation)", () => {
+  it("5 mutations → 5 undos → 1 new mutation → redo emits 'nothing to redo'", async () => {
+    const BUFNR = 201;
+    const { d, cellId } = await openSession(BUFNR);
+
+    for (let i = 0; i < 5; i++) {
+      await d.insertCell(BUFNR, "code", "after", cellId);
+    }
+    for (let i = 0; i < 5; i++) {
+      await d.europaUndo(BUFNR);
+      await drain();
+    }
+
+    // New mutation invalidates redo stack
+    await d.insertCell(BUFNR, "markdown", "after", cellId);
+    host.calls = [];
+
+    await d.europaRedo(BUFNR);
+    await drain();
+    const warnCmds = host.cmdsMatching("nothing to redo");
+    assertEquals(
+      warnCmds.length > 0,
+      true,
+      "redo stack must be empty after new mutation",
+    );
+  });
+});
