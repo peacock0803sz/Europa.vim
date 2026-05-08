@@ -243,6 +243,7 @@ __marimo__/
 
 # Europa.vim project: keep notebook test fixtures despite global *.ipynb rule
 !tests/fixtures/*.ipynb
+!tests/fixtures/**/*.ipynb
 !tests/golden/ipynb/*.ipynb
 node_modules/
 deno.lock
