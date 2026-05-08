@@ -103,6 +103,14 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
       gvar: "disable_default_mappings",
       def: false,
     },
+    // Phase 009: tree-sitter highlight mode (FR-010)
+    // @spec-id europa.config.ts-highlight-default
+    // @spec-id europa.config.ts-highlight-on-off
+    {
+      key: "ts_highlight",
+      gvar: "ts_highlight",
+      def: "auto",
+    },
   ];
 
 /**

@@ -9,6 +9,7 @@
  */
 
 import { type Static, Type } from "@sinclair/typebox";
+import { SyntaxHighlightModeSchema } from "./highlight.ts";
 
 export const EuropaConfigSchema = Type.Object({
   // Connection (Phase 1 reserve — not read by main.ts in Phase 2)
@@ -85,6 +86,9 @@ export const EuropaConfigSchema = Type.Object({
 
   // FR-004: opt-out for ft=europa default u / <C-r> override.
   disable_default_mappings: Type.Boolean({ default: false }),
+
+  // Phase 009: tree-sitter syntax highlight mode (FR-010).
+  ts_highlight: SyntaxHighlightModeSchema,
 });
 
 export type EuropaConfig = Static<typeof EuropaConfigSchema>;

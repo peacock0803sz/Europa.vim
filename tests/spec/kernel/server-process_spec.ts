@@ -41,6 +41,7 @@ const BASE_CONFIG: EuropaConfig = {
   kernelInfoTimeoutMs: 10000,
   undo_max_history: 100,
   disable_default_mappings: false,
+  ts_highlight: "auto",
 };
 
 // Set up a temp directory with fake jupyter executables for detection tests
