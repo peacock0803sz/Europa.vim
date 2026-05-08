@@ -9,6 +9,7 @@ import {
   echomError,
   renderPlanOpts,
 } from "./context.ts";
+import { scheduleHighlightRefresh } from "./syntax-highlight.ts";
 
 /** Image MIME types supported by `:EuropaPreviewOutput`, in priority order. */
 export const IMAGE_MIMES = ["image/png", "image/jpeg"] as const;
@@ -159,6 +160,7 @@ export function buildViewDispatcher(
           renderPlanOpts(config),
         );
         sessionStore.setRenderPlan(bn, plan);
+        scheduleHighlightRefresh(ctx, bn); // FR-007: BufWinEnter re-render follow-up
         await applyRenderPlan(denops, bn, plan);
       } catch {
         // Re-render failure is non-fatal.

@@ -9,6 +9,8 @@
  * @spec-id europa.dispatcher.preview-output
  * @spec-id europa.commands.preview-output
  * @spec-id europa.dispatcher.save
+ * @spec-id europa.dispatcher.syntax-highlight-attach
+ * @spec-id europa.dispatcher.syntax-highlight-refresh
  */
 
 import { describe, it } from "@std/testing/bdd";
@@ -460,6 +462,66 @@ describe(":EuropaPreviewOutput command definition", () => {
       content.includes("previewOutput"),
       true,
       "autoload must notify 'previewOutput' to denops",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 009 dispatcher method presence
+// ---------------------------------------------------------------------------
+
+describe("Phase 009 syntax-highlight dispatcher (europa.dispatcher.syntax-highlight-attach / refresh)", () => {
+  it("exposes syntaxHighlightAttach as a function", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    assertEquals(typeof d.syntaxHighlightAttach, "function");
+  });
+
+  it("exposes syntaxHighlightRefresh as a function", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    assertEquals(typeof d.syntaxHighlightRefresh, "function");
+  });
+
+  it("syntaxHighlightAttach is a no-op when no session exists", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    await d.syntaxHighlightAttach(9999); // no session — should not throw
+    assertEquals(true, true);
+  });
+
+  it("syntaxHighlightRefresh is a no-op when no session exists", async () => {
+    const { buildDispatcher } = await import("../../denops/europa/main.ts");
+    const denops = mockVim();
+    const d = buildDispatcher(denops);
+    await d.syntaxHighlightRefresh(9999); // no session — should not throw
+    assertEquals(true, true);
+  });
+});
+
+describe("Phase 009 ftplugin attach-on-bufread (europa.ftplugin.attach-on-bufread)", () => {
+  /**
+   * @spec-id europa.ftplugin.attach-on-bufread
+   *
+   * ftplugin/europa.vim must contain the syntaxHighlightAttach timer_start
+   * call so the initial highlight fires non-blocking after open (FR-017).
+   */
+  it("ftplugin contains syntaxHighlightAttach timer_start call", async () => {
+    const content = await Deno.readTextFile(
+      new URL("../../ftplugin/europa.vim", import.meta.url),
+    );
+    assertEquals(
+      content.includes("syntaxHighlightAttach"),
+      true,
+      "ftplugin must contain syntaxHighlightAttach call",
+    );
+    assertEquals(
+      content.includes("timer_start"),
+      true,
+      "ftplugin must use timer_start for non-blocking attach (FR-017)",
     );
   });
 });

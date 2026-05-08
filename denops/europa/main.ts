@@ -18,6 +18,7 @@ import type { DispatcherContext } from "./dispatcher/context.ts";
 import { buildExecDispatcher } from "./dispatcher/exec/index.ts";
 import { buildKernelDispatcher } from "./dispatcher/kernel.ts";
 import { buildNotebookDispatcher } from "./dispatcher/notebook.ts";
+import { buildSyntaxHighlightDispatcher } from "./dispatcher/syntax-highlight.ts";
 import { buildUndoDispatcher } from "./dispatcher/undo.ts";
 import { buildViewDispatcher } from "./dispatcher/view.ts";
 import { ServerPool } from "./kernel/server-pool.ts";
@@ -52,6 +53,7 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
     ...buildExecDispatcher(ctx),
     ...buildViewDispatcher(ctx),
     ...buildUndoDispatcher(ctx),
+    ...buildSyntaxHighlightDispatcher(ctx),
   };
 }
 

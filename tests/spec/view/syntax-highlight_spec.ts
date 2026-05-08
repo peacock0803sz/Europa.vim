@@ -9,6 +9,7 @@
  * @spec-id europa.view.syntax-highlight.nvim-refresh
  * @spec-id europa.view.syntax-highlight.lazy-visible-first
  * @spec-id europa.view.syntax-highlight.orchestrator-gating
+ * @spec-id europa.view.syntax-highlight.refresh-on-cell-mutation
  */
 
 import { describe, it } from "@std/testing/bdd";
@@ -23,6 +24,7 @@ import {
 } from "../../../denops/europa/view/syntax-highlight.ts";
 import { VimSyntaxHighlighter } from "../../../denops/europa/view/syntax-highlight-vim.ts";
 import { NvimSyntaxHighlighter } from "../../../denops/europa/view/syntax-highlight-nvim.ts";
+import { buildCellLangRanges } from "../../../denops/europa/dispatcher/syntax-highlight.ts";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -299,5 +301,71 @@ describe("SyntaxHighlightOrchestrator — gating (europa.view.syntax-highlight.o
     await orc.detach(denops, 1);
     // detach should always propagate (session cleanup is unconditional)
     assertEquals(spy.detachCount, 1, "detach must always propagate");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCellLangRanges — FR-001 language resolution (T019a)
+// ---------------------------------------------------------------------------
+
+describe("buildCellLangRanges — FR-001 language resolution (europa.view.syntax-highlight.refresh-on-cell-mutation)", () => {
+  it("uses kernelspec.language for code cells", () => {
+    const ranges = buildCellLangRanges(
+      [{ cellId: "a", kind: "code", sourceStartLine: 1, sourceEndLine: 5 }],
+      { kernelspec: { language: "python" } },
+    );
+    assertEquals(ranges[0].language, "python");
+    assertEquals(ranges[0].kind, "code");
+    assertEquals(ranges[0].startLine, 1);
+    assertEquals(ranges[0].endLine, 5);
+  });
+
+  it("falls back to language_info.name when kernelspec.language is absent", () => {
+    const ranges = buildCellLangRanges(
+      [{ cellId: "a", kind: "code", sourceStartLine: 0, sourceEndLine: 3 }],
+      { language_info: { name: "julia" } },
+    );
+    assertEquals(ranges[0].language, "julia");
+  });
+
+  it("resolves to empty string when no language metadata available (FR-011 trigger)", () => {
+    const ranges = buildCellLangRanges(
+      [{ cellId: "a", kind: "code", sourceStartLine: 0, sourceEndLine: 3 }],
+      {},
+    );
+    assertEquals(ranges[0].language, "");
+  });
+
+  it("always uses 'markdown' for markdown cells regardless of kernel language", () => {
+    const ranges = buildCellLangRanges(
+      [{
+        cellId: "b",
+        kind: "markdown",
+        sourceStartLine: 6,
+        sourceEndLine: 10,
+      }],
+      { kernelspec: { language: "python" } },
+    );
+    assertEquals(ranges[0].language, "markdown");
+    assertEquals(ranges[0].kind, "markdown");
+  });
+
+  it("handles mixed code + markdown cells in one notebook", () => {
+    const result = buildCellLangRanges(
+      [
+        { cellId: "c1", kind: "code", sourceStartLine: 1, sourceEndLine: 5 },
+        {
+          cellId: "c2",
+          kind: "markdown",
+          sourceStartLine: 6,
+          sourceEndLine: 9,
+        },
+        { cellId: "c3", kind: "code", sourceStartLine: 10, sourceEndLine: 14 },
+      ],
+      { kernelspec: { language: "python" } },
+    );
+    assertEquals(result[0].language, "python");
+    assertEquals(result[1].language, "markdown");
+    assertEquals(result[2].language, "python");
   });
 });

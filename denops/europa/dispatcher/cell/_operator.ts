@@ -15,6 +15,7 @@ import {
   renderPlanOpts,
   vimSingleQuote,
 } from "../context.ts";
+import { scheduleHighlightRefresh } from "../syntax-highlight.ts";
 
 export type MutationResult = {
   notebook: Notebook;
@@ -67,6 +68,7 @@ export async function operateCell(
     cellMap: plan.cellMap,
   });
   sessionStore.setRenderPlan(bufnr, plan);
+  scheduleHighlightRefresh(ctx, bufnr); // FR-007: follow cell mutation
   try {
     await applyRenderPlan(denops, bufnr, plan);
     await denops.call("setbufvar", bufnr, "&modified", 1);

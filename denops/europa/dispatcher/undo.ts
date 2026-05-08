@@ -17,6 +17,7 @@ import {
   renderPlanOpts,
   vimSingleQuote,
 } from "./context.ts";
+import { scheduleHighlightRefresh } from "./syntax-highlight.ts";
 
 function resolveAffectedCellId(
   hint: UndoAffectedCellHint,
@@ -130,6 +131,7 @@ export async function processOne(
     );
     sessionStore.update(bufnr, { cellMap: plan.cellMap });
     sessionStore.setRenderPlan(bufnr, plan);
+    scheduleHighlightRefresh(ctx, bufnr); // FR-007: undo/redo follow-up
 
     if (entry.scratchSync) {
       const scrBn = sessionStore.getScratchBufnr(
@@ -224,6 +226,7 @@ export async function processOne(
         renderPlanOpts(config2),
       );
       sessionStore.setRenderPlan(bufnr, plan2);
+      scheduleHighlightRefresh(ctx, bufnr); // FR-007: undo fallback follow-up
       await applyRenderPlan(denops, bufnr, plan2);
     } catch {
       const verb = kind === "undo" ? "undo" : "redo";

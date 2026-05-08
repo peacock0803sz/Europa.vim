@@ -15,6 +15,7 @@ import {
   renderPlanOpts,
 } from "./context.ts";
 import { processOne } from "./undo.ts";
+import { getOrCreateOrchestrator } from "../view/syntax-highlight.ts";
 
 export function buildNotebookDispatcher(
   ctx: DispatcherContext,
@@ -70,6 +71,9 @@ export function buildNotebookDispatcher(
       })();
 
       await Promise.all([kernelShutdown, scratchWipeout]);
+      // Detach syntax highlighter before removing session (FR-003 cleanup)
+      const orc = getOrCreateOrchestrator(denops);
+      await orc.detach(denops, viewerBufnr).catch(() => {});
       sessionStore.remove(viewerBufnr);
     },
 
