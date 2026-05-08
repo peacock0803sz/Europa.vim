@@ -246,3 +246,4 @@ __marimo__/
 !tests/golden/ipynb/*.ipynb
 node_modules/
 deno.lock
+tmp/
