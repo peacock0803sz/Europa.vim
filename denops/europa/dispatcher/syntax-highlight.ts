@@ -21,6 +21,10 @@ import type { DispatcherContext } from "./context.ts";
  * FR-001 fallback chain: kernelspec.language → language_info.name → "".
  * Markdown cells always use "markdown". Code cells with empty resolved
  * language are included (the Nvim impl will skip them per FR-011).
+ *
+ * @spec-id europa.view.syntax-highlight.language-fallback-chain
+ * @spec-id europa.view.syntax-highlight.language-unknown
+ * @spec-id europa.view.syntax-highlight.markdown-cell
  */
 export function buildCellLangRanges(
   cellSourceRanges: readonly CellSourceRange[],

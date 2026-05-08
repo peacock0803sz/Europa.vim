@@ -10,6 +10,13 @@
  * @spec-id europa.view.syntax-highlight.lazy-visible-first
  * @spec-id europa.view.syntax-highlight.orchestrator-gating
  * @spec-id europa.view.syntax-highlight.refresh-on-cell-mutation
+ * @spec-id europa.view.syntax-highlight.markdown-cell
+ * @spec-id europa.view.syntax-highlight.markdown-fence-injection
+ * @spec-id europa.view.syntax-highlight.markdown-attach
+ * @spec-id europa.view.syntax-highlight.parser-missing
+ * @spec-id europa.view.syntax-highlight.language-unknown
+ * @spec-id europa.view.syntax-highlight.vim-host-fallback
+ * @spec-id europa.view.syntax-highlight.language-fallback-chain
  */
 
 import { describe, it } from "@std/testing/bdd";
@@ -369,3 +376,181 @@ describe("buildCellLangRanges — FR-001 language resolution (europa.view.syntax
     assertEquals(result[2].language, "python");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 4: User Story 2 — Markdown cell highlighting
+// ---------------------------------------------------------------------------
+
+describe("buildCellLangRanges — markdown cell (europa.view.syntax-highlight.markdown-cell)", () => {
+  it("emits kind:markdown language:markdown for markdown source ranges", () => {
+    const ranges = buildCellLangRanges(
+      [{
+        cellId: "m1",
+        kind: "markdown",
+        sourceStartLine: 0,
+        sourceEndLine: 8,
+      }],
+      { kernelspec: { language: "python" } },
+    );
+    assertEquals(ranges[0].kind, "markdown");
+    assertEquals(ranges[0].language, "markdown");
+    assertEquals(ranges[0].startLine, 0);
+    assertEquals(ranges[0].endLine, 8);
+  });
+
+  it("markdown cells always use 'markdown' regardless of kernel language", () => {
+    const ranges = buildCellLangRanges(
+      [{
+        cellId: "m2",
+        kind: "markdown",
+        sourceStartLine: 5,
+        sourceEndLine: 12,
+      }],
+      {},
+    );
+    assertEquals(ranges[0].language, "markdown");
+  });
+});
+
+describe(
+  "NvimSyntaxHighlighter — markdown fence injection (europa.view.syntax-highlight.markdown-fence-injection)",
+  () => {
+    it("calls nvim_exec_lua for markdown cell with 'markdown' language (SC-006)", async () => {
+      const denops = mockNvim();
+      const hl = new NvimSyntaxHighlighter();
+      await hl.init(denops);
+      await hl.attach(1, [
+        { kind: "markdown", language: "markdown", startLine: 0, endLine: 10 },
+      ]);
+      const execLua = denops.callsTo("nvim_exec_lua");
+      assertEquals(
+        execLua.length >= 1,
+        true,
+        "expected nvim_exec_lua for markdown cell",
+      );
+    });
+
+    it("markdown attach does not throw even if parser unavailable (FR-006)", async () => {
+      const denops = mockNvim();
+      const hl = new NvimSyntaxHighlighter();
+      await hl.init(denops);
+      await hl.attach(1, [
+        { kind: "markdown", language: "markdown", startLine: 0, endLine: 10 },
+      ]);
+      assertEquals(true, true); // no throw
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Phase 5: User Story 3 — Graceful degradation
+// ---------------------------------------------------------------------------
+
+describe(
+  "NvimSyntaxHighlighter — parser missing (europa.view.syntax-highlight.parser-missing)",
+  () => {
+    it("does not throw when parser is unavailable for an unknown language (FR-006)", async () => {
+      const denops = mockNvim();
+      const hl = new NvimSyntaxHighlighter();
+      await hl.init(denops);
+      await hl.attach(1, [
+        { kind: "code", language: "haskell", startLine: 0, endLine: 5 },
+      ]);
+      assertEquals(true, true); // no throw
+    });
+
+    it("continues highlighting remaining cells after one fails (per-cell isolation)", async () => {
+      const denops = mockNvim();
+      const hl = new NvimSyntaxHighlighter();
+      await hl.init(denops);
+      // Two ranges: one unknown, one valid
+      await hl.attach(1, [
+        { kind: "code", language: "haskell", startLine: 0, endLine: 5 },
+        { kind: "code", language: "python", startLine: 6, endLine: 10 },
+      ]);
+      // Both cells attempt nvim_exec_lua (mock returns null for both)
+      const calls = denops.callsTo("nvim_exec_lua");
+      assertEquals(calls.length, 2, "both cells should attempt highlighting");
+    });
+  },
+);
+
+describe(
+  "buildCellLangRanges — language unknown (europa.view.syntax-highlight.language-unknown)",
+  () => {
+    it("resolves to empty string when metadata has no kernelspec (FR-011 trigger)", () => {
+      const ranges = buildCellLangRanges(
+        [{ cellId: "c1", kind: "code", sourceStartLine: 0, sourceEndLine: 5 }],
+        {},
+      );
+      assertEquals(ranges[0].language, "");
+    });
+
+    it("resolves to empty string when kernelspec has no language field", () => {
+      const ranges = buildCellLangRanges(
+        [{ cellId: "c1", kind: "code", sourceStartLine: 0, sourceEndLine: 5 }],
+        { kernelspec: { display_name: "Python 3", name: "python3" } },
+      );
+      assertEquals(ranges[0].language, "");
+    });
+  },
+);
+
+describe(
+  "VimSyntaxHighlighter — Vim host fallback (europa.view.syntax-highlight.vim-host-fallback)",
+  () => {
+    it("attach with any language is a no-op on Vim host (SC-008)", async () => {
+      const denops = mockVim();
+      const hl = new VimSyntaxHighlighter();
+      await hl.attach(1, [
+        { kind: "code", language: "haskell", startLine: 0, endLine: 5 },
+      ]);
+      assertEquals(denops.calls.length, 0);
+    });
+
+    it("refresh with any language is a no-op on Vim host", async () => {
+      const denops = mockVim();
+      const hl = new VimSyntaxHighlighter();
+      await hl.refresh(1, [
+        { kind: "code", language: "python", startLine: 0, endLine: 5 },
+      ]);
+      assertEquals(denops.calls.length, 0);
+    });
+  },
+);
+
+describe(
+  "buildCellLangRanges — language fallback chain (europa.view.syntax-highlight.language-fallback-chain)",
+  () => {
+    it("uses kernelspec.language as first priority", () => {
+      const ranges = buildCellLangRanges(
+        [{ cellId: "c1", kind: "code", sourceStartLine: 0, sourceEndLine: 3 }],
+        {
+          kernelspec: { language: "julia" },
+          language_info: { name: "python" },
+        },
+      );
+      assertEquals(
+        ranges[0].language,
+        "julia",
+        "kernelspec.language wins over language_info",
+      );
+    });
+
+    it("falls back to language_info.name when kernelspec.language absent", () => {
+      const ranges = buildCellLangRanges(
+        [{ cellId: "c1", kind: "code", sourceStartLine: 0, sourceEndLine: 3 }],
+        { kernelspec: { name: "python3" }, language_info: { name: "python" } },
+      );
+      assertEquals(ranges[0].language, "python");
+    });
+
+    it("resolves to empty string as final fallback (plain text, FR-011)", () => {
+      const ranges = buildCellLangRanges(
+        [{ cellId: "c1", kind: "code", sourceStartLine: 0, sourceEndLine: 3 }],
+        {},
+      );
+      assertEquals(ranges[0].language, "");
+    });
+  },
+);

@@ -8,6 +8,7 @@
  * cross-host parity exception).
  *
  * @spec-id europa.view.syntax-highlight.vim-noop
+ * @spec-id europa.view.syntax-highlight.vim-host-fallback
  * @module denops/europa/view/syntax-highlight-vim
  */
 
