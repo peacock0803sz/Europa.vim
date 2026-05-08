@@ -16,6 +16,7 @@ CHAPTERS~
 |europa-requirements|	Editor, runtime, and OS requirements.
 |europa-setup|		Plugin manager installation steps.
 |europa-configuration|	`g:europa_*` variables.
+|europa-syntax-highlight|	Tree-sitter syntax highlighting for cells.
 |europa-commands|	`:Europa*` commands.
 |europa-mappings|	`<Plug>` mappings and default keys.
 |europa-examples|	End-to-end usage examples.
