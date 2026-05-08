@@ -15,6 +15,34 @@ import {
   type ImageProtocol,
 } from "../../schema/capabilities.ts";
 
+// --- tree-sitter detection ---------------------------------------------------
+
+/**
+ * Probe whether `vim.treesitter` is present in the current Neovim session.
+ *
+ * The Lua expression uses `ok and present` rather than just `ok` because
+ * pcall returns true even when `vim.treesitter` is nil — no exception is
+ * raised on nil member access, so we must check the value separately.
+ *
+ * @spec-id europa.capabilities.tree-sitter-nvim
+ * @spec-id europa.capabilities.tree-sitter-vim
+ * @spec-id europa.capabilities.tree-sitter-fallback
+ */
+async function detectTreeSitter(
+  denops: Denops,
+  isNvim: boolean,
+): Promise<boolean> {
+  if (!isNvim) return false;
+  try {
+    const result = await denops.eval(
+      "luaeval('(function() local ok, present = pcall(function() return vim.treesitter ~= nil end); return ok and present end)()')",
+    );
+    return result === true || result === 1;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Detect host capabilities from the current Denops environment.
  *
@@ -43,8 +71,17 @@ export async function detectCapabilities(
   );
 
   const image = resolveImageProtocol(rawBackend);
+  const treeSitterAvailable = await detectTreeSitter(
+    denops,
+    hostKind === "nvim",
+  );
 
-  return { host: hostKind as "vim" | "nvim", hostVersion, image };
+  return {
+    host: hostKind as "vim" | "nvim",
+    hostVersion,
+    image,
+    treeSitter: { available: treeSitterAvailable },
+  };
 }
 
 function resolveImageProtocol(raw: unknown): ImageProtocol {

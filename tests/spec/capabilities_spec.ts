@@ -4,6 +4,9 @@
  * @spec-id europa.capabilities.host
  * @spec-id europa.capabilities.auto-resolves-placeholder
  * @spec-id europa.capabilities.explicit-override
+ * @spec-id europa.capabilities.tree-sitter-nvim
+ * @spec-id europa.capabilities.tree-sitter-vim
+ * @spec-id europa.capabilities.tree-sitter-fallback
  */
 
 import { describe, it } from "@std/testing/bdd";
@@ -72,5 +75,33 @@ describe("detectCapabilities — image_backend resolution", () => {
     denops.setEval("g:europa_image_backend", "iterm2_osc1337");
     const caps = await detectCapabilities(denops);
     assertEquals(caps.image, "iterm2_osc1337");
+  });
+});
+
+describe("detectCapabilities — tree-sitter detection (T013)", () => {
+  it("detects tree-sitter available on Neovim with luaeval returning true", async () => {
+    // europa.capabilities.tree-sitter-nvim
+    const denops = mockNvim();
+    denops.setEval(
+      "luaeval('(function() local ok, present = pcall(function() return vim.treesitter ~= nil end); return ok and present end)()')",
+      true,
+    );
+    const caps = await detectCapabilities(denops);
+    assertEquals(caps.treeSitter.available, true);
+  });
+
+  it("reports tree-sitter unavailable on Vim host regardless of eval", async () => {
+    // europa.capabilities.tree-sitter-vim
+    const denops = mockVim();
+    const caps = await detectCapabilities(denops);
+    assertEquals(caps.treeSitter.available, false);
+  });
+
+  it("reports tree-sitter unavailable when Neovim luaeval returns null (no tree-sitter)", async () => {
+    // europa.capabilities.tree-sitter-fallback
+    const denops = mockNvim();
+    // evalValues does not contain the luaeval expr → returns null → treated as false
+    const caps = await detectCapabilities(denops);
+    assertEquals(caps.treeSitter.available, false);
   });
 });

@@ -16,6 +16,7 @@ const defaultCaps: Capabilities = {
   host: "vim",
   hostVersion: "9.1.1646",
   image: "placeholder",
+  treeSitter: { available: false },
 };
 
 function makeNotebook(cells: Notebook["cells"]): Notebook {
