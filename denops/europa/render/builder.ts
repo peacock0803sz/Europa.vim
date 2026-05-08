@@ -9,6 +9,7 @@ import type { Notebook, Output } from "../../../schema/notebook.ts";
 import type {
   BuildRenderPlanOpts,
   CellRange,
+  CellSourceRange,
   RenderFragment,
   RenderPlan,
   SixelPlacement,
@@ -246,6 +247,7 @@ export function buildRenderPlan(
   const sixelPlacements: SixelPlacement[] = [];
   const cellMap: RenderPlan["cellMap"] = [];
   const cellRanges: CellRange[] = [];
+  const cellSourceRanges: CellSourceRange[] = [];
 
   if (nb.cells.length === 0) {
     lines.push(
@@ -267,6 +269,7 @@ export function buildRenderPlan(
       clickables: [],
       cellMap,
       cellRanges,
+      cellSourceRanges: [],
     };
   }
 
@@ -320,6 +323,32 @@ export function buildRenderPlan(
     const endLine = lines.length - 1;
     cellMap.push({ cellIndex: i, bufLineStart, bufLineEnd });
     cellRanges.push({ cellId: cell.id, startLine, endLine });
+
+    // Populate cellSourceRanges for code and markdown cells (FR-004).
+    // sourceStartLine = bufLineStart + 1 (skip the header border).
+    // sourceEndLine excludes the mid-border and outputs for code cells.
+    if (cell.cell_type === "code" || cell.cell_type === "markdown") {
+      const sourceStartLine = bufLineStart + 1;
+      let sourceEndLine: number;
+      if (
+        cell.cell_type === "code" && cell.outputs && cell.outputs.length > 0
+      ) {
+        // The mid-border was pushed right after source lines, so
+        // sourceEndLine is the line index just before the mid-border.
+        sourceEndLine = sourceStartLine +
+          (cell.source?.split("\n").length ?? 0);
+      } else {
+        sourceEndLine = bufLineEnd;
+      }
+      if (sourceEndLine > sourceStartLine) {
+        cellSourceRanges.push({
+          cellId: cell.id,
+          kind: cell.cell_type as "code" | "markdown",
+          sourceStartLine,
+          sourceEndLine,
+        });
+      }
+    }
   }
 
   return {
@@ -331,5 +360,6 @@ export function buildRenderPlan(
     clickables: [],
     cellMap,
     cellRanges,
+    cellSourceRanges,
   };
 }

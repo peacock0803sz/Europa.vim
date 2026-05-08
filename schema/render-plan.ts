@@ -98,6 +98,21 @@ export const CellRangeSchema = Type.Object({
 });
 export type CellRange = Static<typeof CellRangeSchema>;
 
+/**
+ * Source-body-only line range for a cell, used by the syntax-highlight layer.
+ *
+ * Unlike `CellRange`, this excludes the header border line and output section —
+ * only the editable source lines are covered (FR-004).
+ * Lines are 0-indexed half-open `[sourceStartLine, sourceEndLine)`.
+ */
+export const CellSourceRangeSchema = Type.Object({
+  cellId: Type.String(),
+  kind: Type.Union([Type.Literal("code"), Type.Literal("markdown")]),
+  sourceStartLine: Type.Integer({ minimum: 0 }),
+  sourceEndLine: Type.Integer({ minimum: 0 }),
+});
+export type CellSourceRange = Static<typeof CellSourceRangeSchema>;
+
 /** Options controlling cell borders and output limits passed to buildRenderPlan. */
 export const BuildRenderPlanOptsSchema = Type.Object({
   maxOutputLines: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -126,5 +141,6 @@ export const RenderPlanSchema = Type.Object({
     }),
   ),
   cellRanges: Type.Array(CellRangeSchema),
+  cellSourceRanges: Type.Optional(Type.Array(CellSourceRangeSchema)),
 });
 export type RenderPlan = Static<typeof RenderPlanSchema>;
