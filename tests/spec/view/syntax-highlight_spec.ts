@@ -1,19 +1,74 @@
 /**
  * BDD specs for the Europa syntax-highlight layer.
  *
- * Phase 3 (User Story 1) will expand this file with FR-001 / FR-007 /
- * FR-012 / FR-015 / FR-016 / FR-017 / SC-007 / SC-009 cases.
+ * Covers: FR-001/FR-007/FR-011/FR-012/FR-014/FR-015/FR-016/FR-017/SC-007/SC-009
  *
  * @spec-id europa.view.syntax-highlight.vim-noop
  * @spec-id europa.view.syntax-highlight.factory
+ * @spec-id europa.view.syntax-highlight.nvim-attach
+ * @spec-id europa.view.syntax-highlight.nvim-refresh
+ * @spec-id europa.view.syntax-highlight.lazy-visible-first
+ * @spec-id europa.view.syntax-highlight.orchestrator-gating
  */
 
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
 import { mockNvim, mockVim } from "../../fixtures/mock-host.ts";
-import { createSyntaxHighlighter } from "../../../denops/europa/view/syntax-highlight.ts";
+import type { Denops } from "@denops/std";
+import type { SyntaxHighlighter } from "../../../contracts/syntax-highlighter.ts";
+import type { CellLanguageRange } from "../../../schema/highlight.ts";
+import {
+  createSyntaxHighlighter,
+  SyntaxHighlightOrchestrator,
+} from "../../../denops/europa/view/syntax-highlight.ts";
 import { VimSyntaxHighlighter } from "../../../denops/europa/view/syntax-highlight-vim.ts";
 import { NvimSyntaxHighlighter } from "../../../denops/europa/view/syntax-highlight-nvim.ts";
+
+// ---------------------------------------------------------------------------
+// Shared fixtures
+// ---------------------------------------------------------------------------
+
+const PYTHON_RANGE: CellLanguageRange = {
+  kind: "code",
+  language: "python",
+  startLine: 1,
+  endLine: 5,
+};
+
+const EMPTY_LANG_RANGE: CellLanguageRange = {
+  kind: "code",
+  language: "",
+  startLine: 1,
+  endLine: 5,
+};
+
+/** Minimal SyntaxHighlighter mock for orchestrator gating tests. */
+class SpyHighlighter implements SyntaxHighlighter {
+  initCount = 0;
+  attachCount = 0;
+  refreshCount = 0;
+  detachCount = 0;
+
+  init(_d: Denops): Promise<void> {
+    this.initCount++;
+    return Promise.resolve();
+  }
+  attach(_bufnr: number, _ranges: readonly CellLanguageRange[]): Promise<void> {
+    this.attachCount++;
+    return Promise.resolve();
+  }
+  refresh(
+    _bufnr: number,
+    _ranges: readonly CellLanguageRange[],
+  ): Promise<void> {
+    this.refreshCount++;
+    return Promise.resolve();
+  }
+  detach(_bufnr: number): Promise<void> {
+    this.detachCount++;
+    return Promise.resolve();
+  }
+}
 
 describe("VimSyntaxHighlighter — no-op (europa.view.syntax-highlight.vim-noop)", () => {
   it("init resolves without throwing", async () => {
@@ -63,5 +118,186 @@ describe("createSyntaxHighlighter factory (europa.view.syntax-highlight.factory)
     const hl1 = createSyntaxHighlighter(denops);
     const hl2 = createSyntaxHighlighter(denops);
     assertEquals(hl1 === hl2, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NvimSyntaxHighlighter — candidate β implementation (T016)
+// ---------------------------------------------------------------------------
+
+describe("NvimSyntaxHighlighter — init creates namespace (europa.view.syntax-highlight.nvim-attach)", () => {
+  it("calls nvim_create_namespace during init", async () => {
+    const denops = mockNvim();
+    const hl = new NvimSyntaxHighlighter();
+    await hl.init(denops);
+    const nsCalls = denops.callsTo("nvim_create_namespace");
+    assertEquals(nsCalls.length >= 1, true);
+  });
+});
+
+describe("NvimSyntaxHighlighter — attach (europa.view.syntax-highlight.nvim-attach)", () => {
+  it("calls nvim_exec_lua for a non-empty language range (FR-001)", async () => {
+    const denops = mockNvim();
+    const hl = new NvimSyntaxHighlighter();
+    await hl.init(denops);
+    await hl.attach(1, [PYTHON_RANGE]);
+    const execLua = denops.callsTo("nvim_exec_lua");
+    assertEquals(
+      execLua.length >= 1,
+      true,
+      "expected at least one nvim_exec_lua call",
+    );
+  });
+
+  it("skips cells with empty language without calling nvim_exec_lua (FR-011)", async () => {
+    const denops = mockNvim();
+    const hl = new NvimSyntaxHighlighter();
+    await hl.init(denops);
+    await hl.attach(1, [EMPTY_LANG_RANGE]);
+    const execLua = denops.callsTo("nvim_exec_lua");
+    assertEquals(
+      execLua.length,
+      0,
+      "should not call nvim_exec_lua for empty language",
+    );
+  });
+
+  it("does not throw when parser load fails (FR-006 — per-cell silent skip)", async () => {
+    const denops = mockNvim();
+    // nvim_exec_lua returns null (simulating Lua pcall failure) — must not throw
+    const hl = new NvimSyntaxHighlighter();
+    await hl.init(denops);
+    await hl.attach(1, [PYTHON_RANGE]);
+    // If we reach here, no exception was thrown
+    assertEquals(true, true);
+  });
+
+  it("Europa* highlight link targets are unchanged after attach (SC-007)", async () => {
+    const denops = mockNvim();
+    const hl = new NvimSyntaxHighlighter();
+    await hl.init(denops);
+    // Record which hi commands init issued
+    const hiBeforeAttach = denops.cmdsMatching("hi default link").length;
+    await hl.attach(1, [PYTHON_RANGE]);
+    // attach should not issue any new hi commands (SC-007: no regression on border groups)
+    const hiAfterAttach = denops.cmdsMatching("hi default link").length;
+    assertEquals(
+      hiAfterAttach,
+      hiBeforeAttach,
+      "attach must not modify highlight group links",
+    );
+  });
+});
+
+describe("NvimSyntaxHighlighter — refresh (europa.view.syntax-highlight.nvim-refresh)", () => {
+  it("calls nvim_buf_clear_namespace before re-applying highlights", async () => {
+    const denops = mockNvim();
+    const hl = new NvimSyntaxHighlighter();
+    await hl.init(denops);
+    await hl.refresh(1, [PYTHON_RANGE]);
+    const clearCalls = denops.callsTo("nvim_buf_clear_namespace");
+    assertEquals(
+      clearCalls.length >= 1,
+      true,
+      "refresh must clear namespace first",
+    );
+    const execLua = denops.callsTo("nvim_exec_lua");
+    assertEquals(execLua.length >= 1, true, "refresh must re-apply highlights");
+  });
+});
+
+describe("NvimSyntaxHighlighter — lazy visible-first (europa.view.syntax-highlight.lazy-visible-first)", () => {
+  it("only highlights the ranges passed to attach (SC-009: caller controls visibility)", async () => {
+    const denops = mockNvim();
+    const hl = new NvimSyntaxHighlighter();
+    await hl.init(denops);
+    // Pass only 1 of 3 cells (simulating visible-only subset)
+    const visibleRange: CellLanguageRange = {
+      kind: "code",
+      language: "python",
+      startLine: 10,
+      endLine: 15,
+    };
+    await hl.attach(1, [visibleRange]);
+    const execLua = denops.callsTo("nvim_exec_lua");
+    // Exactly one exec_lua call for exactly one visible range
+    assertEquals(execLua.length, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SyntaxHighlightOrchestrator — config/capability gating (T017)
+// ---------------------------------------------------------------------------
+
+describe("SyntaxHighlightOrchestrator — gating (europa.view.syntax-highlight.orchestrator-gating)", () => {
+  it("short-circuits when ts_highlight is 'off', impl.attach NOT called (FR-010)", async () => {
+    const denops = mockNvim();
+    denops.setEval(`get(g:, 'europa_ts_highlight', "auto")`, "off");
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.attach(denops, 1, [PYTHON_RANGE]);
+    assertEquals(spy.attachCount, 0, "attach must not be called when mode=off");
+  });
+
+  it("short-circuits when mode is 'auto' and treeSitter is unavailable (FR-014)", async () => {
+    const denops = mockNvim();
+    // ts_highlight defaults to "auto", luaeval for treeSitter probe returns null → false
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.attach(denops, 1, [PYTHON_RANGE]);
+    assertEquals(
+      spy.attachCount,
+      0,
+      "attach must not be called when auto+no treeSitter",
+    );
+  });
+
+  it("delegates to impl when mode is 'on' regardless of treeSitter (FR-010)", async () => {
+    const denops = mockNvim();
+    denops.setEval(`get(g:, 'europa_ts_highlight', "auto")`, "on");
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.attach(denops, 1, [PYTHON_RANGE]);
+    assertEquals(spy.attachCount, 1, "attach must be called when mode=on");
+  });
+
+  it("delegates to impl when mode is 'auto' and treeSitter IS available", async () => {
+    const denops = mockNvim();
+    // ts_highlight=auto (default), treeSitter=true
+    denops.setEval(
+      "luaeval('(function() local ok, present = pcall(function() return vim.treesitter ~= nil end); return ok and present end)()')",
+      true,
+    );
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.attach(denops, 1, [PYTHON_RANGE]);
+    assertEquals(
+      spy.attachCount,
+      1,
+      "attach must be called when auto+treeSitter available",
+    );
+  });
+
+  it("refresh short-circuits when mode is 'off'", async () => {
+    const denops = mockNvim();
+    denops.setEval(`get(g:, 'europa_ts_highlight', "auto")`, "off");
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.refresh(denops, 1, [PYTHON_RANGE]);
+    assertEquals(
+      spy.refreshCount,
+      0,
+      "refresh must not be called when mode=off",
+    );
+  });
+
+  it("detach always cleans up session regardless of mode", async () => {
+    const denops = mockNvim();
+    denops.setEval(`get(g:, 'europa_ts_highlight', "auto")`, "off");
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.detach(denops, 1);
+    // detach should always propagate (session cleanup is unconditional)
+    assertEquals(spy.detachCount, 1, "detach must always propagate");
   });
 });
