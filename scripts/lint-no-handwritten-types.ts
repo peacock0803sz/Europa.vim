@@ -24,6 +24,7 @@ const TARGET_GLOB = "denops/europa";
 const WHITELIST = new Set([
   "contracts/cell-marker.ts",
   "contracts/dispatcher.ts",
+  "contracts/syntax-highlighter.ts",
   "contracts/kernel-client.ts",
   "contracts/session-runtime.ts",
   // MagickConverter is a DI callback type for testability — not a domain type
