@@ -335,8 +335,7 @@ export function buildRenderPlan(
       ) {
         // The mid-border was pushed right after source lines, so
         // sourceEndLine is the line index just before the mid-border.
-        sourceEndLine = sourceStartLine +
-          (cell.source?.split("\n").length ?? 0);
+        sourceEndLine = sourceStartLine + sourceLines.length;
       } else {
         sourceEndLine = bufLineEnd;
       }
