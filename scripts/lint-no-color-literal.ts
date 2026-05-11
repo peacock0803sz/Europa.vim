@@ -2,8 +2,7 @@
  * Lint: no hard-coded color literals in syntax-highlight implementation.
  *
  * Scans `denops/europa/view/syntax-highlight*.ts` for hex color patterns
- * (`#RGB` / `#RRGGBB`) and CSS `color:` property literals. Exits non-zero
- * on first violation.
+ * (`#RGB` / `#RRGGBB`). Reports all violations before exiting non-zero.
  *
  * FR-005: Europa must not hard-code display colors. All coloring flows
  * through named highlight groups (`hi default link`) so colorscheme authors
