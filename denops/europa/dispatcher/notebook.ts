@@ -16,6 +16,7 @@ import {
 } from "./context.ts";
 import { processOne } from "./undo.ts";
 import { getOrCreateOrchestrator } from "../view/syntax-highlight.ts";
+import { scheduleHighlightRefresh } from "./syntax-highlight.ts";
 
 export function buildNotebookDispatcher(
   ctx: DispatcherContext,
@@ -81,6 +82,7 @@ export function buildNotebookDispatcher(
      * Open a `.ipynb` file, parse it, store the session, and render cells.
      *
      * @spec-id europa.main.open.render
+     * @spec-id europa.dispatcher.open-attach-syntax-highlight
      */
     async open(bufnr: unknown, path: unknown): Promise<void> {
       const bufnrNum = Number(bufnr);
@@ -102,6 +104,10 @@ export function buildNotebookDispatcher(
       );
       sessionStore.setRenderPlan(bufnrNum, plan);
       await applyRenderPlan(denops, bufnrNum, plan);
+      // Trigger syntax-highlight from here (not ftplugin) to avoid the race
+      // where ftplugin's BufRead-time notify lands at denops before this
+      // handler has populated the session.
+      scheduleHighlightRefresh(ctx, bufnrNum);
     },
 
     /**
