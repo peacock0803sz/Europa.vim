@@ -160,8 +160,8 @@ export function buildViewDispatcher(
           renderPlanOpts(config),
         );
         sessionStore.setRenderPlan(bn, plan);
-        scheduleHighlightRefresh(ctx, bn); // FR-007: BufWinEnter re-render follow-up
         await applyRenderPlan(denops, bn, plan);
+        scheduleHighlightRefresh(ctx, bn); // FR-007: BufWinEnter re-render follow-up
       } catch {
         // Re-render failure is non-fatal.
       }

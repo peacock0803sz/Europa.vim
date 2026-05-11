@@ -111,9 +111,9 @@ export function buildEditCellDispatcher(
         cellMap: plan.cellMap,
       });
       sessionStore.setRenderPlan(lookup.viewerBufnr, plan);
-      scheduleHighlightRefresh(ctx, lookup.viewerBufnr); // FR-007: text-edit follow-up
       try {
         await applyRenderPlan(denops, lookup.viewerBufnr, plan);
+        scheduleHighlightRefresh(ctx, lookup.viewerBufnr); // FR-007: text-edit follow-up
         await denops.call(
           "setbufvar",
           lookup.viewerBufnr,
