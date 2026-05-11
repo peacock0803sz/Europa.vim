@@ -107,6 +107,7 @@ export class NvimSyntaxHighlighter implements SyntaxHighlighter {
     ranges: readonly CellLanguageRange[],
   ): Promise<void> {
     if (!this._host || this._nsId === undefined) return;
+    await this._host.call("nvim_buf_clear_namespace", bufnr, this._nsId, 0, -1);
     for (const range of ranges) {
       if (!range.language) continue; // FR-011: skip cells with no resolved language
       try {
@@ -147,8 +148,6 @@ export class NvimSyntaxHighlighter implements SyntaxHighlighter {
     bufnr: number,
     ranges: readonly CellLanguageRange[],
   ): Promise<void> {
-    if (!this._host || this._nsId === undefined) return;
-    await this._host.call("nvim_buf_clear_namespace", bufnr, this._nsId, 0, -1);
     await this.attach(bufnr, ranges);
   }
 
