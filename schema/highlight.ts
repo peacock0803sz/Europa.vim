@@ -27,9 +27,9 @@ export const CellKindSchema = Type.Union([
 /**
  * A single cell's source-text range for tree-sitter highlighting.
  *
- * Line numbers are 0-indexed half-open `[startLine, endLine)` to match the
- * Neovim API convention used by `nvim_buf_add_highlight`. Header and output
- * lines are excluded — only the cell body (source) is covered.
+ * Line numbers are 0-indexed half-open `[startLine, endLine)` matching the
+ * end-exclusive convention of `nvim_buf_get_lines` and `nvim_buf_set_extmark`.
+ * Header and output lines are excluded — only the cell body (source) is covered.
  */
 export const CellLanguageRangeSchema = Type.Object({
   kind: CellKindSchema,
