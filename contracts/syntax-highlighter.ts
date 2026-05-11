@@ -19,7 +19,7 @@ export type { CellLanguageRange };
  *
  * Implementations:
  * - `NvimSyntaxHighlighter` — uses `vim.treesitter` `get_string_parser` with
- *   `nvim_buf_add_highlight`, one namespace per buffer (R1 candidate β).
+ *   `nvim_buf_set_extmark`, one namespace shared across all buffers (R1 candidate β).
  * - `VimSyntaxHighlighter` — no-op fallback that preserves existing border
  *   highlights only (R6).
  *
