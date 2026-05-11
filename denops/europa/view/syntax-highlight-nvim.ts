@@ -1,7 +1,7 @@
 /**
  * Neovim tree-sitter syntax highlighter — candidate β implementation.
  *
- * Uses `vim.treesitter.get_string_parser` + `nvim_buf_add_highlight` to apply
+ * Uses `vim.treesitter.get_string_parser` + `nvim_buf_set_extmark` to apply
  * per-cell language highlights without requiring a root-level parser for the
  * `europa` filetype (candidate α failed with "No parser for language europa").
  *
@@ -11,7 +11,7 @@
  *   3. `parser:parse()` triggers root parsing and populates injected subtrees
  *      (e.g., fenced code blocks in Markdown cells via `injections.scm`).
  *   4. `apply_tree` recurses through the LanguageTree and all `children()`,
- *      applying `highlights` query captures via `nvim_buf_add_highlight`.
+ *      applying `highlights` query captures via `nvim_buf_set_extmark`.
  * All per-cell failures are isolated via Lua `pcall` guards (FR-006).
  *
  * @module denops/europa/view/syntax-highlight-nvim
