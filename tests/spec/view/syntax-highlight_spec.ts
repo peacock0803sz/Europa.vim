@@ -312,6 +312,67 @@ describe("SyntaxHighlightOrchestrator — gating (europa.view.syntax-highlight.o
 });
 
 // ---------------------------------------------------------------------------
+// SyntaxHighlightOrchestrator — lazy init guard
+// ---------------------------------------------------------------------------
+
+/**
+ * Regression guard: ftplugin → syntaxHighlightAttach → orchestrator.attach
+ * must call `_impl.init(denops)` exactly once before the first delegated
+ * attach/refresh. Previously the orchestrator skipped init entirely, so
+ * NvimSyntaxHighlighter's `_host`/`_nsId` stayed undefined and the in-Lua
+ * highlight pipeline was silently no-op'd at runtime (T038 bug).
+ *
+ * @spec-id europa.view.syntax-highlight.orchestrator-init-lazy
+ */
+describe("SyntaxHighlightOrchestrator — lazy init (europa.view.syntax-highlight.orchestrator-init-lazy)", () => {
+  function nvimWithTreeSitter() {
+    const denops = mockNvim();
+    denops.setEval(
+      "luaeval('(function() local ok, present = pcall(function() return vim.treesitter ~= nil end); return ok and present end)()')",
+      true,
+    );
+    return denops;
+  }
+
+  it("calls _impl.init exactly once on first attach", async () => {
+    const denops = nvimWithTreeSitter();
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.attach(denops, 1, [PYTHON_RANGE]);
+    assertEquals(spy.initCount, 1, "init must run before first attach");
+    assertEquals(spy.attachCount, 1, "attach must still be delegated");
+  });
+
+  it("does not re-init on subsequent attach/refresh calls", async () => {
+    const denops = nvimWithTreeSitter();
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.attach(denops, 1, [PYTHON_RANGE]);
+    await orc.attach(denops, 2, [PYTHON_RANGE]);
+    await orc.refresh(denops, 1, [PYTHON_RANGE]);
+    assertEquals(spy.initCount, 1, "init must run only once across calls");
+  });
+
+  it("does NOT init when ts_highlight is 'off' (gating beats init)", async () => {
+    const denops = mockNvim();
+    denops.setEval(`get(g:, 'europa_ts_highlight', "auto")`, "off");
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.attach(denops, 1, [PYTHON_RANGE]);
+    assertEquals(spy.initCount, 0, "init must be skipped when mode=off");
+  });
+
+  it("detach alone does not trigger init", async () => {
+    const denops = nvimWithTreeSitter();
+    const spy = new SpyHighlighter();
+    const orc = new SyntaxHighlightOrchestrator(spy);
+    await orc.detach(denops, 1);
+    assertEquals(spy.initCount, 0, "detach must not trigger lazy init");
+    assertEquals(spy.detachCount, 1, "detach must still propagate");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildCellLangRanges — FR-001 language resolution (T019a)
 // ---------------------------------------------------------------------------
 

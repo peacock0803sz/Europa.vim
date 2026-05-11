@@ -83,10 +83,18 @@ export function getOrCreateOrchestrator(
  * - `ts_highlight === "on"` → always delegate (ignores treeSitter check)
  * - `detach` always propagates regardless of mode (session cleanup is unconditional)
  *
+ * The orchestrator owns the impl lifecycle: `_impl.init(denops)` is invoked
+ * exactly once on the first attach/refresh that survives the gating check, so
+ * that NvimSyntaxHighlighter can lazily allocate its namespace and capture
+ * the Denops handle. This is required because `createSyntaxHighlighter` is a
+ * sync factory and can't run async init at construction time.
+ *
  * @spec-id europa.view.syntax-highlight.orchestrator-gating
+ * @spec-id europa.view.syntax-highlight.orchestrator-init-lazy
  */
 export class SyntaxHighlightOrchestrator {
   private readonly _sessions = new Map<number, HighlightSession>();
+  private _initPromise?: Promise<void>;
 
   constructor(private readonly _impl: SyntaxHighlighter) {}
 
@@ -96,6 +104,7 @@ export class SyntaxHighlightOrchestrator {
     ranges: readonly CellLanguageRange[],
   ): Promise<void> {
     if (!await this._shouldHighlight(denops)) return;
+    await this._ensureInit(denops);
     const session = new HighlightSession(bufnr, ranges);
     this._sessions.set(bufnr, session);
     await this._impl.attach(bufnr, ranges);
@@ -107,6 +116,7 @@ export class SyntaxHighlightOrchestrator {
     ranges: readonly CellLanguageRange[],
   ): Promise<void> {
     if (!await this._shouldHighlight(denops)) return;
+    await this._ensureInit(denops);
     const session = this._sessions.get(bufnr);
     if (session) {
       session.ranges = ranges;
@@ -135,5 +145,16 @@ export class SyntaxHighlightOrchestrator {
     // "auto": check host capability
     const caps = await detectCapabilities(denops);
     return caps.treeSitter.available;
+  }
+
+  /**
+   * Run `_impl.init(denops)` exactly once. The Promise is cached so concurrent
+   * attach/refresh callers all await the same init result without re-entering.
+   */
+  private _ensureInit(denops: Denops): Promise<void> {
+    if (!this._initPromise) {
+      this._initPromise = this._impl.init(denops);
+    }
+    return this._initPromise;
   }
 }
