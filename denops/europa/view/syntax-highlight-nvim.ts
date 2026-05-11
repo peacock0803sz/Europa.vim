@@ -161,7 +161,10 @@ export class NvimSyntaxHighlighter implements SyntaxHighlighter {
     if (!this._host) return;
     try {
       const flag = await this._host.eval("get(g:, 'denops#debug', 0)");
-      if (flag) console.warn(`[europa] ${msg}`);
+      // Use console.debug (not console.warn) so denops routes the line through
+      // its debug log channel instead of tagging it as a warning; the
+      // `g:denops#debug` gate still controls emission.
+      if (flag) console.debug(`[europa] ${msg}`);
     } catch {
       // best-effort debug logging
     }
