@@ -15,3 +15,11 @@ if !get(g:, 'europa_disable_default_mappings', v:false)
   nmap <buffer><silent> u <Plug>(europa-undo)
   nmap <buffer><silent> <C-r> <Plug>(europa-redo)
 endif
+
+" Phase 009: tree-sitter syntax highlight attach (FR-001 / FR-017).
+" ftplugin fires at FileType — after BufRead — so a plain BufRead autocmd
+" would not fire for the current buffer. timer_start(0, ...) schedules on
+" the next event loop tick (after denops finishes loading the session).
+" @spec-id europa.ftplugin.attach-on-bufread
+call timer_start(0, {-> denops#plugin#wait_async('europa',
+      \ {-> denops#notify('europa', 'syntaxHighlightAttach', [bufnr()])})})

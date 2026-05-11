@@ -4,6 +4,8 @@
  * @spec-id europa.config.load
  * @spec-id europa.config.default-values
  * @spec-id europa.config.invalid-rejected
+ * @spec-id europa.config.ts-highlight-default
+ * @spec-id europa.config.ts-highlight-on-off
  */
 
 import { describe, it } from "@std/testing/bdd";
@@ -225,6 +227,36 @@ describe("loadConfig — disable_default_mappings (europa.config.disable-default
     denops.setEval(`get(g:, 'europa_disable_default_mappings', v:false)`, true);
     const config = await loadConfig(denops);
     assertEquals(config.disable_default_mappings, true);
+  });
+});
+
+describe("loadConfig — ts_highlight (europa.config.ts-highlight-default)", () => {
+  const TS_EXPR = `get(g:, 'europa_ts_highlight', "auto")`;
+
+  it("defaults to 'auto' when not set", async () => {
+    const denops = mockVim();
+    const config = await loadConfig(denops);
+    assertEquals(config.ts_highlight, "auto");
+  });
+
+  it("accepts 'on'", async () => {
+    const denops = mockVim();
+    denops.setEval(TS_EXPR, "on");
+    const config = await loadConfig(denops);
+    assertEquals(config.ts_highlight, "on");
+  });
+
+  it("accepts 'off'", async () => {
+    const denops = mockVim();
+    denops.setEval(TS_EXPR, "off");
+    const config = await loadConfig(denops);
+    assertEquals(config.ts_highlight, "off");
+  });
+
+  it("rejects an invalid value (FR-010)", async () => {
+    const denops = mockVim();
+    denops.setEval(TS_EXPR, "invalid");
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
   });
 });
 

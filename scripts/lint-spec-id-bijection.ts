@@ -56,6 +56,8 @@ const AREA_ALLOWLIST = new Set([
   //                           (rpc-skip-during-hidden, bufwinenter-resync, outputs-still-update)
   //   session.state.{iopub-batch-queue-set,iopub-batch-timer-set,iopub-batch-clear}
   //   dispatcher.{runcell-batch-driven,runall-batch-driven,cellops-flush-on-entry}
+  // Phase 009 (tree-sitter syntax highlight) additions:
+  "ftplugin",
   // Phase 008 (undo/redo) additions — all under existing top-level areas:
   //   session.undo-history.{push,pop-undo,pop-redo,clear-redo,fifo-overflow,enqueue-undo,enqueue-redo,
   //     queue-overflow,empty-stack,sequential-processing,set-processor,push-undo-front,push-redo-front,dispose}

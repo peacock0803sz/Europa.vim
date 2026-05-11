@@ -17,6 +17,7 @@ import {
   renderPlanOpts,
   vimSingleQuote,
 } from "./context.ts";
+import { scheduleHighlightRefresh } from "./syntax-highlight.ts";
 
 function resolveAffectedCellId(
   hint: UndoAffectedCellHint,
@@ -156,6 +157,7 @@ export async function processOne(
     }
 
     await applyRenderPlan(denops, bufnr, plan);
+    scheduleHighlightRefresh(ctx, bufnr); // FR-007: undo/redo follow-up
 
     const affectedHint = kind === "undo" ? entry.beforeHint : entry.afterHint;
     const affectedCellId = resolveAffectedCellId(
@@ -225,6 +227,7 @@ export async function processOne(
       );
       sessionStore.setRenderPlan(bufnr, plan2);
       await applyRenderPlan(denops, bufnr, plan2);
+      scheduleHighlightRefresh(ctx, bufnr); // FR-007: undo fallback follow-up
     } catch {
       const verb = kind === "undo" ? "undo" : "redo";
       await denops.cmd(

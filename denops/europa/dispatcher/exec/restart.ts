@@ -10,6 +10,7 @@ import {
   renderPlanOpts,
   vimSingleQuote,
 } from "../context.ts";
+import { scheduleHighlightRefresh } from "../syntax-highlight.ts";
 
 export function buildRestartDispatcher(
   ctx: DispatcherContext,
@@ -59,6 +60,7 @@ export function buildRestartDispatcher(
           );
           sessionStore.setRenderPlan(bn, plan);
           await applyRenderPlan(denops, bn, plan);
+          scheduleHighlightRefresh(ctx, bn); // FR-007: post-restart follow-up
         } catch {
           // Re-render failure is non-fatal.
         }

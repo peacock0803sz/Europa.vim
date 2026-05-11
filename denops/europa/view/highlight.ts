@@ -11,7 +11,7 @@
 
 import type { Denops } from "@denops/std";
 
-/** All Europa highlight group names defined in Phase 2. */
+/** All Europa highlight group names (Phase 2 viewer + Phase 009 execution-state). */
 export const HIGHLIGHT_GROUPS = [
   "EuropaCellHeader",
   "EuropaCellFooter",
@@ -22,6 +22,10 @@ export const HIGHLIGHT_GROUPS = [
   "EuropaStream",
   "EuropaStreamErr",
   "EuropaImagePlaceholder",
+  // Phase 009: execution-state indicator groups (FR-003)
+  "EuropaCellBusyHl",
+  "EuropaCellQueuedHl",
+  "EuropaCellAbortedHl",
 ] as const;
 
 type HighlightGroup = typeof HIGHLIGHT_GROUPS[number];
@@ -37,6 +41,9 @@ const LINKS: Record<HighlightGroup, string> = {
   EuropaStream: "Normal",
   EuropaStreamErr: "WarningMsg",
   EuropaImagePlaceholder: "Special",
+  EuropaCellBusyHl: "WarningMsg",
+  EuropaCellQueuedHl: "Comment",
+  EuropaCellAbortedHl: "ErrorMsg",
 };
 
 /**

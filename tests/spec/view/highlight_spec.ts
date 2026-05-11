@@ -23,10 +23,14 @@ const EXPECTED_GROUPS = [
   "EuropaStream",
   "EuropaStreamErr",
   "EuropaImagePlaceholder",
+  // Phase 009: execution-state indicator groups (FR-003)
+  "EuropaCellBusyHl",
+  "EuropaCellQueuedHl",
+  "EuropaCellAbortedHl",
 ];
 
 describe("defineHighlights — hl_group definitions", () => {
-  it("defines all 9 Europa* highlight groups via hi default link", async () => {
+  it("defines all 12 Europa* highlight groups via hi default link", async () => {
     const denops = mockVim();
     await defineHighlights(denops);
 
@@ -40,8 +44,8 @@ describe("defineHighlights — hl_group definitions", () => {
     }
   });
 
-  it("exports the HIGHLIGHT_GROUPS constant listing all 9 groups", () => {
-    assertEquals(HIGHLIGHT_GROUPS.length, 9);
+  it("exports the HIGHLIGHT_GROUPS constant listing all 12 groups", () => {
+    assertEquals(HIGHLIGHT_GROUPS.length, 12);
     for (const g of EXPECTED_GROUPS) {
       assertEquals(
         (HIGHLIGHT_GROUPS as readonly string[]).includes(g),

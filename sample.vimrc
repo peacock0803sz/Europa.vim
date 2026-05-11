@@ -14,6 +14,52 @@ endif
 let s:here = expand('<sfile>:p:h')
 execute 'set runtimepath+=' .. s:here
 
+" Neovim only: wire the tree-sitter parsers Europa.vim consumes
+" (python / markdown / markdown_inline) onto the runtimepath. Europa's
+" syntax-highlight pipeline swallows parser-load failures per-cell (FR-006);
+" that's good for graceful degradation but means a missing parser is invisible
+" to the end user, so we must point Neovim at both the parser .so files and
+" the query .scm files explicitly here. Two locations cover both
+" nvim-treesitter master (parsers bundled inside the plugin) and main (parsers
+" placed under stdpath('data')/treesitter via :TSUpdate).
+if has('nvim')
+  let s:ts_data_dir = stdpath('data') .. '/treesitter'
+  if isdirectory(s:ts_data_dir)
+    execute 'set runtimepath+=' .. s:ts_data_dir
+  endif
+
+  if isdirectory($VIM_PLUGINS_DIR .. '/nvim-treesitter')
+    set runtimepath+=$VIM_PLUGINS_DIR/nvim-treesitter/
+  endif
+
+  augroup europa_sample_treesitter
+    autocmd!
+    autocmd VimEnter * call s:europa_report_parsers()
+  augroup END
+
+  function! s:europa_report_parsers() abort
+    let l:required = ['python', 'markdown', 'markdown_inline']
+    let l:missing = []
+    for l:lang in l:required
+      " pcall returns (ok, ...); luaeval surfaces the first value only.
+      if !luaeval('pcall(vim.treesitter.language.add, _A)', l:lang)
+        call add(l:missing, l:lang)
+      endif
+    endfor
+    if !empty(l:missing)
+      echohl WarningMsg
+      echom 'Europa: tree-sitter parsers unavailable: ' .. join(l:missing, ' ')
+      echom 'Europa: install via :TSInstall '
+            \ .. join(l:missing, ' ')
+            \ .. '  (legacy master branch) or'
+            \ .. ' :lua require("nvim-treesitter").install('
+            \ .. string(l:missing) .. ')'
+            \ .. '  (main branch >= Neovim 0.12); re-open the notebook afterward'
+      echohl None
+    endif
+  endfunction
+endif
+
 let g:denops#debug = 1
 let g:denops#trace = 1
 

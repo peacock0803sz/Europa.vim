@@ -16,6 +16,7 @@ import {
   echomError,
   renderPlanOpts,
 } from "../context.ts";
+import { scheduleHighlightRefresh } from "../syntax-highlight.ts";
 
 export function buildEditCellDispatcher(
   ctx: DispatcherContext,
@@ -112,6 +113,7 @@ export function buildEditCellDispatcher(
       sessionStore.setRenderPlan(lookup.viewerBufnr, plan);
       try {
         await applyRenderPlan(denops, lookup.viewerBufnr, plan);
+        scheduleHighlightRefresh(ctx, lookup.viewerBufnr); // FR-007: text-edit follow-up
         await denops.call(
           "setbufvar",
           lookup.viewerBufnr,

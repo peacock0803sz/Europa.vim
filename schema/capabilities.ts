@@ -22,9 +22,16 @@ export const ImageProtocolSchema = Type.Union([
 ]);
 export type ImageProtocol = Static<typeof ImageProtocolSchema>;
 
+/** tree-sitter runtime availability for the current host. */
+export const TreeSitterCapabilitySchema = Type.Object({
+  available: Type.Boolean(),
+});
+export type TreeSitterCapability = Static<typeof TreeSitterCapabilitySchema>;
+
 export const CapabilitiesSchema = Type.Object({
   host: HostKindSchema,
   hostVersion: Type.String(),
   image: ImageProtocolSchema,
+  treeSitter: TreeSitterCapabilitySchema,
 });
 export type Capabilities = Static<typeof CapabilitiesSchema>;

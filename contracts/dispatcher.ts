@@ -169,6 +169,22 @@ export type EuropaDispatcher = {
   // Phase 4: ZMQ attach
   attachKernel(connectionFile: unknown): Promise<void>;
 
+  // Phase 009: tree-sitter syntax highlight RPCs (FR-001/FR-007/FR-017)
+  /**
+   * Apply initial syntax highlight for the buffer after open.
+   * Called non-blocking from ftplugin via timer_start(0, ...) (FR-017).
+   * @spec-id europa.dispatcher.syntax-highlight-attach
+   * @spec-id europa.ftplugin.attach-on-bufread
+   */
+  syntaxHighlightAttach(bufnr: unknown): Promise<void>;
+
+  /**
+   * Refresh syntax highlights after a structural mutation (FR-007).
+   * Called fire-and-forget from any setRenderPlan site (T019a).
+   * @spec-id europa.dispatcher.syntax-highlight-refresh
+   */
+  syntaxHighlightRefresh(bufnr: unknown): Promise<void>;
+
   /**
    * Roll back the most recent structural mutation for the given buffer.
    * Enqueues one undo step into the per-buffer FIFO queue (FR-023).
