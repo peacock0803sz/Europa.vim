@@ -145,35 +145,35 @@ describe("NvimSyntaxHighlighter — init creates namespace (europa.view.syntax-h
 });
 
 describe("NvimSyntaxHighlighter — attach (europa.view.syntax-highlight.nvim-attach)", () => {
-  it("calls nvim_exec_lua for a non-empty language range (FR-001)", async () => {
+  it("calls luaeval for a non-empty language range (FR-001)", async () => {
     const denops = mockNvim();
     const hl = new NvimSyntaxHighlighter();
     await hl.init(denops);
     await hl.attach(1, [PYTHON_RANGE]);
-    const execLua = denops.callsTo("nvim_exec_lua");
+    const execLua = denops.callsTo("luaeval");
     assertEquals(
       execLua.length >= 1,
       true,
-      "expected at least one nvim_exec_lua call",
+      "expected at least one luaeval call",
     );
   });
 
-  it("skips cells with empty language without calling nvim_exec_lua (FR-011)", async () => {
+  it("skips cells with empty language without calling luaeval (FR-011)", async () => {
     const denops = mockNvim();
     const hl = new NvimSyntaxHighlighter();
     await hl.init(denops);
     await hl.attach(1, [EMPTY_LANG_RANGE]);
-    const execLua = denops.callsTo("nvim_exec_lua");
+    const execLua = denops.callsTo("luaeval");
     assertEquals(
       execLua.length,
       0,
-      "should not call nvim_exec_lua for empty language",
+      "should not call luaeval for empty language",
     );
   });
 
   it("does not throw when parser load fails (FR-006 — per-cell silent skip)", async () => {
     const denops = mockNvim();
-    // nvim_exec_lua returns null (simulating Lua pcall failure) — must not throw
+    // luaeval returns null (simulating Lua pcall failure) — must not throw
     const hl = new NvimSyntaxHighlighter();
     await hl.init(denops);
     await hl.attach(1, [PYTHON_RANGE]);
@@ -210,7 +210,7 @@ describe("NvimSyntaxHighlighter — refresh (europa.view.syntax-highlight.nvim-r
       true,
       "refresh must clear namespace first",
     );
-    const execLua = denops.callsTo("nvim_exec_lua");
+    const execLua = denops.callsTo("luaeval");
     assertEquals(execLua.length >= 1, true, "refresh must re-apply highlights");
   });
 });
@@ -228,8 +228,8 @@ describe("NvimSyntaxHighlighter — lazy visible-first (europa.view.syntax-highl
       endLine: 15,
     };
     await hl.attach(1, [visibleRange]);
-    const execLua = denops.callsTo("nvim_exec_lua");
-    // Exactly one exec_lua call for exactly one visible range
+    const execLua = denops.callsTo("luaeval");
+    // Exactly one luaeval call for exactly one visible range
     assertEquals(execLua.length, 1);
   });
 });
@@ -476,18 +476,18 @@ describe("buildCellLangRanges — markdown cell (europa.view.syntax-highlight.ma
 describe(
   "NvimSyntaxHighlighter — markdown fence injection (europa.view.syntax-highlight.markdown-fence-injection)",
   () => {
-    it("calls nvim_exec_lua for markdown cell with 'markdown' language (SC-006)", async () => {
+    it("calls luaeval for markdown cell with 'markdown' language (SC-006)", async () => {
       const denops = mockNvim();
       const hl = new NvimSyntaxHighlighter();
       await hl.init(denops);
       await hl.attach(1, [
         { kind: "markdown", language: "markdown", startLine: 0, endLine: 10 },
       ]);
-      const execLua = denops.callsTo("nvim_exec_lua");
+      const execLua = denops.callsTo("luaeval");
       assertEquals(
         execLua.length >= 1,
         true,
-        "expected nvim_exec_lua for markdown cell",
+        "expected luaeval for markdown cell",
       );
     });
 
@@ -529,8 +529,8 @@ describe(
         { kind: "code", language: "haskell", startLine: 0, endLine: 5 },
         { kind: "code", language: "python", startLine: 6, endLine: 10 },
       ]);
-      // Both cells attempt nvim_exec_lua (mock returns null for both)
-      const calls = denops.callsTo("nvim_exec_lua");
+      // Both cells attempt luaeval (mock returns null for both)
+      const calls = denops.callsTo("luaeval");
       assertEquals(calls.length, 2, "both cells should attempt highlighting");
     });
   },

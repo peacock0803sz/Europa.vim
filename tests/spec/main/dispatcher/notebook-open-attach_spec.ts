@@ -62,7 +62,7 @@ describe("dispatcher.open — schedules syntax-highlight attach (europa.dispatch
     );
   });
 
-  it("dispatches nvim_exec_lua for cell ranges (highlights actually applied)", async () => {
+  it("dispatches luaeval for cell ranges (highlights actually applied)", async () => {
     const host = enableTreeSitter(mockNvim());
     const dispatcher = buildDispatcher(host);
     host.currentBufnr = VIEWER_BUFNR;
@@ -70,10 +70,10 @@ describe("dispatcher.open — schedules syntax-highlight attach (europa.dispatch
     await dispatcher.open(VIEWER_BUFNR, FIXTURE_PATH);
     await settleFireAndForget();
 
-    const luaCalls = host.callsTo("nvim_exec_lua");
+    const luaCalls = host.callsTo("luaeval");
     assert(
       luaCalls.length >= 1,
-      `expected at least one nvim_exec_lua call from cell highlight application; got ${luaCalls.length}`,
+      `expected at least one luaeval call from cell highlight application; got ${luaCalls.length}`,
     );
   });
 });

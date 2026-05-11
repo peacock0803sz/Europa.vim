@@ -21,38 +21,56 @@ import type { Denops } from "@denops/std";
 import type { SyntaxHighlighter } from "../../../contracts/syntax-highlighter.ts";
 import type { CellLanguageRange } from "../../../schema/highlight.ts";
 
-// Lua script executed per cell-range. Receives (bufnr, startLine, endLine,
-// lang, nsId) as varargs. Returns true on success, false on any soft failure.
+// Lua helper registered on `_G.europa_apply_highlights` at init time and
+// invoked per cell range via `luaeval(expr, args)` (where `args` lands as
+// `_A` inside the expression).
 //
-// The recursive `apply_tree` function walks the LanguageTree and all injected
-// subtrees so that markdown fence blocks (e.g. ```python) receive highlights
-// from the child language's parser without any TypeScript-side bookkeeping.
-const APPLY_HIGHLIGHTS_LUA = `
-local bufnr, sl, el, lang, ns = ...
-local lines = vim.api.nvim_buf_get_lines(bufnr, sl, el, false)
-local text = table.concat(lines, '\\n')
-local ok, parser = pcall(vim.treesitter.get_string_parser, text, lang)
-if not ok then return false end
-parser:parse()
-local function apply_tree(ltree)
-  local l = ltree:lang()
-  local ok2, query = pcall(vim.treesitter.query.get, l, 'highlights')
-  if ok2 and query then
-    for _, tree in ipairs(ltree:trees()) do
-      for id, node in query:iter_captures(tree:root(), text, 0, -1) do
-        local hl = '@' .. query.captures[id]
-        local sr, sc, _, ec = node:range()
-        pcall(vim.api.nvim_buf_add_highlight, bufnr, ns, hl, sl + sr, sc, ec)
-      end
-    end
-  end
-  for _, child in pairs(ltree:children()) do
-    apply_tree(child)
-  end
-end
-apply_tree(parser)
-return true
-`.trim();
+// We must register-then-invoke instead of `nvim_exec_lua(code, args)` because
+// `nvim_exec_lua` is a Neovim API method that is NOT exposed as a Vimscript
+// function. `denops.call(...)` dispatches through `nvim_call_function`, which
+// only resolves Vimscript builtins, so calling it that way fails with E117.
+// `luaeval` IS a Vimscript builtin, so it reaches the Lua runtime safely.
+//
+// The definition is collapsed to one line because `denops.cmd("lua ...")`
+// sends a single Vim command line and Lua's grammar tolerates whitespace
+// statement separation.
+const REGISTER_HIGHLIGHTS_FN_LUA =
+  "function _G.europa_apply_highlights(bufnr, sl, el, lang, ns) " +
+  "local lines = vim.api.nvim_buf_get_lines(bufnr, sl, el, false) " +
+  "local text = table.concat(lines, '\\n') " +
+  "local ok, parser = pcall(vim.treesitter.get_string_parser, text, lang) " +
+  "if not ok then return false end " +
+  // parse(true) is needed so that injection trees become walkable children;
+  // without the `true` flag, Neovim 0.12 leaves markdown_inline (and other
+  // fence-language sub-parsers) lazy and our `ltree:children()` recursion
+  // finds nothing, which prevents inline-element highlights from rendering.
+  "pcall(parser.parse, parser, true) " +
+  "local applied = 0 " +
+  "local function apply_tree(ltree) " +
+  "local l = ltree:lang() " +
+  "local ok2, query = pcall(vim.treesitter.query.get, l, 'highlights') " +
+  "if ok2 and query then " +
+  "for _, tree in ipairs(ltree:trees()) do " +
+  "for id, node in query:iter_captures(tree:root(), text, 0, -1) do " +
+  "local hl = '@' .. query.captures[id] " +
+  "local sr, sc, er, ec = node:range() " +
+  // nvim_buf_set_extmark must be used here because tree-sitter nodes can
+  // span multiple lines (e.g. markdown atx_heading reports end_row =
+  // start_row + 1, end_col = 0 since it includes the trailing newline).
+  // nvim_buf_add_highlight is a single-row API and would collapse such
+  // ranges to zero width, hiding the heading captures entirely.
+  "if pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, sl + sr, sc, { end_row = sl + er, end_col = ec, hl_group = hl, priority = 100 }) then " +
+  "applied = applied + 1 " +
+  "end " +
+  "end end end " +
+  "for _, child in pairs(ltree:children()) do apply_tree(child) end " +
+  "end " +
+  "apply_tree(parser) " +
+  "return applied " +
+  "end";
+
+const INVOKE_HIGHLIGHTS_LUA_EXPR =
+  "_G.europa_apply_highlights(_A[1], _A[2], _A[3], _A[4], _A[5])";
 
 /**
  * Neovim native tree-sitter syntax highlighter.
@@ -80,6 +98,8 @@ export class NvimSyntaxHighlighter implements SyntaxHighlighter {
       "nvim_create_namespace",
       "Europa-tree-sitter",
     )) as number;
+    // Register the Lua helper on _G so per-cell luaeval calls stay compact.
+    await denops.cmd(`lua ${REGISTER_HIGHLIGHTS_FN_LUA}`);
   }
 
   async attach(
@@ -91,8 +111,8 @@ export class NvimSyntaxHighlighter implements SyntaxHighlighter {
       if (!range.language) continue; // FR-011: skip cells with no resolved language
       try {
         const result = await this._host.call(
-          "nvim_exec_lua",
-          APPLY_HIGHLIGHTS_LUA,
+          "luaeval",
+          INVOKE_HIGHLIGHTS_LUA_EXPR,
           [
             bufnr,
             range.startLine,
@@ -105,6 +125,13 @@ export class NvimSyntaxHighlighter implements SyntaxHighlighter {
         if (result === false) {
           await this._debugLog(
             `tree-sitter: parser unavailable for lang=${range.language}`,
+          );
+        } else if (typeof result === "number") {
+          // Lua returned the count of applied highlight extmarks; log it so the
+          // debug channel can distinguish "0 captures matched" from "parser
+          // unavailable" — both look identical in the rendered buffer.
+          await this._debugLog(
+            `tree-sitter: applied ${result} highlight(s) for lang=${range.language} (lines ${range.startLine}-${range.endLine})`,
           );
         }
       } catch (e) {
