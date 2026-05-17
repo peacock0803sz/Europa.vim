@@ -141,7 +141,7 @@ describe("applyPartialRenderPlan — above-cell-bit-identical (SC-003)", () => {
       // Compute cell-3's exact start line from RenderPlan instead of using the
       // full-render's first lnum (always 1), which would trivially pass even if
       // a buggy partial render wrote from line 2 through cell-2's territory.
-      const plan = buildRenderPlan(nb, caps);
+      const plan = await buildRenderPlan(nb, caps);
       const cell3Range = plan.cellRanges.find((r) => r.cellId === "cell-3");
       assertExists(cell3Range, "cell-3 must appear in cellRanges");
       // cellRanges.startLine is 0-indexed; setbufline uses 1-indexed lnums

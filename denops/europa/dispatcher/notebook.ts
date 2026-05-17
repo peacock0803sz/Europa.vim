@@ -91,7 +91,11 @@ export function buildNotebookDispatcher(
       const notebook = await parseNotebook(content);
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(notebook, caps, renderPlanOpts(config));
+      const plan = await buildRenderPlan(
+        notebook,
+        caps,
+        renderPlanOpts(config),
+      );
       sessionStore.add({
         id: crypto.randomUUID(),
         bufnr: bufnrNum,

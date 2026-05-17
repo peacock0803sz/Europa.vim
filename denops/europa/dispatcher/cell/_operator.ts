@@ -58,7 +58,7 @@ export async function operateCell(
   const mutation = await options.mutate(session);
   const config = await loadConfig(denops);
   const caps = await detectCapabilities(denops);
-  const plan = buildRenderPlan(
+  const plan = await buildRenderPlan(
     mutation.notebook,
     caps,
     renderPlanOpts(config),

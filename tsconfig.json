@@ -13,6 +13,7 @@
       "@denops/std": ["./typings/denops-std.d.ts"],
       "@denops/std/batch": ["./typings/denops-std-batch.d.ts"],
       "@std/uuid": ["./typings/std-uuid.d.ts"],
+      "@std/async": ["./typings/std-async.d.ts"],
       "@std/encoding/base64": ["./typings/std-encoding-base64.d.ts"],
       "@std/encoding/hex": ["./typings/std-encoding-hex.d.ts"],
       "@std/cache/lru-cache": ["./typings/std-cache-lru-cache.d.ts"],

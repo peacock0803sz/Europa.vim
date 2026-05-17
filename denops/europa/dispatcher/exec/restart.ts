@@ -53,7 +53,7 @@ export function buildRestartDispatcher(
         try {
           const config = await loadConfig(denops);
           const caps = await detectCapabilities(denops);
-          const plan = buildRenderPlan(
+          const plan = await buildRenderPlan(
             session!.notebook,
             caps,
             renderPlanOpts(config),

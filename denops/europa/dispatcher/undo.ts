@@ -124,7 +124,7 @@ export async function processOne(
 
     const config = await loadConfig(denops);
     const caps = await detectCapabilities(denops);
-    const plan = buildRenderPlan(
+    const plan = await buildRenderPlan(
       restoredNotebook,
       caps,
       renderPlanOpts(config),
@@ -220,7 +220,7 @@ export async function processOne(
     try {
       const config2 = await loadConfig(denops);
       const caps2 = await detectCapabilities(denops);
-      const plan2 = buildRenderPlan(
+      const plan2 = await buildRenderPlan(
         rolledBackSession.notebook,
         caps2,
         renderPlanOpts(config2),

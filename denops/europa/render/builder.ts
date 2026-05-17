@@ -4,6 +4,7 @@
  * @category Render
  */
 
+import { pooledMap } from "@std/async";
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { Notebook, Output } from "../../../schema/notebook.ts";
 import type {
@@ -14,6 +15,7 @@ import type {
   RenderPlan,
   SixelPlacement,
 } from "../../../schema/render-plan.ts";
+import { convertSvgToPng } from "./svg-converter.ts";
 import { dispatchOutput } from "./dispatcher.ts";
 import { renderMarkdown } from "./markdown.ts";
 
@@ -138,12 +140,20 @@ function appendCellOutputs(
   mimePriority: string[],
   maxLines: number,
   cellIdx: number,
+  shadowMap?: Map<
+    string,
+    { data: Record<string, unknown>; metadata: Record<string, unknown> }
+  >,
 ): void {
   const merged = mergeStreams(outputs);
 
   const items = merged.map((out, j) => {
+    const shadow = shadowMap?.get(`${cellIdx}:${j}`);
+    const effectiveOut = shadow
+      ? { ...out, data: shadow.data, metadata: shadow.metadata } as Output
+      : out;
     const sixel: SixelPlacement[] = [];
-    const frag = dispatchOutput(out, caps, mimePriority, {
+    const frag = dispatchOutput(effectiveOut, caps, mimePriority, {
       cellIdx,
       outputIdx: j,
     }, sixel);
@@ -223,11 +233,11 @@ function appendCellOutputs(
  * @spec-id europa.render.builder.empty-notebook-guidance
  * @spec-id europa.render.builder.cell-borders
  */
-export function buildRenderPlan(
+export async function buildRenderPlan(
   nb: Notebook,
   caps: Capabilities,
   opts?: BuildRenderPlanOpts,
-): RenderPlan {
+): Promise<RenderPlan> {
   const maxOutputLines = opts?.maxOutputLines ?? DEFAULT_MAX_OUTPUT_LINES;
   const cellBorderChars = opts?.cellBorderChars ?? DEFAULT_CELL_BORDER_CHARS;
   const cellBorderPadding = opts?.cellBorderPadding ??
@@ -241,6 +251,84 @@ export function buildRenderPlan(
     "text/html",
     "text/plain",
   ];
+
+  // SVG pre-pass: collect outputs where image/svg+xml is the first-priority MIME
+  // so that rsvg-convert is NOT spawned when an existing image/png already wins.
+  // @spec-id europa.render.image.svg-shadow-inject
+  const svgTargets: Array<
+    { cellIdx: number; outputIdx: number; svgBytes: string }
+  > = [];
+  for (let i = 0; i < nb.cells.length; i++) {
+    const cell = nb.cells[i];
+    if (cell.cell_type !== "code" || !cell.outputs?.length) continue;
+    const merged = mergeStreams(cell.outputs);
+    for (let j = 0; j < merged.length; j++) {
+      const out = merged[j];
+      if (
+        out.output_type !== "display_data" &&
+        out.output_type !== "execute_result"
+      ) continue;
+      const data = out.data as Record<string, unknown>;
+      if (typeof data["image/svg+xml"] !== "string") continue;
+      const firstMatch = mimePriority.find((m) => m in data);
+      if (firstMatch === "image/svg+xml") {
+        svgTargets.push({
+          cellIdx: i,
+          outputIdx: j,
+          svgBytes: data["image/svg+xml"] as string,
+        });
+      }
+    }
+  }
+
+  const shadowMap = new Map<
+    string,
+    { data: Record<string, unknown>; metadata: Record<string, unknown> }
+  >();
+  if (svgTargets.length > 0) {
+    const poolLimit = Math.max(2, Math.min(navigator.hardwareConcurrency, 8));
+    const results: Array<{
+      key: string;
+      result: Awaited<ReturnType<typeof convertSvgToPng>>;
+      cellIdx: number;
+      outputIdx: number;
+    }> = [];
+    for await (
+      const item of pooledMap(
+        poolLimit,
+        svgTargets,
+        async (svg: typeof svgTargets[number]) => ({
+          key: `${svg.cellIdx}:${svg.outputIdx}`,
+          result: await convertSvgToPng(svg.svgBytes),
+          cellIdx: svg.cellIdx,
+          outputIdx: svg.outputIdx,
+        }),
+      )
+    ) {
+      results.push(item);
+    }
+    for (const { key, result, cellIdx, outputIdx } of results) {
+      if (!result.ok) continue;
+      const cell = nb.cells[cellIdx];
+      if (cell.cell_type !== "code" || !cell.outputs) continue;
+      const merged = mergeStreams(cell.outputs);
+      const out = merged[outputIdx];
+      if (
+        !out ||
+        (out.output_type !== "display_data" &&
+          out.output_type !== "execute_result")
+      ) continue;
+      const origData = out.data as Record<string, unknown>;
+      const origMeta = (out.metadata ?? {}) as Record<string, unknown>;
+      shadowMap.set(key, {
+        data: { ...origData, "image/png": result.pngBase64 },
+        metadata: {
+          ...origMeta,
+          "image/png": { width: result.width, height: result.height },
+        },
+      });
+    }
+  }
 
   const lines: string[] = [];
   const highlights: RenderPlan["highlights"] = [];
@@ -308,6 +396,7 @@ export function buildRenderPlan(
         mimePriority,
         maxOutputLines,
         i,
+        shadowMap,
       );
     } else if (cell.cell_type === "markdown") {
       // Markdown source is already included above as plain lines;
