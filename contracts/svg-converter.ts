@@ -1,7 +1,7 @@
 /**
  * Hand-written contract for the SVG → PNG converter (Phase 3.6).
  *
- * Authorized by SoT 分離方針 (DESIGN.ja.md §3.5 / §3.7):
+ * Authorized by the SoT separation policy (DESIGN.ja.md §3.5 / §3.7):
  * - The `SvgConversionResult` discriminated union is defined as a TypeBox
  *   schema in `schema/svg-conversion.ts` (TypeBox SoT).
  * - This interface declares the runtime contract — function signatures and
