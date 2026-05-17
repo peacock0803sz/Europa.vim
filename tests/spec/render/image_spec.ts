@@ -308,3 +308,27 @@ describe("renderImage — svg-fallback (via dispatchOutput)", () => {
     );
   });
 });
+
+describe("renderImage — Sixel with shadow-injected SVG→PNG (T024, US2, SC-005)", () => {
+  it("shadow-injected image/png from SVG produces Sixel placement with correct payload and backend", () => {
+    // Phase 3.6 shadow inject: buildRenderPlan converts SVG and writes pngBase64
+    // into data["image/png"]. dispatchOutput routes to renderImage with mime:"image/png".
+    // This test verifies renderImage routes to Sixel correctly (FR-016 / SC-005).
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement?.mime, "image/png");
+    assertEquals(result.placement?.backend, "sixel");
+    assertEquals(result.placement?.payload, PNG_B64);
+  });
+
+  it("shadow-injected PNG with placeholder backend does not produce Sixel placement (FR-016)", () => {
+    const result = renderImage(PNG_B64, "image/png", capsPlaceholder, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement, undefined);
+    assertEquals(result.fragment.lines[0].startsWith("[image: png"), true);
+  });
+});

@@ -138,8 +138,10 @@ export function renderImage(
     ],
   };
 
-  // Sixel opt-in (FR-020): return placement metadata for the viewer layer.
+  // Sixel opt-in: return placement metadata for the viewer layer.
   // No subprocess or I/O happens here — the render layer is synchronous.
+  // SVG → PNG conversion (Phase 3.6) feeds this branch via shadow-injected
+  // image/png data — no code change needed here for SVG Sixel support.
   if (caps.image === "sixel") {
     return {
       fragment,
