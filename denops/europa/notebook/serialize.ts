@@ -19,8 +19,13 @@ import type { Notebook } from "../../../schema/notebook.ts";
  * const nb = await parseNotebook(await Deno.readTextFile("hello.ipynb"));
  * await Deno.writeTextFile("hello.ipynb", serializeNotebook(nb));
  * ```
+ * MUST be called with the original `Notebook` entity, not a shadow-injected
+ * variant. Shadow inject (Phase 3.6 SVG→PNG) lives in build-local state only
+ * and is never written back into the `Notebook` argument — this keeps the
+ * serialized `.ipynb` bit-identical to the kernel-emitted original (FR-027).
  * @spec-id europa.notebook.serialize.format
  * @spec-id europa.notebook.serialize.round-trip
+ * @spec-id europa.render.image.svg-serialize-pristine
  * @category Notebook
  */
 export function serializeNotebook(nb: Notebook): string {
