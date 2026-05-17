@@ -72,31 +72,35 @@ async function runConvert(svgBytes: string): Promise<SvgConversionResult> {
     return { ok: false, reason: "convert-failed", stderr: String(err) };
   }
 
-  const writer = cmd.stdin.getWriter();
-  await writer.write(new TextEncoder().encode(svgBytes));
-  await writer.close();
+  try {
+    const writer = cmd.stdin.getWriter();
+    await writer.write(new TextEncoder().encode(svgBytes));
+    await writer.close();
 
-  const { code, stdout, stderr } = await cmd.output();
+    const { code, stdout, stderr } = await cmd.output();
 
-  if (code !== 0) {
-    const stderrText = new TextDecoder().decode(stderr);
-    return { ok: false, reason: "convert-failed", stderr: stderrText };
+    if (code !== 0) {
+      const stderrText = new TextDecoder().decode(stderr);
+      return { ok: false, reason: "convert-failed", stderr: stderrText };
+    }
+
+    const pngBase64 = encodeBase64(stdout);
+    const dims = pngDimensions(pngBase64);
+    const width = dims?.width ?? 0;
+    const height = dims?.height ?? 0;
+
+    const result = {
+      ok: true as const,
+      pngBase64,
+      width,
+      height,
+      sha256,
+    };
+    _cache.set(sha256, result);
+    return result;
+  } catch (err) {
+    return { ok: false, reason: "convert-failed", stderr: String(err) };
   }
-
-  const pngBase64 = encodeBase64(stdout);
-  const dims = pngDimensions(pngBase64);
-  const width = dims?.width ?? 0;
-  const height = dims?.height ?? 0;
-
-  const result = {
-    ok: true as const,
-    pngBase64,
-    width,
-    height,
-    sha256,
-  };
-  _cache.set(sha256, result);
-  return result;
 }
 
 /**

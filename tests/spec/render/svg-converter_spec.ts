@@ -191,6 +191,86 @@ describe("convertSvgToPng — binary-missing", () => {
   });
 });
 
+describe("convertSvgToPng — never throws (contract)", () => {
+  it("returns ok:false when stdin write rejects (subprocess pipe error)", async () => {
+    const origCommand = Deno.Command;
+    try {
+      (Deno as Record<string, unknown>).Command = class MockCommand {
+        constructor(_cmd: string, _opts?: Deno.CommandOptions) {}
+        spawn(): Deno.ChildProcess {
+          // stdin write throws to simulate a closed pipe / subprocess crash
+          const stdin = new WritableStream<Uint8Array>({
+            write(_chunk) {
+              throw new Error("pipe closed");
+            },
+          });
+          return {
+            stdin,
+            output: () =>
+              Promise.resolve({
+                code: 0,
+                stdout: MINIMAL_PNG,
+                stderr: new Uint8Array(),
+                success: true,
+                signal: null,
+              } as unknown as Deno.CommandOutput),
+            pid: 0,
+            status: Promise.resolve({ code: 0, success: true, signal: null }),
+            stdout: new ReadableStream(),
+            stderr: new ReadableStream(),
+            ref: () => {},
+            unref: () => {},
+            kill: () => {},
+          } as unknown as Deno.ChildProcess;
+        }
+      } as unknown as typeof Deno.Command;
+
+      const result = await convertSvgToPng(SVG_RED);
+      assertEquals(result.ok, false);
+      if (!result.ok) {
+        assertEquals(result.reason, "convert-failed");
+        assertEquals(typeof result.stderr, "string");
+      }
+    } finally {
+      (Deno as Record<string, unknown>).Command = origCommand;
+    }
+  });
+
+  it("returns ok:false when cmd.output() rejects", async () => {
+    const origCommand = Deno.Command;
+    try {
+      (Deno as Record<string, unknown>).Command = class MockCommand {
+        constructor(_cmd: string, _opts?: Deno.CommandOptions) {}
+        spawn(): Deno.ChildProcess {
+          const stdin = new WritableStream<Uint8Array>({
+            write(_chunk) {},
+            close() {},
+          });
+          return {
+            stdin,
+            output: () => Promise.reject(new Error("subprocess crash")),
+            pid: 0,
+            status: Promise.resolve({ code: 1, success: false, signal: null }),
+            stdout: new ReadableStream(),
+            stderr: new ReadableStream(),
+            ref: () => {},
+            unref: () => {},
+            kill: () => {},
+          } as unknown as Deno.ChildProcess;
+        }
+      } as unknown as typeof Deno.Command;
+
+      const result = await convertSvgToPng(SVG_RED);
+      assertEquals(result.ok, false);
+      if (!result.ok) {
+        assertEquals(result.reason, "convert-failed");
+      }
+    } finally {
+      (Deno as Record<string, unknown>).Command = origCommand;
+    }
+  });
+});
+
 describe("convertSvgToPng — convert-failed", () => {
   it("returns ok:false reason:convert-failed with stderr when exit code != 0", async () => {
     const origCommand = Deno.Command;
