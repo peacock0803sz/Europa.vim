@@ -42,7 +42,13 @@ export const EuropaConfigSchema = Type.Object({
     Type.Literal("iterm2_osc1337"),
   ], { default: "auto" }),
   mime_priority: Type.Array(Type.String(), {
-    default: ["image/png", "image/jpeg", "text/html", "text/plain"],
+    default: [
+      "image/png",
+      "image/jpeg",
+      "image/svg+xml",
+      "text/html",
+      "text/plain",
+    ],
   }),
   max_output_lines: Type.Integer({ minimum: 1, default: 100 }),
   cell_border_chars: Type.Array(

@@ -36,6 +36,7 @@ export async function echomError(
 export function renderPlanOpts(config: EuropaConfig): BuildRenderPlanOpts {
   return {
     maxOutputLines: config.max_output_lines,
+    mimePriority: config.mime_priority,
     cellBorderChars: config.cell_border_chars,
     cellBorderPadding: config.cell_border_padding,
     cellBorderAlign: config.cell_border_align,

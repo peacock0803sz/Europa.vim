@@ -246,6 +246,7 @@ export async function buildRenderPlan(
   const mimePriority = opts?.mimePriority ?? [
     "image/png",
     "image/jpeg",
+    "image/svg+xml",
     "application/json",
     "text/markdown",
     "text/html",
