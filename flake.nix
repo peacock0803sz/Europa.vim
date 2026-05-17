@@ -68,6 +68,7 @@
               nodejs # for npm: packages with native deps
 
               typos
+              librsvg # provides rsvg-convert (Phase 3.6)
 
               # Added in Phase 1 (when implementing Sixel image rendering)
               # imagemagick     # used for PNG -> Sixel conversion
