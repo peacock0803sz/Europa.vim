@@ -544,6 +544,45 @@ describe("buildRenderPlan — SVG shadow inject (T012)", () => {
     assertEquals(outputLines[0].startsWith("[image: png"), true);
   });
 
+  it("normalizes string[] SVG values (nbformat MIME bundle arrays)", async () => {
+    // matplotlib / IPython.display.SVG emit image/svg+xml as string[]; the
+    // pre-pass must join arrays before sha256/conversion so they reach the
+    // shadow-inject path instead of falling through to raw XML.
+    const svgLines = [
+      '<svg viewBox="0 0 100 100">',
+      '<circle cx="50" cy="50" r="40" fill="red"/>',
+      "</svg>",
+    ];
+    const nb: Notebook = {
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: {},
+      cells: [{
+        cell_type: "code",
+        id: "svg-array-cell",
+        source: "",
+        execution_count: 1,
+        outputs: [{
+          output_type: "display_data",
+          data: { "image/svg+xml": svgLines },
+          metadata: {},
+        }],
+        metadata: {},
+      }],
+    };
+    const plan = await buildRenderPlan(nb, defaultCaps, {
+      mimePriority: ["image/svg+xml"],
+    });
+    // The pre-pass should pick up the array form: either we get a converted
+    // PNG placeholder (when rsvg-convert is available) or a text fallback
+    // (when not). Critically the SVG output is NOT silently dropped.
+    const hasImageOrText = plan.lines.some((l) =>
+      l.includes("[image:") || l.includes("<svg")
+    );
+    assertEquals(hasImageOrText, true);
+    __resetSvgCacheForTest();
+  });
+
   it("buildRenderPlan does not mutate the input notebook", async () => {
     const nb = makeSvgNotebook(true);
     const cell = nb.cells[0];

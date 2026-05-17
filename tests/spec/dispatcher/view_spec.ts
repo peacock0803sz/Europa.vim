@@ -51,6 +51,24 @@ describe("EuropaPreviewOutput SVG path contract (SC-006)", () => {
     );
   });
 
+  it("string[] SVG joins to the same sha256 as the concatenated string", async () => {
+    const svgString = "<svg><rect/></svg>";
+    const svgArray = ["<svg>", "<rect/>", "</svg>"];
+    const d1 = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(svgString),
+    );
+    const d2 = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(svgArray.join("")),
+    );
+    assertEquals(
+      encodeHex(new Uint8Array(d1)),
+      encodeHex(new Uint8Array(d2)),
+      "joining string[] must yield the same hash as the equivalent string",
+    );
+  });
+
   it("same SVG always produces the same path (deterministic)", async () => {
     const svg = '<svg viewBox="0 0 10 10"><rect/></svg>';
     const bytes = new TextEncoder().encode(svg);

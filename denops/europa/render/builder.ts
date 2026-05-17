@@ -270,14 +270,18 @@ export async function buildRenderPlan(
         out.output_type !== "execute_result"
       ) continue;
       const data = out.data as Record<string, unknown>;
-      if (typeof data["image/svg+xml"] !== "string") continue;
+      // nbformat MIME bundle values can be string or string[]; matplotlib /
+      // IPython.display.SVG emit arrays so we must join before sha256/convert.
+      const svgValue = data["image/svg+xml"];
+      const svgBytes = typeof svgValue === "string"
+        ? svgValue
+        : Array.isArray(svgValue)
+        ? svgValue.join("")
+        : undefined;
+      if (svgBytes === undefined) continue;
       const firstMatch = mimePriority.find((m) => m in data);
       if (firstMatch === "image/svg+xml") {
-        svgTargets.push({
-          cellIdx: i,
-          outputIdx: j,
-          svgBytes: data["image/svg+xml"] as string,
-        });
+        svgTargets.push({ cellIdx: i, outputIdx: j, svgBytes });
       }
     }
   }

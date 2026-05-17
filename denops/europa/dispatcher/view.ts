@@ -83,9 +83,16 @@ export function buildViewDispatcher(
       // SVG preview: write original SVG bytes to a fixed-path temp file so that
       // the OS viewer receives the SVG source rather than the shadow-injected PNG.
       // The path must include the full 64-char SHA-256 of the SVG bytes (SC-006).
+      // nbformat allows image/svg+xml as string or string[]; join arrays before
+      // hashing/writing so matplotlib-style multi-line emissions are handled.
       // @spec-id europa.dispatcher.view.preview-svg
-      if (typeof data["image/svg+xml"] === "string") {
-        const svgText = data["image/svg+xml"] as string;
+      const svgValue = data["image/svg+xml"];
+      const svgText = typeof svgValue === "string"
+        ? svgValue
+        : Array.isArray(svgValue)
+        ? svgValue.join("")
+        : undefined;
+      if (svgText !== undefined) {
         const svgBytes = new TextEncoder().encode(svgText);
         const digest = await crypto.subtle.digest("SHA-256", svgBytes);
         const sha256 = encodeHex(new Uint8Array(digest));
