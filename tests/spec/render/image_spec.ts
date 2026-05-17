@@ -2,13 +2,13 @@
  * BDD specs for renderImage — placeholder format, clickable, MIME routing,
  * and Sixel metadata synchronous return.
  *
- * europa.render.image.unsupported-mime and europa.render.image.svg-source
+ * europa.render.image.unsupported-mime and europa.render.image.svg-fallback
  * are tested here via dispatchOutput to verify the full image-MIME routing
  * contract end-to-end.
  *
  * @spec-id europa.render.image.placeholder
  * @spec-id europa.render.image.unsupported-mime
- * @spec-id europa.render.image.svg-source
+ * @spec-id europa.render.image.svg-fallback
  * @spec-id europa.render.image.sixel-metadata
  */
 import { describe, it } from "@std/testing/bdd";
@@ -272,8 +272,8 @@ describe("renderImage — unsupported-mime (via dispatchOutput)", () => {
   });
 });
 
-describe("renderImage — svg-source (via dispatchOutput)", () => {
-  it("renders SVG source as plain text (FR-024)", () => {
+describe("renderImage — svg-fallback (via dispatchOutput)", () => {
+  it("renders SVG as plain text when no shadow-injected image/png is present (FR-014)", () => {
     const svgSource = "<svg><rect width='10' height='10'/></svg>";
     const out: Output = {
       output_type: "display_data",
@@ -285,7 +285,26 @@ describe("renderImage — svg-source (via dispatchOutput)", () => {
     assertEquals(
       text.includes("<svg>"),
       true,
-      "SVG source must be shown as-is",
+      "SVG source must be shown as-is when no shadow PNG exists",
+    );
+  });
+
+  it("routes SVG to renderImage placeholder when shadow-injected image/png is present", () => {
+    const PNG_B64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const out: Output = {
+      output_type: "display_data",
+      data: {
+        "image/svg+xml": "<svg/>",
+        "image/png": PNG_B64,
+      },
+      metadata: {},
+    };
+    const frag = dispatchOutput(out, capsPlaceholder, ["image/svg+xml"]);
+    assertEquals(
+      frag.lines[0].startsWith("[image: png"),
+      true,
+      "Shadow-injected PNG must produce an image placeholder",
     );
   });
 });
