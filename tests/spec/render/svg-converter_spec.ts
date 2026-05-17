@@ -208,6 +208,49 @@ describe("convertSvgToPng — convert-failed", () => {
       (Deno as Record<string, unknown>).Command = origCommand;
     }
   });
+
+  it("convert-failed does NOT trigger the binary-missing handler (FR-022)", async () => {
+    let handlerCallCount = 0;
+    setBinaryMissingHandler(() => {
+      handlerCallCount++;
+    });
+    const origCommand = Deno.Command;
+    try {
+      (Deno as Record<string, unknown>).Command = makeFailStub("parse error");
+      await convertSvgToPng(SVG_RED);
+      assertEquals(
+        handlerCallCount,
+        0,
+        "convert-failed must not invoke the binary-missing handler",
+      );
+    } finally {
+      (Deno as Record<string, unknown>).Command = origCommand;
+    }
+  });
+});
+
+describe("binary-missing handler fires exactly once per session (FR-021 / T027)", () => {
+  it("handler is called once even when multiple SVG outputs trigger binary-missing", async () => {
+    let handlerCallCount = 0;
+    setBinaryMissingHandler(() => {
+      handlerCallCount++;
+    });
+    const origCommand = Deno.Command;
+    try {
+      (Deno as Record<string, unknown>).Command = makeNotFoundStub();
+      // Simulate multiple SVG outputs in the same session (multiple notebook opens)
+      await convertSvgToPng(SVG_RED);
+      await convertSvgToPng(SVG_BLUE);
+      await convertSvgToPng(SVG_RED); // same as first
+      assertEquals(
+        handlerCallCount,
+        1,
+        "handler must fire exactly once even with multiple binary-missing detections",
+      );
+    } finally {
+      (Deno as Record<string, unknown>).Command = origCommand;
+    }
+  });
 });
 
 describe("convertSvgToPng — cache hit", () => {

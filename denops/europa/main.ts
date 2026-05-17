@@ -22,6 +22,7 @@ import { buildSyntaxHighlightDispatcher } from "./dispatcher/syntax-highlight.ts
 import { buildUndoDispatcher } from "./dispatcher/undo.ts";
 import { buildViewDispatcher } from "./dispatcher/view.ts";
 import { ServerPool } from "./kernel/server-pool.ts";
+import { setBinaryMissingHandler } from "./render/svg-converter.ts";
 import { SessionStore } from "./session/state.ts";
 
 /**
@@ -66,6 +67,14 @@ export function buildDispatcher(denops: Denops): EuropaDispatcher {
  * @param denops - Denops instance provided by the runtime.
  */
 export function main(denops: Denops): Promise<void> {
+  // Register the binary-missing handler so that when rsvg-convert is not
+  // found, a single session-level warning is emitted via Vim's :messages
+  // (FR-020 / FR-021). The handler fires at most once per process.
+  setBinaryMissingHandler(() => {
+    denops.cmd(
+      "echohl WarningMsg | echom 'Europa: rsvg-convert not found; SVG outputs render as XML source. Install librsvg for inline PNG rendering.' | echohl None",
+    ).catch(() => {});
+  });
   denops.dispatcher = buildDispatcher(denops);
   return Promise.resolve();
 }
