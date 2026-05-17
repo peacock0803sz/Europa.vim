@@ -118,7 +118,18 @@ export function buildViewDispatcher(
             );
             return;
           }
-          await new Deno.Command(cmd, { args }).output();
+          const result = await new Deno.Command(cmd, { args }).output();
+          if (result.code !== 0) {
+            const stderrText = result.stderr.length > 0
+              ? new TextDecoder().decode(result.stderr).trim()
+              : "";
+            await echomError(
+              denops,
+              stderrText
+                ? `failed to launch external SVG viewer (exit ${result.code}): ${stderrText}`
+                : `failed to launch external SVG viewer (exit ${result.code})`,
+            );
+          }
         } catch {
           await echomError(denops, "failed to launch external SVG viewer");
         }
