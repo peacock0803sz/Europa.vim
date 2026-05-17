@@ -14,6 +14,7 @@ import { Value } from "@sinclair/typebox/value";
 import { NotebookSchemaPreNormalize } from "../schema/notebook.ts";
 
 const GOLDEN_DIR = "tests/golden/ipynb";
+const FIXTURES_DIR = "tests/fixtures/ipynb";
 
 async function collectIpynb(dir: string): Promise<string[]> {
   const files: string[] = [];
@@ -31,7 +32,10 @@ async function collectIpynb(dir: string): Promise<string[]> {
 }
 
 if (import.meta.main) {
-  const files = await collectIpynb(GOLDEN_DIR);
+  const files = [
+    ...await collectIpynb(GOLDEN_DIR),
+    ...await collectIpynb(FIXTURES_DIR),
+  ];
   let failed = false;
 
   for (const file of files) {
