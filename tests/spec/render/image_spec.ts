@@ -298,13 +298,39 @@ describe("renderImage — svg-fallback (via dispatchOutput)", () => {
         "image/svg+xml": "<svg/>",
         "image/png": PNG_B64,
       },
-      metadata: {},
+      // _europaShadow marker tells dispatcher this PNG is shadow-injected
+      // by buildRenderPlan, not an original PNG that coexists with the SVG.
+      metadata: { "image/png": { _europaShadow: true } },
     };
     const frag = dispatchOutput(out, capsPlaceholder, ["image/svg+xml"]);
     assertEquals(
       frag.lines[0].startsWith("[image: png"),
       true,
       "Shadow-injected PNG must produce an image placeholder",
+    );
+  });
+
+  it("falls back to renderText when image/png is NOT shadow-injected (original PNG coexists)", () => {
+    // User puts image/svg+xml first in priority and the output happens to
+    // also have an unrelated image/png. Without the _europaShadow marker,
+    // the SVG branch must fall through to raw XML so the user's MIME
+    // priority is respected (FR-014 strict reading).
+    const PNG_B64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const out: Output = {
+      output_type: "display_data",
+      data: {
+        "image/svg+xml": "<svg><circle/></svg>",
+        "image/png": PNG_B64,
+      },
+      metadata: {},
+    };
+    const frag = dispatchOutput(out, capsPlaceholder, ["image/svg+xml"]);
+    const text = frag.lines.join("\n");
+    assertEquals(
+      text.includes("<svg>"),
+      true,
+      "Non-shadow PNG must NOT satisfy the SVG branch; XML source must render",
     );
   });
 });

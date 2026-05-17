@@ -325,11 +325,20 @@ export async function buildRenderPlan(
       ) continue;
       const origData = out.data as Record<string, unknown>;
       const origMeta = (out.metadata ?? {}) as Record<string, unknown>;
+      // Tag the metadata so dispatcher.ts svg-fallback branch can distinguish
+      // shadow-injected PNG (= safe to render) from an original PNG that
+      // happens to coexist with the SVG (which should not satisfy a SVG-first
+      // priority when conversion failed). Marker stays in the build-local
+      // ShadowMap and never reaches serializeNotebook.
       shadowMap.set(key, {
         data: { ...origData, "image/png": result.pngBase64 },
         metadata: {
           ...origMeta,
-          "image/png": { width: result.width, height: result.height },
+          "image/png": {
+            width: result.width,
+            height: result.height,
+            _europaShadow: true,
+          },
         },
       });
     }

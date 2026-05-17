@@ -44,17 +44,18 @@ function renderMimeData(
 
     // SVG: shadow-inject check must come before MIME-priority resolution because
     // buildRenderPlan places the converted PNG in data["image/png"] regardless
-    // of where "image/svg+xml" sits in mimePriority. Routing to renderImage
-    // so that the placeholder and Sixel paths work identically to native PNG.
-    // Fallback to renderText when no shadow PNG is present (binary missing or
-    // SVG not in pre-pass scope).
+    // of where "image/svg+xml" sits in mimePriority. The shadow PNG is tagged
+    // with metadata._europaShadow=true so an original PNG that happens to
+    // coexist with the SVG does NOT satisfy the SVG-first priority — we must
+    // fall through to raw XML in that case to honor the user's choice.
     // @spec-id europa.render.image.svg-fallback
     if (mime === "image/svg+xml") {
-      if (typeof data["image/png"] === "string") {
+      const imgMetaForMime = outputMetadata["image/png"] as
+        | Record<string, unknown>
+        | undefined;
+      const isShadowInjected = imgMetaForMime?._europaShadow === true;
+      if (isShadowInjected && typeof data["image/png"] === "string") {
         const rawData = data["image/png"] as string;
-        const imgMetaForMime = outputMetadata["image/png"] as
-          | Record<string, unknown>
-          | undefined;
         const width = typeof imgMetaForMime?.width === "number"
           ? imgMetaForMime.width
           : undefined;
