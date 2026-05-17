@@ -14,6 +14,8 @@
       "@denops/std/batch": ["./typings/denops-std-batch.d.ts"],
       "@std/uuid": ["./typings/std-uuid.d.ts"],
       "@std/encoding/base64": ["./typings/std-encoding-base64.d.ts"],
+      "@std/encoding/hex": ["./typings/std-encoding-hex.d.ts"],
+      "@std/cache/lru-cache": ["./typings/std-cache-lru-cache.d.ts"],
       "@std/path/join": ["./typings/std-path-join.d.ts"],
       "@std/fs/exists": ["./typings/std-fs-exists.d.ts"],
       "@std/cli/parse-args": ["./typings/std-cli-parse-args.d.ts"],
