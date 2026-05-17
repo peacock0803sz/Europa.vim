@@ -18,6 +18,7 @@
       "@std/encoding/hex": ["./typings/std-encoding-hex.d.ts"],
       "@std/cache/lru-cache": ["./typings/std-cache-lru-cache.d.ts"],
       "@std/path/join": ["./typings/std-path-join.d.ts"],
+      "@std/fs": ["./typings/std-fs.d.ts"],
       "@std/fs/exists": ["./typings/std-fs-exists.d.ts"],
       "@std/cli/parse-args": ["./typings/std-cli-parse-args.d.ts"],
       "@std/async/delay": ["./typings/std-async-delay.d.ts"],

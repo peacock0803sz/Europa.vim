@@ -1,5 +1,7 @@
 import type { EuropaDispatcher } from "../../../contracts/dispatcher.ts";
 import { decodeBase64 } from "@std/encoding/base64";
+import { encodeHex } from "@std/encoding/hex";
+import { ensureDir } from "@std/fs";
 import { detectCapabilities } from "../capabilities.ts";
 import { loadConfig } from "../config.ts";
 import { buildRenderPlan, mergeStreams } from "../render/builder.ts";
@@ -77,6 +79,52 @@ export function buildViewDispatcher(
       }
 
       const data = output.data as Record<string, unknown>;
+
+      // SVG preview: write original SVG bytes to a fixed-path temp file so that
+      // the OS viewer receives the SVG source rather than the shadow-injected PNG.
+      // The path must include the full 64-char SHA-256 of the SVG bytes (SC-006).
+      // @spec-id europa.dispatcher.view.preview-svg
+      if (typeof data["image/svg+xml"] === "string") {
+        const svgText = data["image/svg+xml"] as string;
+        const svgBytes = new TextEncoder().encode(svgText);
+        const digest = await crypto.subtle.digest("SHA-256", svgBytes);
+        const sha256 = encodeHex(new Uint8Array(digest));
+        const svgDir = "/tmp/europa";
+        const svgPath = `${svgDir}/svg-preview-${sha256}.svg`;
+        try {
+          await ensureDir(svgDir);
+          await Deno.writeTextFile(svgPath, svgText);
+        } catch {
+          await echomError(denops, "failed to write SVG preview file");
+          return;
+        }
+        try {
+          const os = Deno.build.os;
+          let cmd: string;
+          let args: string[];
+          if (os === "darwin") {
+            cmd = "open";
+            args = [svgPath];
+          } else if (os === "linux") {
+            cmd = "xdg-open";
+            args = [svgPath];
+          } else if (os === "windows") {
+            cmd = "cmd";
+            args = ["/c", "start", "", svgPath];
+          } else {
+            await echomError(
+              denops,
+              `unsupported OS '${os}' - open ${svgPath} manually`,
+            );
+            return;
+          }
+          await new Deno.Command(cmd, { args }).output();
+        } catch {
+          await echomError(denops, "failed to launch external SVG viewer");
+        }
+        return;
+      }
+
       const selectedMime = IMAGE_MIMES.find(
         (m) => typeof data[m] === "string",
       );
