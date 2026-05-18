@@ -60,24 +60,6 @@ function pickFreePort(): number {
   return port;
 }
 
-// Matches the port in lines like:
-//   http://127.0.0.1:PORT/?token=...
-//   http://localhost:PORT/?token=...
-const STARTUP_RE = /https?:\/\/\S+?:(\d+)\//;
-
-/**
- * Spawn a real `jupyter server` on a free port with the given token. Waits
- * until the server emits its startup URL line on stderr, then polls the HTTP
- * endpoint until it accepts connections. Times out after `timeoutMs` ms.
- *
- * Uses a single AbortController for the read-loop deadline so no timer
- * objects are leaked between iterations (Deno sanitizer safe).
- *
- * Note: `--port=0` cannot be used because jupyter logs the configured value (0)
- * rather than the OS-assigned port. We use pickFreePort() + explicit port instead.
- *
- * @throws Error if the server does not start within `timeoutMs`
- */
 const TRACE_ENABLED = Deno.env.get("EUROPA_SPAWN_TRACE") === "1";
 
 function traceMark(phase: string, t0: number): void {
@@ -87,6 +69,18 @@ function traceMark(phase: string, t0: number): void {
   console.error(`[spawn-trace] phase=${phase} elapsed_ms=${elapsedMs}`);
 }
 
+/**
+ * Spawn a real `jupyter server` on a free port with the given token. Polls
+ * the HTTP `/api` endpoint with exponential backoff until the server is ready.
+ * Races against `proc.status` so an early process exit (e.g. port collision)
+ * is detected without waiting for the full deadline.
+ *
+ * Note: `--port=0` cannot be used because jupyter logs the configured value (0)
+ * rather than the OS-assigned port. We use pickFreePort() + explicit port instead.
+ *
+ * @throws Error if the server does not become reachable on `/api` within
+ *   `timeoutMs` (default 30s), or if the process exits before becoming ready.
+ */
 export async function spawnConformanceServer(
   opts: { timeoutMs?: number } = {},
 ): Promise<ConformanceServer> {
@@ -105,77 +99,56 @@ export async function spawnConformanceServer(
       "--ServerApp.open_browser=False",
     ],
     stdout: "null",
-    stderr: "piped",
+    stderr: "null",
   }).spawn();
   traceMark("proc_spawned", t0);
 
-  // Read stderr until the startup URL line appears, using a single timeout.
-  const reader = proc.stderr.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  let started = false;
-
-  const ac = new AbortController();
-  const tid = setTimeout(() => ac.abort(), timeoutMs);
-
-  try {
-    while (!ac.signal.aborted) {
-      let chunk: ReadableStreamReadResult<Uint8Array>;
-      try {
-        chunk = await reader.read();
-      } catch {
-        break;
-      }
-      if (chunk.done) break;
-      buf += dec.decode(chunk.value);
-      if (STARTUP_RE.test(buf)) {
-        started = true;
-        break;
-      }
-    }
-  } finally {
-    clearTimeout(tid);
-    reader.releaseLock();
-  }
-
-  if (!started) {
-    try {
-      proc.kill("SIGTERM");
-    } catch { /* already dead */ }
-    await proc.status;
-    throw new Error(`jupyter server did not start within ${timeoutMs}ms`);
-  }
-  traceMark("stderr_url_seen", t0);
-
   const url = `http://127.0.0.1:${port}`;
+  const deadline = performance.now() + timeoutMs;
 
-  // Drain remaining stderr so the process does not block on a full pipe.
-  proc.stderr.cancel().catch(() => {});
+  // procExited resolves if jupyter dies before becoming ready.
+  let procExited = false;
+  const procStatus = proc.status.then((s: Deno.CommandStatus) => {
+    procExited = true;
+    return s;
+  });
 
-  // jupyter logs the URL slightly before binding the TCP socket.
-  // Poll until the server accepts HTTP connections to avoid "Connection refused".
-  const readyDeadline = Date.now() + 5_000;
-  while (Date.now() < readyDeadline) {
+  // Exponential backoff: 10, 20, 40, 80, 160, 200, 200, ...
+  let waitMs = 10;
+  while (performance.now() < deadline) {
+    if (procExited) {
+      throw new Error(
+        `jupyter server exited before becoming ready (port ${port})`,
+      );
+    }
     try {
       const resp = await fetch(`${url}/api`, {
         signal: AbortSignal.timeout(500),
       });
       await resp.body?.cancel();
-      if (resp.status < 500) break; // 200 OK or 403 (auth required) = server is up
+      if (resp.status < 500) {
+        traceMark("http_ready", t0);
+        return {
+          url,
+          token,
+          port,
+          async stop() {
+            try {
+              proc.kill("SIGTERM");
+            } catch { /* already dead */ }
+            await procStatus;
+          },
+        };
+      }
     } catch { /* not ready yet, retry */ }
-    await new Promise<void>((r) => setTimeout(r, 100));
+    await new Promise<void>((r) => setTimeout(r, waitMs));
+    waitMs = Math.min(waitMs * 2, 200);
   }
-  traceMark("http_ready", t0);
 
-  return {
-    url,
-    token,
-    port,
-    async stop() {
-      try {
-        proc.kill("SIGTERM");
-      } catch { /* already dead */ }
-      await proc.status;
-    },
-  };
+  // Readiness deadline reached without /api responding.
+  try {
+    proc.kill("SIGTERM");
+  } catch { /* already dead */ }
+  await procStatus;
+  throw new Error(`jupyter server did not become ready within ${timeoutMs}ms`);
 }
