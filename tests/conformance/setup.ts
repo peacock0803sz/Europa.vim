@@ -21,6 +21,37 @@ export interface ConformanceServer {
 }
 
 /**
+ * Delete all kernel sessions on the given server.
+ *
+ * Used as an `afterEach` invariant in shared-server describes: some tests
+ * (notably the abort-race and kernel_info-failure paths in
+ * `denops/europa/kernel/server-client.ts`) release the local `ServerPool` but
+ * do not issue `DELETE /api/sessions/{id}` on the failure path, so a session
+ * record can linger on the server. Sharing a server across tests would let
+ * those orphans accumulate; this helper sweeps them between tests so each
+ * shared-server test sees an empty session list.
+ */
+export async function clearAllSessions(
+  server: ConformanceServer,
+): Promise<void> {
+  const headers = { Authorization: `token ${server.token}` };
+  const resp = await fetch(`${server.url}/api/sessions`, { headers });
+  if (!resp.ok) {
+    await resp.body?.cancel();
+    return;
+  }
+  const sessions = (await resp.json()) as Array<{ id: string }>;
+  await Promise.all(
+    sessions.map((s) =>
+      fetch(`${server.url}/api/sessions/${s.id}`, {
+        method: "DELETE",
+        headers,
+      }).then((r) => r.body?.cancel())
+    ),
+  );
+}
+
+/**
  * Locate `jupyter` in PATH. Throws JupyterMissingError with actionable message
  * if absent (FR-052b early-exit requirement).
  */
