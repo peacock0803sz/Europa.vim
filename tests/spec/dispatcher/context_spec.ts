@@ -4,6 +4,8 @@
  * Verifies that mime_priority (and other render-related config fields)
  * propagate from EuropaConfig into the BuildRenderPlanOpts so that
  * buildRenderPlan respects user-configured MIME priority.
+ *
+ * @spec-id europa.dispatcher.context.render-plan-opts
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
