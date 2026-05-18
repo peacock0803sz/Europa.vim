@@ -46,6 +46,8 @@ export const EuropaConfigSchema = Type.Object({
       "image/png",
       "image/jpeg",
       "image/svg+xml",
+      "application/json",
+      "text/markdown",
       "text/html",
       "text/plain",
     ],

@@ -29,6 +29,20 @@ describe("loadConfig — basic loading", () => {
     assertEquals(config.auto_save, false);
   });
 
+  it("mime_priority default covers all supported MIME types so renderPlanOpts does not drop JSON/markdown outputs", async () => {
+    const denops = mockVim();
+    const config = await loadConfig(denops);
+    assertEquals(config.mime_priority, [
+      "image/png",
+      "image/jpeg",
+      "image/svg+xml",
+      "application/json",
+      "text/markdown",
+      "text/html",
+      "text/plain",
+    ]);
+  });
+
   it("respects overridden g:europa_image_backend", async () => {
     const denops = mockVim();
     denops.setEval(`get(g:, 'europa_image_backend', "auto")`, "sixel");

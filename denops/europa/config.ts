@@ -53,11 +53,17 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
     {
       key: "mime_priority",
       gvar: "mime_priority",
-      // Phase 3.6: image/svg+xml added so SVG outputs are PNG-converted by default
+      // Phase 3.6: image/svg+xml added so SVG outputs are PNG-converted by default.
+      // Must mirror the buildRenderPlan fallback in render/builder.ts (and the
+      // TypeBox default in schema/config.ts) so that propagating
+      // config.mime_priority through renderPlanOpts does not silently drop
+      // application/json or text/markdown outputs.
       def: [
         "image/png",
         "image/jpeg",
         "image/svg+xml",
+        "application/json",
+        "text/markdown",
         "text/html",
         "text/plain",
       ],
