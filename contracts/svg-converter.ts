@@ -49,8 +49,11 @@ export type SvgConversionResult = Static<typeof SvgConversionResultSchema>;
  * All failure modes (binary missing, subprocess non-zero exit, stderr decode
  * error, OS-level errors) become `{ ok: false, reason }`.
  *
- * Called from `buildRenderPlan` / `buildPartialRenderPlan` pre-pass through
+ * Called from `buildRenderPlan`'s pre-pass through
  * `pooledMap(poolLimit, ...)` where `poolLimit = max(2, min(navigator.hardwareConcurrency, 8))`.
+ * The partial-render path reaches the same pre-pass indirectly via
+ * `applyPartialRenderPlan` → `buildRenderPlan`; there is no separate
+ * partial builder today.
  *
  * @param svgBytes - The raw `image/svg+xml` value from `Output.data` (string).
  * @returns Always-resolving `Promise<SvgConversionResult>`.
