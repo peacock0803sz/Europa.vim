@@ -97,6 +97,17 @@ export async function spawnConformanceServer(
       `--ServerApp.token=${token}`,
       "--no-browser",
       "--ServerApp.open_browser=False",
+      // Disable extensions that are irrelevant to conformance tests but add
+      // ~2s of boot time. jupyter_lsp scans the system for installed LSP
+      // servers; jupyterlab/notebook/nbclassic load full UI assets;
+      // notebook_shim and terminals are not exercised by these tests.
+      "--ServerApp.jpserver_extensions=jupyter_lsp=False",
+      "--ServerApp.jpserver_extensions=notebook_shim=False",
+      "--ServerApp.jpserver_extensions=jupyterlab=False",
+      "--ServerApp.jpserver_extensions=nbclassic=False",
+      "--ServerApp.jpserver_extensions=notebook=False",
+      "--ServerApp.jpserver_extensions=jupyter_server_terminals=False",
+      "--ServerApp.terminals_enabled=False",
     ],
     stdout: "null",
     stderr: "null",
