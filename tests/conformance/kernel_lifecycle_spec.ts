@@ -12,12 +12,13 @@
  * @spec-id europa.conformance.kernel-lifecycle.reconnect-default
  */
 
-import { describe, it } from "@std/testing/bdd";
+import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals, assertExists } from "@std/assert";
 import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import type { EuropaConfig } from "../../schema/config.ts";
 import {
+  type ConformanceServer,
   ensureJupyter,
   JupyterMissingError,
   spawnConformanceServer,
@@ -71,11 +72,22 @@ function attachConfig(url: string, token: string): EuropaConfig {
   };
 }
 
-describe("conformance: kernel lifecycle — basic (SC-002, SC-003, SC-004, SC-006)", () => {
-  it("start() completes within 5s and returns a connected KernelRuntime", async () => {
+describe("conformance: kernel lifecycle (shared server)", () => {
+  let server: ConformanceServer;
+
+  beforeAll(async () => {
     if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+    server = await spawnConformanceServer({ timeoutMs: 30_000 });
+  });
+
+  afterAll(async () => {
+    if (!jupyterPresent) return;
+    await server.stop();
+  });
+
+  describe("basic (SC-002, SC-003, SC-004, SC-006)", () => {
+    it("start() completes within 5s and returns a connected KernelRuntime", async () => {
+      if (!jupyterPresent) return;
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -92,15 +104,10 @@ describe("conformance: kernel lifecycle — basic (SC-002, SC-003, SC-004, SC-00
       assertEquals(runtime.info.kernelName, "python3");
       assertEquals(runtime.socket.readyState, WebSocket.OPEN);
       await client.shutdown();
-    } finally {
-      await server.stop();
-    }
-  });
+    });
 
-  it("start() receives kernel_info_reply and populates languageInfo (SC-003)", async () => {
-    if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+    it("start() receives kernel_info_reply and populates languageInfo (SC-003)", async () => {
+      if (!jupyterPresent) return;
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -113,15 +120,10 @@ describe("conformance: kernel lifecycle — basic (SC-002, SC-003, SC-004, SC-00
       assertExists(runtime.info.languageInfo);
       assertEquals(runtime.info.languageInfo?.name, "python");
       await client.shutdown();
-    } finally {
-      await server.stop();
-    }
-  });
+    });
 
-  it("shutdown() tears down session within 5s and leaves no leaked connections (SC-004, SC-006)", async () => {
-    if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+    it("shutdown() tears down session within 5s and leaves no leaked connections (SC-004, SC-006)", async () => {
+      if (!jupyterPresent) return;
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -142,20 +144,15 @@ describe("conformance: kernel lifecycle — basic (SC-002, SC-003, SC-004, SC-00
       );
       // After shutdown the socket is no longer OPEN.
       assert(runtime.socket.readyState !== WebSocket.OPEN);
-    } finally {
-      await server.stop();
-    }
+    });
   });
-});
 
-describe("conformance: multi-buffer server share (SC-013)", () => {
-  it("two clients share the same server subprocess (same subprocessPid, different kernelId)", async () => {
-    if (!jupyterPresent) return;
-    // Subprocess mode is required to observe pid sharing. Skip in attach mode —
-    // SC-013 is verified structurally via unit specs (server-pool_spec.ts). The
-    // attach-mode integration check below still validates distinct kernel IDs.
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+  describe("multi-buffer server share (SC-013)", () => {
+    it("two clients share the same server subprocess (same subprocessPid, different kernelId)", async () => {
+      if (!jupyterPresent) return;
+      // Subprocess mode is required to observe pid sharing. Skip in attach mode —
+      // SC-013 is verified structurally via unit specs (server-pool_spec.ts). The
+      // attach-mode integration check below still validates distinct kernel IDs.
       // Shared pool is the Q1 mechanism: same pool instance → same server handle.
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
@@ -177,20 +174,15 @@ describe("conformance: multi-buffer server share (SC-013)", () => {
       );
 
       await Promise.all([client1.shutdown(), client2.shutdown()]);
-    } finally {
-      await server.stop();
-    }
+    });
   });
-});
 
-describe("conformance: reconnect-default config (SC-020)", () => {
-  it("default reconnect config (max=5, initial=1000ms, multiplier=2) is active", async () => {
-    if (!jupyterPresent) return;
-    // SC-020: verify that the default reconnect options produce the expected
-    // backoff sequence.  We inspect the runtime abort signal — no actual
-    // disconnect is triggered here (that path is covered by abort_race_spec).
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+  describe("reconnect-default config (SC-020)", () => {
+    it("default reconnect config (max=5, initial=1000ms, multiplier=2) is active", async () => {
+      if (!jupyterPresent) return;
+      // SC-020: verify that the default reconnect options produce the expected
+      // backoff sequence.  We inspect the runtime abort signal — no actual
+      // disconnect is triggered here (that path is covered by abort_race_spec).
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -209,8 +201,6 @@ describe("conformance: reconnect-default config (SC-020)", () => {
       assert(!runtime.abort.signal.aborted);
 
       await client.shutdown();
-    } finally {
-      await server.stop();
-    }
+    });
   });
 });
