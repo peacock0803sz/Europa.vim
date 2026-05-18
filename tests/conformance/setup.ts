@@ -78,12 +78,23 @@ const STARTUP_RE = /https?:\/\/\S+?:(\d+)\//;
  *
  * @throws Error if the server does not start within `timeoutMs`
  */
+const TRACE_ENABLED = Deno.env.get("EUROPA_SPAWN_TRACE") === "1";
+
+function traceMark(phase: string, t0: number): void {
+  if (!TRACE_ENABLED) return;
+  const elapsedMs = (performance.now() - t0).toFixed(1);
+  // Fixed format for grep aggregation in CI logs.
+  console.error(`[spawn-trace] phase=${phase} elapsed_ms=${elapsedMs}`);
+}
+
 export async function spawnConformanceServer(
   opts: { timeoutMs?: number } = {},
 ): Promise<ConformanceServer> {
+  const t0 = performance.now();
   const token = randomToken();
   const port = pickFreePort();
   const timeoutMs = opts.timeoutMs ?? 30_000;
+  traceMark("port_picked", t0);
 
   const proc = new Deno.Command("jupyter", {
     args: [
@@ -96,6 +107,7 @@ export async function spawnConformanceServer(
     stdout: "null",
     stderr: "piped",
   }).spawn();
+  traceMark("proc_spawned", t0);
 
   // Read stderr until the startup URL line appears, using a single timeout.
   const reader = proc.stderr.getReader();
@@ -133,6 +145,7 @@ export async function spawnConformanceServer(
     await proc.status;
     throw new Error(`jupyter server did not start within ${timeoutMs}ms`);
   }
+  traceMark("stderr_url_seen", t0);
 
   const url = `http://127.0.0.1:${port}`;
 
@@ -152,6 +165,7 @@ export async function spawnConformanceServer(
     } catch { /* not ready yet, retry */ }
     await new Promise<void>((r) => setTimeout(r, 100));
   }
+  traceMark("http_ready", t0);
 
   return {
     url,
