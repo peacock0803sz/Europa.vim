@@ -2,13 +2,13 @@
  * BDD specs for renderImage — placeholder format, clickable, MIME routing,
  * and Sixel metadata synchronous return.
  *
- * europa.render.image.unsupported-mime and europa.render.image.svg-source
+ * europa.render.image.unsupported-mime and europa.render.image.svg-fallback
  * are tested here via dispatchOutput to verify the full image-MIME routing
  * contract end-to-end.
  *
  * @spec-id europa.render.image.placeholder
  * @spec-id europa.render.image.unsupported-mime
- * @spec-id europa.render.image.svg-source
+ * @spec-id europa.render.image.svg-fallback
  * @spec-id europa.render.image.sixel-metadata
  */
 import { describe, it } from "@std/testing/bdd";
@@ -272,8 +272,8 @@ describe("renderImage — unsupported-mime (via dispatchOutput)", () => {
   });
 });
 
-describe("renderImage — svg-source (via dispatchOutput)", () => {
-  it("renders SVG source as plain text (FR-024)", () => {
+describe("renderImage — svg-fallback (via dispatchOutput)", () => {
+  it("renders SVG as plain text when no shadow-injected image/png is present (FR-014)", () => {
     const svgSource = "<svg><rect width='10' height='10'/></svg>";
     const out: Output = {
       output_type: "display_data",
@@ -285,7 +285,76 @@ describe("renderImage — svg-source (via dispatchOutput)", () => {
     assertEquals(
       text.includes("<svg>"),
       true,
-      "SVG source must be shown as-is",
+      "SVG source must be shown as-is when no shadow PNG exists",
     );
+  });
+
+  it("routes SVG to renderImage placeholder when shadow-injected image/png is present", () => {
+    const PNG_B64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const out: Output = {
+      output_type: "display_data",
+      data: {
+        "image/svg+xml": "<svg/>",
+        "image/png": PNG_B64,
+      },
+      // _europaShadow marker tells dispatcher this PNG is shadow-injected
+      // by buildRenderPlan, not an original PNG that coexists with the SVG.
+      metadata: { "image/png": { _europaShadow: true } },
+    };
+    const frag = dispatchOutput(out, capsPlaceholder, ["image/svg+xml"]);
+    assertEquals(
+      frag.lines[0].startsWith("[image: png"),
+      true,
+      "Shadow-injected PNG must produce an image placeholder",
+    );
+  });
+
+  it("falls back to renderText when image/png is NOT shadow-injected (original PNG coexists)", () => {
+    // User puts image/svg+xml first in priority and the output happens to
+    // also have an unrelated image/png. Without the _europaShadow marker,
+    // the SVG branch must fall through to raw XML so the user's MIME
+    // priority is respected (FR-014 strict reading).
+    const PNG_B64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const out: Output = {
+      output_type: "display_data",
+      data: {
+        "image/svg+xml": "<svg><circle/></svg>",
+        "image/png": PNG_B64,
+      },
+      metadata: {},
+    };
+    const frag = dispatchOutput(out, capsPlaceholder, ["image/svg+xml"]);
+    const text = frag.lines.join("\n");
+    assertEquals(
+      text.includes("<svg>"),
+      true,
+      "Non-shadow PNG must NOT satisfy the SVG branch; XML source must render",
+    );
+  });
+});
+
+describe("renderImage — Sixel with shadow-injected SVG→PNG (T024, US2, SC-005)", () => {
+  it("shadow-injected image/png from SVG produces Sixel placement with correct payload and backend", () => {
+    // Phase 3.6 shadow inject: buildRenderPlan converts SVG and writes pngBase64
+    // into data["image/png"]. dispatchOutput routes to renderImage with mime:"image/png".
+    // This test verifies renderImage routes to Sixel correctly (FR-016 / SC-005).
+    const result = renderImage(PNG_B64, "image/png", capsSixel, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement?.mime, "image/png");
+    assertEquals(result.placement?.backend, "sixel");
+    assertEquals(result.placement?.payload, PNG_B64);
+  });
+
+  it("shadow-injected PNG with placeholder backend does not produce Sixel placement (FR-016)", () => {
+    const result = renderImage(PNG_B64, "image/png", capsPlaceholder, {
+      cellIdx: 0,
+      outputIdx: 0,
+    });
+    assertEquals(result.placement, undefined);
+    assertEquals(result.fragment.lines[0].startsWith("[image: png"), true);
   });
 });

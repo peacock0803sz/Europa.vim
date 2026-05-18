@@ -27,14 +27,16 @@ import type {
 const SIXEL_CELL_HEIGHT_PX = 16;
 
 /**
- * Read pixel height from a base64-encoded PNG header.
+ * Read pixel dimensions from a base64-encoded PNG header.
  *
  * PNG layout: 8-byte signature, then the IHDR chunk (4 bytes length + 4 bytes
  * type "IHDR" + 4 bytes width + 4 bytes height, both big-endian uint32).
  * Returns `undefined` when the input is not a valid PNG header — JPEG and
  * other formats fall through and the caller substitutes a default.
  */
-function pngPixelHeight(b64: string): number | undefined {
+export function pngDimensions(
+  b64: string,
+): { width: number; height: number } | undefined {
   try {
     const bytes = decodeBase64(b64.slice(0, 64));
     if (bytes.length < 24) return undefined;
@@ -49,7 +51,10 @@ function pngPixelHeight(b64: string): number | undefined {
       bytes.byteOffset,
       bytes.byteLength,
     );
-    return view.getUint32(20, false);
+    return {
+      width: view.getUint32(16, false),
+      height: view.getUint32(20, false),
+    };
   } catch {
     return undefined;
   }
@@ -100,7 +105,7 @@ export function renderImage(
   // (terminal Sixel images are drawn as a graphics layer over the text
   // grid and would otherwise hide whatever buffer text sits below them).
   if (caps.image === "sixel") {
-    const pixelHeight = meta.height ?? pngPixelHeight(data);
+    const pixelHeight = meta.height ?? pngDimensions(data)?.height;
     const cellHeight = meta.cellHeightPx && meta.cellHeightPx > 0
       ? meta.cellHeightPx
       : SIXEL_CELL_HEIGHT_PX;
@@ -133,8 +138,10 @@ export function renderImage(
     ],
   };
 
-  // Sixel opt-in (FR-020): return placement metadata for the viewer layer.
+  // Sixel opt-in: return placement metadata for the viewer layer.
   // No subprocess or I/O happens here — the render layer is synchronous.
+  // SVG → PNG conversion (Phase 3.6) feeds this branch via shadow-injected
+  // image/png data — no code change needed here for SVG Sixel support.
   if (caps.image === "sixel") {
     return {
       fragment,

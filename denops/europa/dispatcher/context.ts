@@ -33,9 +33,17 @@ export async function echomError(
   );
 }
 
+/**
+ * Project `EuropaConfig` render-relevant fields onto `BuildRenderPlanOpts`
+ * so `buildRenderPlan` receives the user-configured MIME priority and
+ * cell-border styling instead of falling back to builder defaults.
+ *
+ * @spec-id europa.dispatcher.context.render-plan-opts
+ */
 export function renderPlanOpts(config: EuropaConfig): BuildRenderPlanOpts {
   return {
     maxOutputLines: config.max_output_lines,
+    mimePriority: config.mime_priority,
     cellBorderChars: config.cell_border_chars,
     cellBorderPadding: config.cell_border_padding,
     cellBorderAlign: config.cell_border_align,

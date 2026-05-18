@@ -53,7 +53,7 @@ export async function applyPartialRenderPlan(
     _magickConverter?: MagickConverter;
   },
 ): Promise<void> {
-  const plan = buildRenderPlan(notebook, caps, opts?.renderOpts);
+  const plan = await buildRenderPlan(notebook, caps, opts?.renderOpts);
   await applyRenderPlan(denops, bufnr, plan, {
     fromCellId,
     _magickConverter: opts?._magickConverter,

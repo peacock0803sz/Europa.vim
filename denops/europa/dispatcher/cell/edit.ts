@@ -105,7 +105,11 @@ export function buildEditCellDispatcher(
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
-      const plan = buildRenderPlan(newNotebook, caps, renderPlanOpts(config));
+      const plan = await buildRenderPlan(
+        newNotebook,
+        caps,
+        renderPlanOpts(config),
+      );
       sessionStore.update(lookup.viewerBufnr, {
         notebook: newNotebook,
         cellMap: plan.cellMap,

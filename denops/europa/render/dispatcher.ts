@@ -6,7 +6,6 @@
  *
  * @category Render
  * @spec-id europa.render.image.unsupported-mime
- * @spec-id europa.render.image.svg-source
  */
 
 import type { Denops } from "@denops/std";
@@ -43,8 +42,36 @@ function renderMimeData(
     if (mime === "text/html") return renderHtml(text);
     if (mime === "application/json") return renderJson(value);
 
-    // SVG source: display as plain text (FR-024)
-    if (mime === "image/svg+xml") return renderText(text);
+    // SVG: shadow-inject check must come before MIME-priority resolution because
+    // buildRenderPlan places the converted PNG in data["image/png"] regardless
+    // of where "image/svg+xml" sits in mimePriority. The shadow PNG is tagged
+    // with metadata._europaShadow=true so an original PNG that happens to
+    // coexist with the SVG does NOT satisfy the SVG-first priority — we must
+    // fall through to raw XML in that case to honor the user's choice.
+    // @spec-id europa.render.image.svg-fallback
+    if (mime === "image/svg+xml") {
+      const imgMetaForMime = outputMetadata["image/png"] as
+        | Record<string, unknown>
+        | undefined;
+      const isShadowInjected = imgMetaForMime?._europaShadow === true;
+      if (isShadowInjected && typeof data["image/png"] === "string") {
+        const rawData = data["image/png"] as string;
+        const width = typeof imgMetaForMime?.width === "number"
+          ? imgMetaForMime.width
+          : undefined;
+        const height = typeof imgMetaForMime?.height === "number"
+          ? imgMetaForMime.height
+          : undefined;
+        const imgResult = renderImage(rawData, "image/png", caps, {
+          ...meta,
+          width,
+          height,
+        });
+        if (imgResult.placement && sixelAcc) sixelAcc.push(imgResult.placement);
+        return imgResult.fragment;
+      }
+      return renderText(text);
+    }
 
     // Image MIMEs: route through renderImage for placeholder + clickable (FR-018)
     if (mime === "image/png" || mime === "image/jpeg") {
