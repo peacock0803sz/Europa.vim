@@ -12,7 +12,7 @@
  * @spec-id europa.kernel.execute.conformance-100-cell-bench
  */
 
-import { describe, it } from "@std/testing/bdd";
+import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals, assertExists } from "@std/assert";
 import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
@@ -26,6 +26,7 @@ import {
 import type { EuropaConfig } from "../../schema/config.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
 import {
+  type ConformanceServer,
   ensureJupyter,
   JupyterMissingError,
   spawnConformanceServer,
@@ -87,11 +88,22 @@ function makeCodeCell(source: string): CodeCell {
   };
 }
 
-describe("conformance: runCell — print('hi') within 5s (SC-001)", () => {
-  it("execute print('hi') yields stream output 'hi' and execution_count=1", async () => {
+describe("conformance: execute lifecycle (shared server)", () => {
+  let server: ConformanceServer;
+
+  beforeAll(async () => {
     if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+    server = await spawnConformanceServer({ timeoutMs: 30_000 });
+  });
+
+  afterAll(async () => {
+    if (!jupyterPresent) return;
+    await server.stop();
+  });
+
+  describe("runCell — print('hi') within 5s (SC-001)", () => {
+    it("execute print('hi') yields stream output 'hi' and execution_count=1", async () => {
+      if (!jupyterPresent) return;
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -123,17 +135,12 @@ describe("conformance: runCell — print('hi') within 5s (SC-001)", () => {
       assertEquals(cell.execution_count, 1);
 
       await client.shutdown();
-    } finally {
-      await server.stop();
-    }
+    });
   });
-});
 
-describe("conformance: runAll — sequential cells + markdown skip + error stop (US2)", () => {
-  it("executes 3 code cells in order and the last output is 2", async () => {
-    if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+  describe("runAll — sequential cells + markdown skip + error stop (US2)", () => {
+    it("executes 3 code cells in order and the last output is 2", async () => {
+      if (!jupyterPresent) return;
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -174,15 +181,10 @@ describe("conformance: runAll — sequential cells + markdown skip + error stop 
       );
 
       await client.shutdown();
-    } finally {
-      await server.stop();
-    }
-  });
+    });
 
-  it("stops at the erroring cell and cancels remaining (Q2 default A)", async () => {
-    if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+    it("stops at the erroring cell and cancels remaining (Q2 default A)", async () => {
+      if (!jupyterPresent) return;
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -240,17 +242,12 @@ describe("conformance: runAll — sequential cells + markdown skip + error stop 
       assertEquals(codeCells[2].outputs.length, 0);
 
       await client.shutdown();
-    } finally {
-      await server.stop();
-    }
+    });
   });
-});
 
-describe("conformance: 100-cell runAll within 30s (SC-002)", () => {
-  it("executes 100 short cells in under 30s", async () => {
-    if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
-    try {
+  describe("100-cell runAll within 30s (SC-002)", () => {
+    it("executes 100 short cells in under 30s", async () => {
+      if (!jupyterPresent) return;
       const pool = new ServerPool();
       const config = attachConfig(server.url, server.token);
       const client = new ServerKernelClient(
@@ -288,8 +285,6 @@ describe("conformance: 100-cell runAll within 30s (SC-002)", () => {
       );
 
       await client.shutdown();
-    } finally {
-      await server.stop();
-    }
+    });
   });
 });
