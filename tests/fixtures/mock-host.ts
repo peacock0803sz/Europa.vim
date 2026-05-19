@@ -366,7 +366,27 @@ export class MockHost implements Denops {
 
   batch(..._calls: unknown[]): Promise<unknown[]> {
     this.calls.push({ method: "batch", args: _calls });
-    return Promise.resolve([]);
+    // Decompose into individual call records so tests using callsTo() still
+    // observe each batched invocation. Each entry of _calls is a tuple
+    // [fn, ...args].
+    const results: unknown[] = [];
+    for (const c of _calls) {
+      if (Array.isArray(c) && typeof c[0] === "string") {
+        const fn = c[0];
+        const args = c.slice(1);
+        this.calls.push({ method: "call", args: [fn, ...args] });
+        if (this.dispatcher[fn]) {
+          results.push(
+            (this.dispatcher[fn] as (...a: unknown[]) => unknown)(...args),
+          );
+        } else {
+          results.push(null);
+        }
+      } else {
+        results.push(null);
+      }
+    }
+    return Promise.resolve(results);
   }
 
   redraw(_force?: boolean): Promise<void> {

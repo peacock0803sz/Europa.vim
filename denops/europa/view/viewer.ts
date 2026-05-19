@@ -18,6 +18,10 @@ import type {
   SixelPlacement,
 } from "../../../schema/render-plan.ts";
 import type { Cell, Notebook } from "../../../schema/notebook.ts";
+import {
+  applyMdDecorations,
+  ensureMdOverlayBufferOptions,
+} from "./markdown-overlay-nvim.ts";
 
 /**
  * Converts raw PNG bytes to Sixel bytes.
@@ -315,6 +319,8 @@ export async function applyRenderPlan(
     fromCellId?: string;
   },
 ): Promise<void> {
+  const isNvim = await host.call("has", "nvim") === 1 ||
+    host.meta.host === "nvim";
   await host.call("setbufvar", bufnr, "&modifiable", 1);
 
   // Determine the first line to write. When fromCellId is provided and found
@@ -367,6 +373,66 @@ export async function applyRenderPlan(
       plan.sixelPlacements,
       opts?._magickConverter,
     );
+  }
+
+  // TODO: register BufWinEnter / WinScrolled / BufWipeout hooks once the
+  // viewer owns autocmd plumbing for markdown overlay lifecycle updates.
+  if (isNvim) {
+    await ensureMdOverlayBufferOptions(host, bufnr);
+    if (plan.mdDecorations.length === 0) return;
+    const viewport = (() => {
+      if (opts?.viewport) {
+        return {
+          top: opts.viewport.topLine + 1,
+          bottom: opts.viewport.bottomLine + 1,
+        };
+      }
+      return null;
+    })();
+    const resolvedViewport = viewport ??
+      (() => ({
+        top: 1,
+        bottom: plan.lines.length,
+      }))();
+
+    if (!viewport) {
+      // Resolve the viewport against the window currently displaying `bufnr`,
+      // not the current window: applyMdDecorations is scheduled via
+      // `setTimeout(0)` and the user may have switched windows in between,
+      // which would otherwise yield bounds for an unrelated buffer.
+      const winid = await host.call("bufwinid", bufnr);
+      if (typeof winid === "number" && winid > 0) {
+        const info = await host.call("getwininfo", winid);
+        if (
+          Array.isArray(info) &&
+          info[0] &&
+          typeof (info[0] as { topline?: number }).topline === "number" &&
+          typeof (info[0] as { botline?: number }).botline === "number"
+        ) {
+          const wi = info[0] as { topline: number; botline: number };
+          resolvedViewport.top = wi.topline;
+          resolvedViewport.bottom = wi.botline;
+        }
+      }
+    }
+
+    if (opts?.fromCellId) {
+      await applyMdDecorations(
+        host,
+        bufnr,
+        plan.mdDecorations,
+        resolvedViewport,
+      );
+    } else {
+      setTimeout(() => {
+        void applyMdDecorations(
+          host,
+          bufnr,
+          plan.mdDecorations,
+          resolvedViewport,
+        );
+      }, 0);
+    }
   }
 }
 

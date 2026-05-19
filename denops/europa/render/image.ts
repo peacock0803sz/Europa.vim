@@ -136,6 +136,7 @@ export function renderImage(
         action: { type: "open_url", payload: command },
       },
     ],
+    mdDecorations: [],
   };
 
   // Sixel opt-in: return placement metadata for the viewer layer.

@@ -19,3 +19,15 @@ export declare function batch(
   denops: Denops,
   fn: (helper: Denops) => Promise<void>,
 ): Promise<void>;
+
+/**
+ * Batch multiple RPC calls and return their results.
+ *
+ * The synchronous callback returns an array of `helper.call(...)` promises;
+ * after the batched RPC round-trip, `collect` resolves to the array of
+ * return values in the same order.
+ */
+export declare function collect<T = unknown>(
+  denops: Denops,
+  fn: (helper: Denops) => Promise<T>[],
+): Promise<T[]>;

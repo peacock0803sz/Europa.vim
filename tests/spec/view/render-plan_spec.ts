@@ -65,6 +65,7 @@ describe("applyRenderPlan with viewport", () => {
       virtText: [],
       imagePlacements: [],
       clickables: [],
+      mdDecorations: [],
       cellMap: [{ cellIndex: 0, bufLineStart: 0, bufLineEnd: 99 }],
       cellRanges: [],
     };
@@ -87,6 +88,7 @@ describe("applyRenderPlan with viewport", () => {
       virtText: [],
       imagePlacements: [],
       clickables: [],
+      mdDecorations: [],
       cellMap: [{ cellIndex: 0, bufLineStart: 0, bufLineEnd: 4 }],
       cellRanges: [],
     };
@@ -105,6 +107,7 @@ describe("applyRenderPlan with viewport", () => {
       virtText: [],
       imagePlacements: [],
       clickables: [],
+      mdDecorations: [],
       cellMap: [],
       cellRanges: [],
     };

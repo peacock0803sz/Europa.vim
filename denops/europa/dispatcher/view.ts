@@ -5,6 +5,10 @@ import { ensureDir } from "@std/fs";
 import { detectCapabilities } from "../capabilities.ts";
 import { loadConfig } from "../config.ts";
 import { buildRenderPlan, mergeStreams } from "../render/builder.ts";
+import {
+  clearMdOverlay,
+  onMdOverlayScroll as onMdOverlayScrollImpl,
+} from "../view/markdown-overlay-nvim.ts";
 import { applyRenderPlan } from "../view/viewer.ts";
 import {
   type DispatcherContext,
@@ -25,7 +29,13 @@ export const MIME_SUFFIX: Record<ImageMime, string> = {
 
 export function buildViewDispatcher(
   ctx: DispatcherContext,
-): Pick<EuropaDispatcher, "previewOutput" | "onBufWinEnter"> {
+): Pick<
+  EuropaDispatcher,
+  | "previewOutput"
+  | "onBufWinEnter"
+  | "onMdOverlayScroll"
+  | "onMdOverlayWipeout"
+> {
   const { denops, sessionStore } = ctx;
   return {
     /**
@@ -231,6 +241,47 @@ export function buildViewDispatcher(
       } catch {
         // Re-render failure is non-fatal.
       }
+    },
+
+    /**
+     * Refresh markdown overlay extmarks after a viewer window scrolls.
+     *
+     * @spec-id europa.dispatcher.md-overlay-scroll
+     */
+    async onMdOverlayScroll(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 1) return;
+      if (denops.meta.host !== "nvim") return;
+
+      const winid = await denops.call("bufwinid", bn);
+      if (typeof winid !== "number" || winid <= 0) return;
+
+      const info = await denops.call("getwininfo", winid);
+      if (
+        !Array.isArray(info) ||
+        !info[0] ||
+        typeof (info[0] as { topline?: number }).topline !== "number" ||
+        typeof (info[0] as { botline?: number }).botline !== "number"
+      ) {
+        return;
+      }
+
+      const wi = info[0] as { topline: number; botline: number };
+      await onMdOverlayScrollImpl(denops, bn, {
+        top: wi.topline,
+        bottom: wi.botline,
+      });
+    },
+
+    /**
+     * Drop markdown overlay state when the viewer buffer is wiped out.
+     *
+     * @spec-id europa.dispatcher.md-overlay-wipeout
+     */
+    async onMdOverlayWipeout(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 1) return;
+      await clearMdOverlay(denops, bn);
     },
   };
 }

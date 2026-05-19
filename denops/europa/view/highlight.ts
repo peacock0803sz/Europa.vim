@@ -11,7 +11,7 @@
 
 import type { Denops } from "@denops/std";
 
-/** All Europa highlight group names (Phase 2 viewer + Phase 009 execution-state). */
+/** All Europa highlight group names (Phase 2 viewer + Phase 009 execution-state + Phase 3.7 markdown overlay). */
 export const HIGHLIGHT_GROUPS = [
   "EuropaCellHeader",
   "EuropaCellFooter",
@@ -26,6 +26,16 @@ export const HIGHLIGHT_GROUPS = [
   "EuropaCellBusyHl",
   "EuropaCellQueuedHl",
   "EuropaCellAbortedHl",
+  // Phase 3.7: markdown inline overlay groups (FR-005, R7)
+  "EuropaMdBold",
+  "EuropaMdItalic",
+  "EuropaMdLink",
+  "EuropaMdCode",
+  "EuropaMdListMarker",
+  "EuropaMdQuote",
+  "EuropaMdRule",
+  "EuropaMdStrike",
+  "EuropaMdFenceLang",
 ] as const;
 
 type HighlightGroup = typeof HIGHLIGHT_GROUPS[number];
@@ -44,6 +54,15 @@ const LINKS: Record<HighlightGroup, string> = {
   EuropaCellBusyHl: "WarningMsg",
   EuropaCellQueuedHl: "Comment",
   EuropaCellAbortedHl: "ErrorMsg",
+  EuropaMdBold: "Bold",
+  EuropaMdItalic: "Italic",
+  EuropaMdLink: "Underlined",
+  EuropaMdCode: "String",
+  EuropaMdListMarker: "Statement",
+  EuropaMdQuote: "Comment",
+  EuropaMdRule: "Special",
+  EuropaMdStrike: "NonText",
+  EuropaMdFenceLang: "Type",
 };
 
 /**

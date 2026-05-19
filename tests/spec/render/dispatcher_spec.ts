@@ -97,6 +97,66 @@ describe("dispatchOutput", () => {
     );
   });
 
+  it(
+    "routes text/markdown to renderMarkdown and emits mdDecorations (FR-025, US2)",
+    () => {
+      const out: Output = {
+        output_type: "display_data",
+        data: {
+          "text/markdown": "**bold** *italic* [link](https://example.com)",
+          "text/plain": "<IPython.core.display.Markdown object>",
+        },
+        metadata: {},
+      };
+      const frag = dispatchOutput(out, caps, ["text/markdown", "text/plain"]);
+      assertExists(frag.mdDecorations);
+      const bold = frag.mdDecorations.find((d) => d.hlGroup === "EuropaMdBold");
+      assertExists(bold);
+      const link = frag.mdDecorations.find((d) => d.hlGroup === "EuropaMdLink");
+      assertExists(link);
+    },
+  );
+
+  it(
+    "default mimePriority selects text/markdown over text/html (FR-029, SC-013)",
+    () => {
+      const out: Output = {
+        output_type: "display_data",
+        data: {
+          "text/markdown": "**md**",
+          "text/html": "<b>html</b>",
+          "text/plain": "fallback",
+        },
+        metadata: {},
+      };
+      const frag = dispatchOutput(out, caps, defaultMimePriority);
+      // text/markdown wins -> renderMarkdown produces mdDecorations
+      assertEquals(frag.mdDecorations.length > 0, true);
+    },
+  );
+
+  it(
+    "user override that drops text/markdown falls back to text/plain (FR-029 user-override)",
+    () => {
+      const out: Output = {
+        output_type: "display_data",
+        data: {
+          "text/markdown": "**md**",
+          "text/plain": "plain fallback",
+        },
+        metadata: {},
+      };
+      // User override: only text/plain
+      const frag = dispatchOutput(out, caps, ["text/plain"]);
+      // text/plain branch never produces mdDecorations
+      assertEquals(frag.mdDecorations.length, 0);
+      assertEquals(
+        frag.lines.some((l: string) => l.includes("plain fallback")),
+        true,
+      );
+    },
+  );
+
   it("produces unsupported placeholder for unknown MIME", () => {
     const out: Output = {
       output_type: "display_data",

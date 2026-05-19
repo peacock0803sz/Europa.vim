@@ -141,6 +141,7 @@ describe("SessionStore — renderPlan cache", () => {
       virtText: [],
       imagePlacements: [],
       clickables: [],
+      mdDecorations: [],
       cellMap: [],
       cellRanges: [{ cellId: "cell-x", startLine: 0, endLine: 0 }],
     };

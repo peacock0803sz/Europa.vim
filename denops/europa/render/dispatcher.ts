@@ -38,6 +38,8 @@ function renderMimeData(
     const text = Array.isArray(value) ? value.join("") : String(value);
 
     if (mime === "text/plain") return renderText(text);
+    // Phase 3.7: renderMarkdown returns mdDecorations transparently; no
+    // dispatcher change is needed beyond this existing branch (FR-025).
     if (mime === "text/markdown") return renderMarkdown(text);
     if (mime === "text/html") return renderHtml(text);
     if (mime === "application/json") return renderJson(value);

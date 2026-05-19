@@ -27,10 +27,20 @@ const EXPECTED_GROUPS = [
   "EuropaCellBusyHl",
   "EuropaCellQueuedHl",
   "EuropaCellAbortedHl",
+  // Phase 3.7: markdown inline overlay groups (FR-005, R7)
+  "EuropaMdBold",
+  "EuropaMdItalic",
+  "EuropaMdLink",
+  "EuropaMdCode",
+  "EuropaMdListMarker",
+  "EuropaMdQuote",
+  "EuropaMdRule",
+  "EuropaMdStrike",
+  "EuropaMdFenceLang",
 ];
 
 describe("defineHighlights — hl_group definitions", () => {
-  it("defines all 12 Europa* highlight groups via hi default link", async () => {
+  it("defines all 21 Europa* highlight groups via hi default link", async () => {
     const denops = mockVim();
     await defineHighlights(denops);
 
@@ -44,8 +54,8 @@ describe("defineHighlights — hl_group definitions", () => {
     }
   });
 
-  it("exports the HIGHLIGHT_GROUPS constant listing all 12 groups", () => {
-    assertEquals(HIGHLIGHT_GROUPS.length, 12);
+  it("exports the HIGHLIGHT_GROUPS constant listing all 21 groups", () => {
+    assertEquals(HIGHLIGHT_GROUPS.length, 21);
     for (const g of EXPECTED_GROUPS) {
       assertEquals(
         (HIGHLIGHT_GROUPS as readonly string[]).includes(g),

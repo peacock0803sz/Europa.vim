@@ -21,6 +21,7 @@ function makeFragment(
     virtText: [],
     imagePlacements: [],
     clickables: [],
+    mdDecorations: [],
   };
 }
 
