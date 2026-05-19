@@ -109,88 +109,118 @@ function traceMark(phase: string, t0: number): void {
  * Note: `--port=0` cannot be used because jupyter logs the configured value (0)
  * rather than the OS-assigned port. We use pickFreePort() + explicit port instead.
  *
+ * Parallel test execution amplifies the TOCTOU window in pickFreePort() (the
+ * port is released before jupyter binds it). If jupyter exits early — which
+ * with the disabled-extensions setup almost always indicates EADDRINUSE — we
+ * retry up to MAX_PORT_RETRIES times with a fresh port before giving up.
+ *
  * @throws Error if the server does not become reachable on `/api` within
- *   `timeoutMs` (default 30s), or if the process exits before becoming ready.
+ *   `timeoutMs` (default 30s), or if every retry's process exits before becoming ready.
  */
+const MAX_PORT_RETRIES = 3;
+
 export async function spawnConformanceServer(
   opts: { timeoutMs?: number } = {},
 ): Promise<ConformanceServer> {
   const t0 = performance.now();
   const token = randomToken();
-  const port = pickFreePort();
   const timeoutMs = opts.timeoutMs ?? 30_000;
-  traceMark("port_picked", t0);
-
-  const proc = new Deno.Command("jupyter", {
-    args: [
-      "server",
-      `--port=${port}`,
-      `--ServerApp.token=${token}`,
-      "--no-browser",
-      "--ServerApp.open_browser=False",
-      // Disable extensions that are irrelevant to conformance tests but add
-      // ~2s of boot time. jupyter_lsp scans the system for installed LSP
-      // servers; jupyterlab/notebook/nbclassic load full UI assets;
-      // notebook_shim and terminals are not exercised by these tests.
-      "--ServerApp.jpserver_extensions=jupyter_lsp=False",
-      "--ServerApp.jpserver_extensions=notebook_shim=False",
-      "--ServerApp.jpserver_extensions=jupyterlab=False",
-      "--ServerApp.jpserver_extensions=nbclassic=False",
-      "--ServerApp.jpserver_extensions=notebook=False",
-      "--ServerApp.jpserver_extensions=jupyter_server_terminals=False",
-      "--ServerApp.terminals_enabled=False",
-    ],
-    stdout: "null",
-    stderr: "null",
-  }).spawn();
-  traceMark("proc_spawned", t0);
-
-  const url = `http://127.0.0.1:${port}`;
   const deadline = performance.now() + timeoutMs;
+  let lastError: Error | undefined;
 
-  // procExited resolves if jupyter dies before becoming ready.
-  let procExited = false;
-  const procStatus = proc.status.then((s: Deno.CommandStatus) => {
-    procExited = true;
-    return s;
-  });
+  for (let attempt = 0; attempt < MAX_PORT_RETRIES; attempt++) {
+    const port = pickFreePort();
+    traceMark(`port_picked_attempt_${attempt}`, t0);
 
-  // Exponential backoff: 10, 20, 40, 80, 160, 200, 200, ...
-  let waitMs = 10;
-  while (performance.now() < deadline) {
-    if (procExited) {
-      throw new Error(
-        `jupyter server exited before becoming ready (port ${port})`,
-      );
+    const proc = new Deno.Command("jupyter", {
+      args: [
+        "server",
+        `--port=${port}`,
+        `--ServerApp.token=${token}`,
+        "--no-browser",
+        "--ServerApp.open_browser=False",
+        // Disable extensions that are irrelevant to conformance tests but add
+        // ~2s of boot time. jupyter_lsp scans the system for installed LSP
+        // servers; jupyterlab/notebook/nbclassic load full UI assets;
+        // notebook_shim and terminals are not exercised by these tests.
+        "--ServerApp.jpserver_extensions=jupyter_lsp=False",
+        "--ServerApp.jpserver_extensions=notebook_shim=False",
+        "--ServerApp.jpserver_extensions=jupyterlab=False",
+        "--ServerApp.jpserver_extensions=nbclassic=False",
+        "--ServerApp.jpserver_extensions=notebook=False",
+        "--ServerApp.jpserver_extensions=jupyter_server_terminals=False",
+        "--ServerApp.terminals_enabled=False",
+      ],
+      stdout: "null",
+      stderr: "null",
+    }).spawn();
+    traceMark(`proc_spawned_attempt_${attempt}`, t0);
+
+    const url = `http://127.0.0.1:${port}`;
+
+    // procExited resolves if jupyter dies before becoming ready.
+    let procExited = false;
+    const procStatus = proc.status.then((s: Deno.CommandStatus) => {
+      procExited = true;
+      return s;
+    });
+
+    // Faster backoff than pre-optimization (10/200ms): readiness is bound by
+    // HTTP response latency (~10-50ms), so smaller steps catch the transition
+    // sooner. Order: 5, 10, 20, 40, 80, 100, 100, ...
+    let waitMs = 5;
+    let ready = false;
+    while (performance.now() < deadline) {
+      if (procExited) break;
+      try {
+        const resp = await fetch(`${url}/api`, {
+          signal: AbortSignal.timeout(500),
+        });
+        await resp.body?.cancel();
+        if (resp.status < 500) {
+          ready = true;
+          break;
+        }
+      } catch { /* not ready yet, retry */ }
+      await new Promise<void>((r) => setTimeout(r, waitMs));
+      waitMs = Math.min(waitMs * 2, 100);
     }
+
+    if (ready) {
+      traceMark("http_ready", t0);
+      return {
+        url,
+        token,
+        port,
+        async stop() {
+          try {
+            proc.kill("SIGTERM");
+          } catch { /* already dead */ }
+          await procStatus;
+        },
+      };
+    }
+
+    // Either procExited (likely EADDRINUSE) or deadline reached.
     try {
-      const resp = await fetch(`${url}/api`, {
-        signal: AbortSignal.timeout(500),
-      });
-      await resp.body?.cancel();
-      if (resp.status < 500) {
-        traceMark("http_ready", t0);
-        return {
-          url,
-          token,
-          port,
-          async stop() {
-            try {
-              proc.kill("SIGTERM");
-            } catch { /* already dead */ }
-            await procStatus;
-          },
-        };
-      }
-    } catch { /* not ready yet, retry */ }
-    await new Promise<void>((r) => setTimeout(r, waitMs));
-    waitMs = Math.min(waitMs * 2, 200);
+      proc.kill("SIGTERM");
+    } catch { /* already dead */ }
+    await procStatus;
+
+    if (procExited && performance.now() < deadline) {
+      // Treat early exit as a port-collision symptom and retry with a fresh port.
+      lastError = new Error(
+        `jupyter server exited before becoming ready (port ${port}, attempt ${attempt})`,
+      );
+      continue;
+    }
+    // Deadline reached without /api responding — no point retrying.
+    throw new Error(
+      `jupyter server did not become ready within ${timeoutMs}ms`,
+    );
   }
 
-  // Readiness deadline reached without /api responding.
-  try {
-    proc.kill("SIGTERM");
-  } catch { /* already dead */ }
-  await procStatus;
-  throw new Error(`jupyter server did not become ready within ${timeoutMs}ms`);
+  throw lastError ?? new Error(
+    `jupyter server failed after ${MAX_PORT_RETRIES} port-collision retries`,
+  );
 }
