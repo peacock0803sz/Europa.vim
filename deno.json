@@ -26,6 +26,7 @@
     "@std/path": "jsr:@std/path@^1.1.4",
     "@std/testing": "jsr:@std/testing@^1.0.18",
     "@std/uuid": "jsr:@std/uuid@^1.1.1",
+    "marked": "npm:marked@^16",
     "typedoc": "npm:typedoc@^0.28.19",
     "typedoc-plugin-markdown": "npm:typedoc-plugin-markdown@^4.11.0",
     "typescript": "npm:typescript@^6.0.3"
