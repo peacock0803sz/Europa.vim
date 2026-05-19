@@ -18,6 +18,10 @@ import type {
   SixelPlacement,
 } from "../../../schema/render-plan.ts";
 import type { Cell, Notebook } from "../../../schema/notebook.ts";
+import {
+  applyMdDecorations,
+  ensureMdOverlayBufferOptions,
+} from "./markdown-overlay-nvim.ts";
 
 /**
  * Converts raw PNG bytes to Sixel bytes.
@@ -315,6 +319,8 @@ export async function applyRenderPlan(
     fromCellId?: string;
   },
 ): Promise<void> {
+  const isNvim = await host.call("has", "nvim") === 1 ||
+    host.meta.host === "nvim";
   await host.call("setbufvar", bufnr, "&modifiable", 1);
 
   // Determine the first line to write. When fromCellId is provided and found
@@ -367,6 +373,61 @@ export async function applyRenderPlan(
       plan.sixelPlacements,
       opts?._magickConverter,
     );
+  }
+
+  // TODO: register BufWinEnter / WinScrolled / BufWipeout hooks once the
+  // viewer owns autocmd plumbing for markdown overlay lifecycle updates.
+  if (isNvim) {
+    await ensureMdOverlayBufferOptions(host, bufnr);
+    if (plan.mdDecorations.length === 0) return;
+    const viewport = (() => {
+      if (opts?.viewport) {
+        return {
+          top: opts.viewport.topLine + 1,
+          bottom: opts.viewport.bottomLine + 1,
+        };
+      }
+      return null;
+    })();
+    const resolvedViewport = viewport ??
+      (() => ({
+        top: 1,
+        bottom: plan.lines.length,
+      }))();
+
+    if (!viewport) {
+      const current = await host.call(
+        "luaeval",
+        '{vim.fn.line("w0"), vim.fn.line("w$")}',
+        [],
+      );
+      if (
+        Array.isArray(current) &&
+        typeof current[0] === "number" &&
+        typeof current[1] === "number"
+      ) {
+        resolvedViewport.top = current[0];
+        resolvedViewport.bottom = current[1];
+      }
+    }
+
+    if (opts?.fromCellId) {
+      await applyMdDecorations(
+        host,
+        bufnr,
+        plan.mdDecorations,
+        resolvedViewport,
+      );
+    } else {
+      setTimeout(() => {
+        void applyMdDecorations(
+          host,
+          bufnr,
+          plan.mdDecorations,
+          resolvedViewport,
+        );
+      }, 0);
+    }
   }
 }
 
