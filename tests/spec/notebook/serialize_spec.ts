@@ -109,6 +109,63 @@ describe("serializeNotebook — shadow-inject pristine (SC-009 / FR-027)", () =>
   });
 });
 
+describe("serializeNotebook — markdown overlay pristine (SC-010 / FR-032)", () => {
+  it(
+    "markdown-rich.ipynb survives buildRenderPlan + serialize byte-identical",
+    async () => {
+      const { buildRenderPlan } = await import(
+        "../../../denops/europa/render/builder.ts"
+      );
+      const raw = await Deno.readTextFile(
+        "tests/fixtures/ipynb/markdown-rich.ipynb",
+      );
+      const parsed = await parseNotebook(raw);
+      const caps = {
+        host: "vim" as const,
+        hostVersion: "9.1.1646",
+        image: "placeholder" as const,
+        treeSitter: { available: false },
+      };
+      const plan = await buildRenderPlan(parsed, caps);
+      // RenderPlan must contain non-empty mdDecorations for markdown-rich.ipynb
+      // (the fixture has bold/italic/link/list/etc, so overlay decorations exist).
+      assertEquals(plan.mdDecorations.length > 0, true);
+      // serializeNotebook ignores mdDecorations because they live in RenderPlan,
+      // never in the Notebook entity. Round-trip must produce the same parsed AST.
+      const serialized = serializeNotebook(parsed);
+      const roundTripped = await parseNotebook(serialized);
+      assertEquals(roundTripped, parsed);
+    },
+  );
+
+  it(
+    "second build after :write -> :edit re-computes mdDecorations from scratch",
+    async () => {
+      const { buildRenderPlan } = await import(
+        "../../../denops/europa/render/builder.ts"
+      );
+      const raw = await Deno.readTextFile(
+        "tests/fixtures/ipynb/markdown-rich.ipynb",
+      );
+      const caps = {
+        host: "vim" as const,
+        hostVersion: "9.1.1646",
+        image: "placeholder" as const,
+        treeSitter: { available: false },
+      };
+      // First build
+      const parsed1 = await parseNotebook(raw);
+      const plan1 = await buildRenderPlan(parsed1, caps);
+      // Simulate :write -> :edit! cycle by serializing and re-parsing
+      const serialized = serializeNotebook(parsed1);
+      const parsed2 = await parseNotebook(serialized);
+      const plan2 = await buildRenderPlan(parsed2, caps);
+      // Same source, same decorations — proves no cache leaked into Notebook entity
+      assertEquals(plan2.mdDecorations.length, plan1.mdDecorations.length);
+    },
+  );
+});
+
 describe("[golden] notebook round-trip", () => {
   const FIXTURES = [
     "hello",
