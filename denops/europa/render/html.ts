@@ -107,5 +107,6 @@ export function renderHtml(html: string): RenderFragment {
     virtText: [],
     imagePlacements: [],
     clickables: [],
+    mdDecorations: [],
   };
 }

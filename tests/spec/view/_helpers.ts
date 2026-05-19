@@ -25,6 +25,7 @@ export function emptyPlan(): RenderPlan {
     virtText: [],
     imagePlacements: [],
     clickables: [],
+    mdDecorations: [],
     cellMap: [],
     cellRanges: [],
   };

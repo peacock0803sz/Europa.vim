@@ -43,5 +43,6 @@ export function renderMarkdown(source: string): RenderFragment {
     virtText: [],
     imagePlacements: [],
     clickables: [],
+    mdDecorations: [],
   };
 }

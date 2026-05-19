@@ -26,5 +26,6 @@ export function renderJson(value: unknown): RenderFragment {
     virtText: [],
     imagePlacements: [],
     clickables: [],
+    mdDecorations: [],
   };
 }

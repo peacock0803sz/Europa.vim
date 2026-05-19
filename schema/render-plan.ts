@@ -60,6 +60,28 @@ export const ClickableSchema = Type.Object({
 });
 export type Clickable = Static<typeof ClickableSchema>;
 
+/**
+ * Markdown inline-overlay decoration (Phase 3.7).
+ *
+ * Each entry corresponds to a `conceal` range (to hide markdown sigil
+ * characters such as `**` / `[](url)`), a `virtText` overlay (e.g., the
+ * code-fence language tag), an `hlGroup` highlight applied to the underlying
+ * range, or any combination of the three.
+ *
+ * @spec-id europa.render.markdown.inline-decoration
+ */
+export const MdDecorationSchema = Type.Object({
+  line: Type.Integer({ minimum: 0 }),
+  colStart: Type.Integer({ minimum: 0 }),
+  colEnd: Type.Integer(),
+  conceal: Type.Optional(Type.String()),
+  virtText: Type.Optional(Type.String()),
+  virtTextHlGroup: Type.Optional(Type.String()),
+  hlGroup: Type.Optional(Type.String()),
+  hlEol: Type.Optional(Type.Boolean()),
+});
+export type MdDecoration = Static<typeof MdDecorationSchema>;
+
 /** A single renderable unit produced by `dispatchOutput` or a renderer. */
 export const RenderFragmentSchema = Type.Object({
   lines: Type.Array(Type.String()),
@@ -67,8 +89,26 @@ export const RenderFragmentSchema = Type.Object({
   virtText: Type.Array(VirtTextSchema),
   imagePlacements: Type.Array(ImagePlacementSchema),
   clickables: Type.Array(ClickableSchema),
+  mdDecorations: Type.Array(MdDecorationSchema),
 });
 export type RenderFragment = Static<typeof RenderFragmentSchema>;
+
+/**
+ * Build an empty RenderFragment with all fields initialised to empty arrays.
+ *
+ * Used by renderers that do not produce a given field type so callers can
+ * spread + override without writing the full record literal each time.
+ */
+export function emptyRenderFragment(): RenderFragment {
+  return {
+    lines: [],
+    highlights: [],
+    virtText: [],
+    imagePlacements: [],
+    clickables: [],
+    mdDecorations: [],
+  };
+}
 
 /** Metadata for a future Sixel image placement (wired in Phase 3/T103). */
 export const SixelPlacementSchema = Type.Object({
@@ -133,6 +173,7 @@ export const RenderPlanSchema = Type.Object({
   imagePlacements: Type.Array(ImagePlacementSchema),
   sixelPlacements: Type.Optional(Type.Array(SixelPlacementSchema)),
   clickables: Type.Array(ClickableSchema),
+  mdDecorations: Type.Array(MdDecorationSchema),
   cellMap: Type.Array(
     Type.Object({
       cellIndex: Type.Integer({ minimum: 0 }),
