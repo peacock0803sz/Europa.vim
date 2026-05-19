@@ -5,6 +5,7 @@
  */
 
 import type { Denops } from "@denops/std";
+import { batch, collect } from "@denops/std/batch";
 import type {
   MdDecoration,
   MdOverlayViewport,
@@ -52,19 +53,7 @@ function bufferRegistry(bufnr: number): Map<string, number> {
   return next;
 }
 
-async function placeDecoration(
-  denops: Denops,
-  bufnr: number,
-  nsId: number,
-  decoration: MdDecoration,
-): Promise<void> {
-  const key = decorationKey(decoration);
-  const marks = bufferRegistry(bufnr);
-  const existing = marks.get(key);
-  if (existing !== undefined) {
-    await denops.call("nvim_buf_del_extmark", bufnr, nsId, existing);
-  }
-
+function buildExtmarkOpts(decoration: MdDecoration): Record<string, unknown> {
   const opts: Record<string, unknown> = {
     end_col: decoration.colEnd,
     virt_text_pos: "inline",
@@ -77,30 +66,74 @@ async function placeDecoration(
   }
   if (decoration.hlGroup !== undefined) opts.hl_group = decoration.hlGroup;
   if (decoration.hlEol !== undefined) opts.hl_eol = decoration.hlEol;
-
-  const extmarkId = await denops.call(
-    "nvim_buf_set_extmark",
-    bufnr,
-    nsId,
-    decoration.line,
-    decoration.colStart,
-    opts,
-  ) as number;
-  marks.set(key, extmarkId);
+  return opts;
 }
 
-async function removeDecoration(
+async function applyDecorationsBatched(
   denops: Denops,
   bufnr: number,
   nsId: number,
-  decoration: MdDecoration,
+  decorations: readonly MdDecoration[],
 ): Promise<void> {
-  const key = decorationKey(decoration);
+  if (decorations.length === 0) return;
+  const marks = bufferRegistry(bufnr);
+
+  const toDelIds: number[] = [];
+  for (const decoration of decorations) {
+    const existing = marks.get(decorationKey(decoration));
+    if (existing !== undefined) toDelIds.push(existing);
+  }
+  if (toDelIds.length > 0) {
+    await batch(denops, async (helper) => {
+      for (const id of toDelIds) {
+        await helper.call("nvim_buf_del_extmark", bufnr, nsId, id);
+      }
+    });
+  }
+
+  const ids = await collect(
+    denops,
+    (helper) =>
+      decorations.map((decoration) =>
+        helper.call(
+          "nvim_buf_set_extmark",
+          bufnr,
+          nsId,
+          decoration.line,
+          decoration.colStart,
+          buildExtmarkOpts(decoration),
+        )
+      ),
+  );
+  for (let i = 0; i < decorations.length; i++) {
+    marks.set(decorationKey(decorations[i]), ids[i] as number);
+  }
+}
+
+async function removeDecorationsBatched(
+  denops: Denops,
+  bufnr: number,
+  nsId: number,
+  decorations: readonly MdDecoration[],
+): Promise<void> {
+  if (decorations.length === 0) return;
   const marks = registry.get(bufnr);
-  const extmarkId = marks?.get(key);
-  if (extmarkId === undefined) return;
-  await denops.call("nvim_buf_del_extmark", bufnr, nsId, extmarkId);
-  marks!.delete(key);
+  if (!marks) return;
+
+  const targets: { key: string; id: number }[] = [];
+  for (const decoration of decorations) {
+    const key = decorationKey(decoration);
+    const id = marks.get(key);
+    if (id !== undefined) targets.push({ key, id });
+  }
+  if (targets.length === 0) return;
+
+  await batch(denops, async (helper) => {
+    for (const { id } of targets) {
+      await helper.call("nvim_buf_del_extmark", bufnr, nsId, id);
+    }
+  });
+  for (const { key } of targets) marks.delete(key);
 }
 
 /**
@@ -117,10 +150,10 @@ export async function applyMdDecorations(
   // Defensive: host detection happens in viewer.ts, but this guard prevents accidental Vim invocation.
   if (!await isNvim(denops)) return;
   const nsId = await ensureNamespace(denops);
-  for (const decoration of decorations) {
-    if (!inViewport(decoration, viewport)) continue;
-    await placeDecoration(denops, bufnr, nsId, decoration);
-  }
+  const inRange = decorations.filter((decoration) =>
+    inViewport(decoration, viewport)
+  );
+  await applyDecorationsBatched(denops, bufnr, nsId, inRange);
 }
 
 /**
@@ -143,12 +176,8 @@ export async function onViewportScrolled(
     !inViewport(decoration, oldViewport) && inViewport(decoration, newViewport)
   );
 
-  for (const decoration of toRemove) {
-    await removeDecoration(denops, bufnr, nsId, decoration);
-  }
-  for (const decoration of toAdd) {
-    await placeDecoration(denops, bufnr, nsId, decoration);
-  }
+  await removeDecorationsBatched(denops, bufnr, nsId, toRemove);
+  await applyDecorationsBatched(denops, bufnr, nsId, toAdd);
 }
 
 /**
