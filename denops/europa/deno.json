@@ -11,6 +11,6 @@
     "@std/fs": "jsr:@std/fs@^1.0.23",
     "@std/path": "jsr:@std/path@^1.1.4",
     "@std/uuid": "jsr:@std/uuid@^1.1.1",
-    "marked": "npm:marked@^16"
+    "marked": "npm:marked@^16.4.2"
   }
 }
