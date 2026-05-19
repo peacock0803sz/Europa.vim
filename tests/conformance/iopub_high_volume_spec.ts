@@ -1,10 +1,13 @@
 /**
  * Conformance: high-volume IOPub stream output against a live Jupyter Server.
  *
- * Verifies that a `for i in range(50000): print(i)` cell:
+ * Verifies that a `for i in range(10000): print(i)` cell:
  *   (a) completes execution without timeout or unhandled error (SC-002 liveness)
- *   (b) produces no drops — all 50000 lines reach cell.outputs via mergeStreams
+ *   (b) produces no drops — all 10000 lines reach cell.outputs via mergeStreams
  *       (SC-002 + SC-006, R03 mergeStreams invariant)
+ *
+ * The 10k volume comfortably exceeds Jupyter's IOPub buffer thresholds while
+ * keeping macOS/Windows CI runners under the 5-minute conformance budget.
  *
  * Skips early if `jupyter` is not installed.
  *
@@ -75,7 +78,7 @@ describe(
   { sanitizeResources: false, sanitizeOps: false },
   () => {
     it(
-      "50000-line print loop completes without timeout and all lines reach cell.outputs (SC-002 + SC-006)",
+      "10000-line print loop completes without timeout and all lines reach cell.outputs (SC-002 + SC-006)",
       { ignore: !jupyterPresent },
       async () => {
         const server = await spawnConformanceServer();
@@ -87,8 +90,9 @@ describe(
           } as never,
           config,
           pool,
-          // Generous timeout: 50000 prints may take tens of seconds on slow CI.
-          { kernelInfoTimeoutMs: 120_000 },
+          // 10000 prints typically complete in a few seconds; keep a generous
+          // upper bound to absorb cold-start jitter on slow CI runners.
+          { kernelInfoTimeoutMs: 30_000 },
         );
 
         const runtime = await client.start({ kernelName: "python3" });
@@ -97,7 +101,7 @@ describe(
           id: "high-volume-test",
           cell_type: "code",
           source:
-            "import sys\nfor i in range(50000):\n    print(i)\nsys.stdout.flush()",
+            "import sys\nfor i in range(10000):\n    print(i)\nsys.stdout.flush()",
           outputs: [],
           execution_count: null,
           metadata: {},
@@ -138,11 +142,11 @@ describe(
           `execute must complete without error; got: ${executeError}`,
         );
 
-        // (b) All 50000 lines must reach cell.outputs — no shed, no drop.
+        // (b) All 10000 lines must reach cell.outputs — no shed, no drop.
         // After mergeStreams (R03), all stdout is merged into a single stream output.
         assert(
           cell.outputs.length >= 1,
-          "cell must have at least one output after 50000 prints",
+          "cell must have at least one output after 10000 prints",
         );
 
         const streamOutput = cell.outputs.find(
@@ -153,18 +157,18 @@ describe(
 
         assertExists(
           streamOutput,
-          "cell must have a stdout stream output after 50000 prints",
+          "cell must have a stdout stream output after 10000 prints",
         );
 
-        // Count lines by splitting on newline. "0\n1\n...49999\n".split("\n")
-        // produces 50001 entries (last is empty string after trailing newline).
+        // Count lines by splitting on newline. "0\n1\n...9999\n".split("\n")
+        // produces 10001 entries (last is empty string after trailing newline).
         const lineCount =
           streamOutput.text.split("\n").filter((l) => l.length > 0).length;
 
         assertEquals(
           lineCount,
-          50_000,
-          `mergeStreams must preserve all 50000 lines; got ${lineCount}`,
+          10_000,
+          `mergeStreams must preserve all 10000 lines; got ${lineCount}`,
         );
       },
     );

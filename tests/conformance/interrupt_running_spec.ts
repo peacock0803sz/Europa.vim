@@ -11,7 +11,6 @@
 
 import { describe, it } from "@std/testing/bdd";
 import { assert, assertExists } from "@std/assert";
-import { delay } from "@std/async/delay";
 import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import { applyMessageToCell } from "../../denops/europa/kernel/execute.ts";
@@ -95,15 +94,30 @@ describe("conformance: interrupt running cell (SC-003)", () => {
 
       const cell = makeCodeCell("import time; time.sleep(30)");
 
+      // Event-driven busy detection: resolve when the first IOPub status:busy
+      // arrives for this execute. Replaces a 500ms blind wait so the test
+      // proceeds as soon as the kernel actually starts running.
+      let signalBusy: () => void = () => {};
+      const busySignal = new Promise<void>((r) => {
+        signalBusy = r;
+      });
+
       // Start executing in background.
       const execPromise = (async () => {
         for await (const msg of client.execute("import time; time.sleep(30)")) {
+          if (
+            msg.header.msg_type === "status" &&
+            (msg.content as { execution_state?: string }).execution_state ===
+              "busy"
+          ) {
+            signalBusy();
+          }
           applyMessageToCell(cell, msg);
         }
       })();
 
       // Wait for the kernel to be busy before interrupting.
-      await delay(500);
+      await busySignal;
 
       const t0 = Date.now();
       await client.interrupt();
