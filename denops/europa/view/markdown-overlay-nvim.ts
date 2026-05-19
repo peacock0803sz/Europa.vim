@@ -21,6 +21,8 @@ function decorationKey(decoration: MdDecoration): string {
     decoration.hlGroup ?? "",
     decoration.conceal ?? "",
     decoration.virtText ?? "",
+    decoration.virtTextHlGroup ?? "",
+    decoration.hlEol ?? false,
   ].join(":");
 }
 
