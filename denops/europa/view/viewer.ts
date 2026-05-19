@@ -396,18 +396,23 @@ export async function applyRenderPlan(
       }))();
 
     if (!viewport) {
-      const current = await host.call(
-        "luaeval",
-        '{vim.fn.line("w0"), vim.fn.line("w$")}',
-        [],
-      );
-      if (
-        Array.isArray(current) &&
-        typeof current[0] === "number" &&
-        typeof current[1] === "number"
-      ) {
-        resolvedViewport.top = current[0];
-        resolvedViewport.bottom = current[1];
+      // Resolve the viewport against the window currently displaying `bufnr`,
+      // not the current window: applyMdDecorations is scheduled via
+      // `setTimeout(0)` and the user may have switched windows in between,
+      // which would otherwise yield bounds for an unrelated buffer.
+      const winid = await host.call("bufwinid", bufnr);
+      if (typeof winid === "number" && winid > 0) {
+        const info = await host.call("getwininfo", winid);
+        if (
+          Array.isArray(info) &&
+          info[0] &&
+          typeof (info[0] as { topline?: number }).topline === "number" &&
+          typeof (info[0] as { botline?: number }).botline === "number"
+        ) {
+          const wi = info[0] as { topline: number; botline: number };
+          resolvedViewport.top = wi.topline;
+          resolvedViewport.bottom = wi.botline;
+        }
       }
     }
 
