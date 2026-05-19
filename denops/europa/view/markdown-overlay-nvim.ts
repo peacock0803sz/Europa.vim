@@ -13,6 +13,10 @@ import type {
 
 let ns: number | null = null;
 const registry = new Map<number, Map<string, number>>();
+const lastState = new Map<number, {
+  decorations: MdDecoration[];
+  viewport: MdOverlayViewport;
+}>();
 
 function decorationKey(decoration: MdDecoration): string {
   return [
@@ -154,6 +158,10 @@ export async function applyMdDecorations(
     inViewport(decoration, viewport)
   );
   await applyDecorationsBatched(denops, bufnr, nsId, inRange);
+  lastState.set(bufnr, {
+    decorations: [...decorations],
+    viewport: { ...viewport },
+  });
 }
 
 /**
@@ -180,6 +188,23 @@ export async function onViewportScrolled(
   await applyDecorationsBatched(denops, bufnr, nsId, toAdd);
 }
 
+export async function onMdOverlayScroll(
+  denops: Denops,
+  bufnr: number,
+  newViewport: MdOverlayViewport,
+): Promise<void> {
+  const state = lastState.get(bufnr);
+  if (!state) return;
+  await onViewportScrolled(
+    denops,
+    bufnr,
+    state.decorations,
+    state.viewport,
+    newViewport,
+  );
+  state.viewport = { ...newViewport };
+}
+
 /**
  * Clear all markdown overlay extmarks in the buffer.
  */
@@ -187,12 +212,13 @@ export async function clearMdOverlay(
   denops: Denops,
   bufnr: number,
 ): Promise<void> {
+  lastState.delete(bufnr);
+  registry.delete(bufnr);
   // Defensive: host detection happens in viewer.ts, but this guard prevents accidental Vim invocation.
   if (!await isNvim(denops)) return;
   if (ns !== null) {
     await denops.call("nvim_buf_clear_namespace", bufnr, ns, 0, -1);
   }
-  registry.delete(bufnr);
 }
 
 /**
@@ -213,4 +239,5 @@ export async function ensureMdOverlayBufferOptions(
 export function __resetMdOverlayForTest(): void {
   ns = null;
   registry.clear();
+  lastState.clear();
 }

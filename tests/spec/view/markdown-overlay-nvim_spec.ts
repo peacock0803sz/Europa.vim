@@ -12,6 +12,7 @@ import {
   applyMdDecorations,
   clearMdOverlay,
   ensureMdOverlayBufferOptions,
+  onMdOverlayScroll,
   onViewportScrolled,
 } from "../../../denops/europa/view/markdown-overlay-nvim.ts";
 import { type MockHost, mockNvim, mockVim } from "../../fixtures/mock-host.ts";
@@ -69,6 +70,27 @@ describe("markdown overlay nvim adapter", () => {
 
     const clearCalls = host.callsTo("nvim_buf_clear_namespace");
     assertEquals(clearCalls.length, 1);
+  });
+
+  it("applyMdDecorations records lastState so a subsequent onMdOverlayScroll can diff against it", async () => {
+    await applyMdDecorations(host, 1, decorations, { top: 1, bottom: 10 });
+    host.calls = [];
+
+    await onMdOverlayScroll(host, 1, { top: 31, bottom: 35 });
+
+    assertEquals(host.callsTo("nvim_buf_del_extmark").length, 2);
+    assertEquals(host.callsTo("nvim_buf_set_extmark").length, 2);
+  });
+
+  it("clearMdOverlay also clears lastState", async () => {
+    await applyMdDecorations(host, 1, decorations, { top: 1, bottom: 10 });
+    await clearMdOverlay(host, 1);
+    host.calls = [];
+
+    await onMdOverlayScroll(host, 1, { top: 31, bottom: 35 });
+
+    assertEquals(host.callsTo("nvim_buf_del_extmark").length, 0);
+    assertEquals(host.callsTo("nvim_buf_set_extmark").length, 0);
   });
 
   it("ensureMdOverlayBufferOptions sets conceal options on the buffer", async () => {

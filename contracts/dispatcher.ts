@@ -166,6 +166,19 @@ export type EuropaDispatcher = {
    */
   onBufWinEnter(bufnr: unknown): Promise<void>;
 
+  /**
+   * Refresh markdown overlay extmarks after a window scroll changes the
+   * visible viewport for a notebook buffer.
+   * @spec-id europa.dispatcher.md-overlay-scroll
+   */
+  onMdOverlayScroll(bufnr: unknown): Promise<void>;
+
+  /**
+   * Clear markdown overlay state when the notebook buffer is wiped out.
+   * @spec-id europa.dispatcher.md-overlay-wipeout
+   */
+  onMdOverlayWipeout(bufnr: unknown): Promise<void>;
+
   // Phase 4: ZMQ attach
   attachKernel(connectionFile: unknown): Promise<void>;
 

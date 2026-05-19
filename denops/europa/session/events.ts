@@ -32,6 +32,8 @@ import type { Denops } from "@denops/std";
  * @spec-id europa.session.events.bufunload-cleanup
  * @spec-id europa.session.events.bufwipeout-cleanup
  * @spec-id europa.session.events.vimleavepre-cleanup
+ * @spec-id europa.session.events.md-overlay-scroll
+ * @spec-id europa.session.events.md-overlay-wipeout
  */
 export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd("augroup europa_ipynb");
@@ -51,6 +53,12 @@ export async function setupAutocmds(host: Denops): Promise<void> {
   );
   await host.cmd(
     "autocmd BufWipeout *.ipynb call europa#cleanup(str2nr(expand('<abuf>')))",
+  );
+  await host.cmd(
+    "autocmd WinScrolled *.ipynb call denops#notify('europa', 'onMdOverlayScroll', [bufnr('%')])",
+  );
+  await host.cmd(
+    "autocmd BufWipeout *.ipynb call denops#notify('europa', 'onMdOverlayWipeout', [bufnr('%')])",
   );
   await host.cmd(
     "autocmd VimLeavePre * call denops#notify('europa', 'atexit', [])",
