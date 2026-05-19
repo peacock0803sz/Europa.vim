@@ -583,6 +583,115 @@ describe("buildRenderPlan — SVG shadow inject (T012)", () => {
     __resetSvgCacheForTest();
   });
 
+  it(
+    "flattens mdDecorations from a markdown cell with line offset (FR-005, T020)",
+    async () => {
+      const nb = makeNotebook([{
+        cell_type: "markdown",
+        id: "md-cell",
+        source: "# Title\nParagraph **bold** end",
+        metadata: {},
+      }]);
+      const plan = await buildRenderPlan(nb, defaultCaps);
+      const md = plan.cellMap[0];
+      // bufLineStart points to the header border line; markdown source starts
+      // at bufLineStart + 1. mdDecorations from renderMarkdown report the
+      // bold range relative to the markdown source (line 1 inside the cell);
+      // after flatten it must show up at bufLineStart + 1 + 1.
+      const bold = plan.mdDecorations.find((d) => d.hlGroup === "EuropaMdBold");
+      assertExists(bold);
+      assertEquals(bold.line, md.bufLineStart + 1 + 1);
+    },
+  );
+
+  it(
+    "flattens mdDecorations from multiple markdown cells into the global array (T020)",
+    async () => {
+      const nb = makeNotebook([
+        {
+          cell_type: "markdown",
+          id: "md-1",
+          source: "**a**",
+          metadata: {},
+        },
+        {
+          cell_type: "markdown",
+          id: "md-2",
+          source: "**b**",
+          metadata: {},
+        },
+      ]);
+      const plan = await buildRenderPlan(nb, defaultCaps);
+      const bolds = plan.mdDecorations.filter((d) =>
+        d.hlGroup === "EuropaMdBold"
+      );
+      assertEquals(bolds.length, 2);
+      // Each cell's decoration falls within its own cellMap range.
+      for (let i = 0; i < 2; i++) {
+        const cm = plan.cellMap[i];
+        assertEquals(
+          bolds[i].line >= cm.bufLineStart &&
+            bolds[i].line < cm.bufLineEnd,
+          true,
+        );
+      }
+    },
+  );
+
+  it(
+    "code-only / raw cells contribute zero mdDecorations (T020)",
+    async () => {
+      const nb = makeNotebook([
+        {
+          cell_type: "code",
+          id: "c1",
+          source: "x = 1",
+          execution_count: 1,
+          outputs: [],
+          metadata: {},
+        },
+        { cell_type: "raw", id: "r1", source: "raw text", metadata: {} },
+      ]);
+      const plan = await buildRenderPlan(nb, defaultCaps);
+      assertEquals(plan.mdDecorations.length, 0);
+    },
+  );
+
+  it(
+    "flattens mdDecorations from text/markdown MIME output in a code cell (US2, FR-026)",
+    async () => {
+      const nb = makeNotebook([{
+        cell_type: "code",
+        id: "out-cell",
+        source: "from IPython.display import Markdown\nMarkdown('**out**')",
+        execution_count: 1,
+        outputs: [
+          {
+            output_type: "display_data",
+            data: {
+              "text/markdown": "**out**",
+              "text/plain": "<IPython.core.display.Markdown object>",
+            },
+            metadata: {},
+          },
+        ],
+        metadata: {},
+      }]);
+      const plan = await buildRenderPlan(nb, defaultCaps, {
+        mimePriority: [
+          "image/png",
+          "image/jpeg",
+          "image/svg+xml",
+          "text/markdown",
+          "text/html",
+          "text/plain",
+        ],
+      });
+      const bold = plan.mdDecorations.find((d) => d.hlGroup === "EuropaMdBold");
+      assertExists(bold);
+    },
+  );
+
   it("buildRenderPlan does not mutate the input notebook", async () => {
     const nb = makeSvgNotebook(true);
     const cell = nb.cells[0];
