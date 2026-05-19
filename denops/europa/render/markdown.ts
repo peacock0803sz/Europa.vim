@@ -331,20 +331,17 @@ function buildMdDecorations(
           "EuropaMdStrike",
         );
         break;
-      case "list": {
-        let itemLine = line;
-
-        for (const item of getTokenArray(token.items)) {
-          const marker = getString(item.raw)?.match(/^(\d+[.)]|[-*+])/);
-          if (marker) {
-            pushDecoration(decorations, {
-              line: itemLine,
-              colStart: 0,
-              colEnd: marker[1].length,
-              hlGroup: "EuropaMdListMarker",
-            });
-          }
-          itemLine += (getString(item.raw) ?? "").split("\n").length;
+      case "list_item": {
+        // item.raw may carry a trailing newline; accumulating split lengths
+        // (the previous approach) would overshoot onto the following blank line.
+        const marker = raw.match(/^(\d+[.)]|[-*+])/);
+        if (marker) {
+          pushDecoration(decorations, {
+            line,
+            colStart,
+            colEnd: colStart + marker[1].length,
+            hlGroup: "EuropaMdListMarker",
+          });
         }
         break;
       }

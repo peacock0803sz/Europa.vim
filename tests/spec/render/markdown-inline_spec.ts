@@ -222,6 +222,43 @@ Deno.test("renderMarkdown inline overlay", async (t) => {
     assertEquals(whitespace.mdDecorations, []);
   });
 
+  await t.step(
+    "(r) decoration line/col stays within actual source bytes",
+    () => {
+      // Regression: list-marker emission used to overshoot itemLine when
+      // marked produced item.raw with a trailing newline, placing decorations
+      // on blank lines (and triggering nvim_buf_set_extmark out-of-range).
+      const source = [
+        "- item 1",
+        "- item 2",
+        "",
+        "1. one",
+        "2. two",
+        "",
+        "> quoted line",
+        "",
+        "---",
+      ].join("\n");
+      const frag = renderMarkdown(source);
+      const lines = frag.lines;
+      for (const decoration of frag.mdDecorations) {
+        const lineLen = (lines[decoration.line] ?? "").length;
+        assertEquals(
+          decoration.line >= 0 && decoration.line < lines.length,
+          true,
+          `decoration.line ${decoration.line} out of range`,
+        );
+        assertEquals(
+          decoration.colEnd <= lineLen,
+          true,
+          `colEnd=${decoration.colEnd} > line length ${lineLen} on line ${decoration.line} (\"${
+            lines[decoration.line]
+          }\")`,
+        );
+      }
+    },
+  );
+
   await t.step("(q) setext heading", () => {
     const frag = renderMarkdown("Title\n===\n\nSub\n---\n");
     assertEquals(sortHighlights(frag.highlights), [
