@@ -110,13 +110,20 @@ export function mergeStreams(outputs: readonly Output[]): Output[] {
  * adjusting highlight line numbers by the current line offset.
  */
 function appendFragment(
-  plan: { lines: string[]; highlights: RenderPlan["highlights"] },
+  plan: {
+    lines: string[];
+    highlights: RenderPlan["highlights"];
+    mdDecorations: RenderPlan["mdDecorations"];
+  },
   frag: RenderFragment,
 ): void {
   const offset = plan.lines.length;
   for (const line of frag.lines) plan.lines.push(line);
   for (const hl of frag.highlights) {
     plan.highlights.push({ ...hl, line: hl.line + offset });
+  }
+  for (const dec of frag.mdDecorations) {
+    plan.mdDecorations.push({ ...dec, line: dec.line + offset });
   }
 }
 
@@ -134,6 +141,7 @@ function appendCellOutputs(
     lines: string[];
     highlights: RenderPlan["highlights"];
     sixelPlacements: SixelPlacement[];
+    mdDecorations: RenderPlan["mdDecorations"];
   },
   outputs: readonly Output[],
   caps: Capabilities,
@@ -190,6 +198,7 @@ function appendCellOutputs(
         ...frag,
         lines: frag.lines.slice(0, room),
         highlights: frag.highlights.filter((h) => h.line < room),
+        mdDecorations: frag.mdDecorations.filter((d) => d.line < room),
       };
       appendFragment(plan, truncated);
       for (const sp of sixel) {
@@ -350,6 +359,7 @@ export async function buildRenderPlan(
   const cellMap: RenderPlan["cellMap"] = [];
   const cellRanges: CellRange[] = [];
   const cellSourceRanges: CellSourceRange[] = [];
+  const mdDecorations: RenderPlan["mdDecorations"] = [];
 
   if (nb.cells.length === 0) {
     lines.push(
@@ -405,7 +415,7 @@ export async function buildRenderPlan(
         ),
       );
       appendCellOutputs(
-        { lines, highlights, sixelPlacements },
+        { lines, highlights, sixelPlacements, mdDecorations },
         cell.outputs,
         caps,
         mimePriority,
@@ -415,11 +425,14 @@ export async function buildRenderPlan(
       );
     } else if (cell.cell_type === "markdown") {
       // Markdown source is already included above as plain lines;
-      // highlights from renderMarkdown are added here.
+      // highlights and mdDecorations from renderMarkdown are added here.
       const frag = renderMarkdown(cell.source ?? "");
       const offset = bufLineStart + 1; // +1 for the header line
       for (const hl of frag.highlights) {
         highlights.push({ ...hl, line: hl.line + offset });
+      }
+      for (const dec of frag.mdDecorations) {
+        mdDecorations.push({ ...dec, line: dec.line + offset });
       }
     }
 
@@ -461,7 +474,7 @@ export async function buildRenderPlan(
     imagePlacements: [],
     sixelPlacements,
     clickables: [],
-    mdDecorations: [],
+    mdDecorations,
     cellMap,
     cellRanges,
     cellSourceRanges,
