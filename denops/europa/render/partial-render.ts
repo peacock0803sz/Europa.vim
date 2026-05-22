@@ -19,7 +19,10 @@ import type { Notebook } from "../../../schema/notebook.ts";
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { MagickConverter } from "../view/viewer.ts";
 import { buildRenderPlan } from "./builder.ts";
-import type { BuildRenderPlanOpts } from "../../../schema/render-plan.ts";
+import type {
+  BuildRenderPlanOpts,
+  RenderPlan,
+} from "../../../schema/render-plan.ts";
 import { applyRenderPlan } from "../view/viewer.ts";
 
 /**
@@ -40,6 +43,12 @@ import { applyRenderPlan } from "../view/viewer.ts";
  *   `_magickConverter` for test injection. When omitted, builder defaults
  *   apply (same as the streaming path before this parameter was added).
  *
+ * @returns The freshly built `RenderPlan` so callers can write it back into
+ *   any per-buffer plan cache they maintain. Required by the
+ *   `IopubBatchScheduler.onPlanApplied` hook (FR-007 follow-up): without
+ *   it the cached plan in `sessionStore` would drift from the buffer after
+ *   every streaming flush, breaking tree-sitter `cellSourceRanges`.
+ *
  * @spec-id europa.render.partial.affected-cell-rerender
  */
 export async function applyPartialRenderPlan(
@@ -52,10 +61,11 @@ export async function applyPartialRenderPlan(
     renderOpts?: BuildRenderPlanOpts;
     _magickConverter?: MagickConverter;
   },
-): Promise<void> {
+): Promise<RenderPlan> {
   const plan = await buildRenderPlan(notebook, caps, opts?.renderOpts);
   await applyRenderPlan(denops, bufnr, plan, {
     fromCellId,
     _magickConverter: opts?._magickConverter,
   });
+  return plan;
 }

@@ -11,6 +11,7 @@ import {
   renderPlanOpts,
 } from "./context.ts";
 import { UnimplementedError } from "./errors.ts";
+import { scheduleHighlightRefresh } from "./syntax-highlight.ts";
 
 export function buildKernelDispatcher(
   ctx: DispatcherContext,
@@ -71,6 +72,13 @@ export function buildKernelDispatcher(
           getNotebook: () => sessionStore.get(bn)!.notebook,
           caps,
           renderOpts: renderPlanOpts(config),
+          // Keep the cached RenderPlan in sync with the streaming flush so
+          // tree-sitter cellSourceRanges do not drift after every cell run.
+          // Covered by europa.render.iopub-batch.plan-applied-callback.
+          onPlanApplied: (plan) => {
+            sessionStore.setRenderPlan(bn, plan);
+            scheduleHighlightRefresh(ctx, bn);
+          },
         });
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
