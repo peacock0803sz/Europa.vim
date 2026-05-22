@@ -14,7 +14,10 @@ import type { Notebook } from "../../../schema/notebook.ts";
 import type { Capabilities } from "../../../schema/capabilities.ts";
 import type { IopubBatchScheduler } from "../../../contracts/iopub-batch-scheduler.ts";
 import { applyPartialRenderPlan } from "./partial-render.ts";
-import type { BuildRenderPlanOpts } from "../../../schema/render-plan.ts";
+import type {
+  BuildRenderPlanOpts,
+  RenderPlan,
+} from "../../../schema/render-plan.ts";
 
 // 16ms is the DESIGN.md §8.4/§11.2 hard-coded value (Q1=A); making it
 // configurable was rejected as YAGNI.
@@ -37,6 +40,9 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
     private readonly caps: Capabilities,
     private readonly tickMs: number,
     private readonly renderOpts?: BuildRenderPlanOpts,
+    private readonly onPlanApplied?: (
+      plan: RenderPlan,
+    ) => void | Promise<void>,
   ) {}
 
   /**
@@ -147,8 +153,9 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
       }
 
       // F-batch: one RPC round-trip via batch() — side-effect only, no collect()
+      let appliedPlan: RenderPlan | undefined;
       await batch(this.denops, async (helper) => {
-        await applyPartialRenderPlan(
+        appliedPlan = await applyPartialRenderPlan(
           helper,
           this.bufnr,
           notebook,
@@ -157,6 +164,14 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
           this.renderOpts ? { renderOpts: this.renderOpts } : undefined,
         );
       });
+      // The hook must run AFTER batch() resolves so the denops handle the
+      // callback uses is the real one (orc.refresh / sessionStore mutation),
+      // not the batch helper stub. Inside try/ catch so an error from the
+      // callback is swallowed alongside applyPartialRenderPlan failures
+      // (F-error), keeping the execute loop alive.
+      if (appliedPlan !== undefined && this.onPlanApplied !== undefined) {
+        await this.onPlanApplied(appliedPlan);
+      }
     } catch {
       // F-error: non-fatal — the execute loop must not die due to a render error
     } finally {
@@ -180,6 +195,7 @@ class IopubBatchSchedulerImpl implements IopubBatchScheduler {
  *
  * @spec-id europa.render.iopub-batch.tick-scheduling
  * @spec-id europa.session.hidden-buffer.rpc-skip-during-hidden
+ * @spec-id europa.render.iopub-batch.plan-applied-callback
  */
 export function createIopubBatchScheduler(deps: {
   denops: Denops;
@@ -188,6 +204,7 @@ export function createIopubBatchScheduler(deps: {
   caps: Capabilities;
   renderOpts?: BuildRenderPlanOpts;
   tickMs?: number;
+  onPlanApplied?: (plan: RenderPlan) => void | Promise<void>;
 }): IopubBatchScheduler {
   return new IopubBatchSchedulerImpl(
     deps.denops,
@@ -196,5 +213,6 @@ export function createIopubBatchScheduler(deps: {
     deps.caps,
     deps.tickMs ?? DEFAULT_TICK_MS,
     deps.renderOpts,
+    deps.onPlanApplied,
   );
 }

@@ -13,7 +13,7 @@ import type { Denops } from "@denops/std";
 import type { KernelMessage } from "../schema/message.ts";
 import type { Notebook } from "../schema/notebook.ts";
 import type { Capabilities } from "../schema/capabilities.ts";
-import type { BuildRenderPlanOpts } from "../schema/render-plan.ts";
+import type { BuildRenderPlanOpts, RenderPlan } from "../schema/render-plan.ts";
 
 /**
  * Scheduler that accumulates IOPub messages and flushes them to the viewer
@@ -78,8 +78,17 @@ export interface IopubBatchScheduler {
  *   When omitted, builder defaults apply.
  * @param deps.tickMs       - Flush interval in milliseconds. Hard-coded to 16 ms
  *   per DESIGN.md §8.4 / §11.2 (Q1=A). Overridable only in tests.
+ * @param deps.onPlanApplied - Optional hook invoked after each successful
+ *   `applyPartialRenderPlan` call with the freshly built `RenderPlan`.
+ *   Used by the dispatcher layer to write the new plan back into
+ *   `sessionStore.setRenderPlan(bufnr, plan)` and schedule a
+ *   `scheduleHighlightRefresh(ctx, bufnr)` so tree-sitter `cellSourceRanges`
+ *   stay in sync with the buffer after streaming flushes. Not fired when the
+ *   flush is short-circuited (hidden buffer, empty queue) or when
+ *   `applyPartialRenderPlan` throws.
  *
  * @spec-id europa.render.iopub-batch.tick-scheduling
+ * @spec-id europa.render.iopub-batch.plan-applied-callback
  */
 export declare function createIopubBatchScheduler(deps: {
   denops: Denops;
@@ -88,4 +97,5 @@ export declare function createIopubBatchScheduler(deps: {
   caps: Capabilities;
   renderOpts?: BuildRenderPlanOpts;
   tickMs?: number;
+  onPlanApplied?: (plan: RenderPlan) => void | Promise<void>;
 }): IopubBatchScheduler;
