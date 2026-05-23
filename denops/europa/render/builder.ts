@@ -114,6 +114,7 @@ function appendFragment(
     lines: string[];
     highlights: RenderPlan["highlights"];
     mdDecorations: RenderPlan["mdDecorations"];
+    clickables: RenderPlan["clickables"];
   },
   frag: RenderFragment,
 ): void {
@@ -124,6 +125,13 @@ function appendFragment(
   }
   for (const dec of frag.mdDecorations) {
     plan.mdDecorations.push({ ...dec, line: dec.line + offset });
+  }
+  // Clickables carry fragment-relative `line` per the renderer convention
+  // (e.g. renderError uses line 0 for the header). The buffer-line offset
+  // must be applied here or the dispatcher's findClickableAtCursor cannot
+  // match Vim's 1-origin `line('.')` value against an absolute buffer line.
+  for (const c of frag.clickables) {
+    plan.clickables.push({ ...c, line: c.line + offset });
   }
 }
 
@@ -142,6 +150,7 @@ function appendCellOutputs(
     highlights: RenderPlan["highlights"];
     sixelPlacements: SixelPlacement[];
     mdDecorations: RenderPlan["mdDecorations"];
+    clickables: RenderPlan["clickables"];
   },
   outputs: readonly Output[],
   caps: Capabilities,
@@ -199,6 +208,7 @@ function appendCellOutputs(
         lines: frag.lines.slice(0, room),
         highlights: frag.highlights.filter((h) => h.line < room),
         mdDecorations: frag.mdDecorations.filter((d) => d.line < room),
+        clickables: frag.clickables.filter((c) => c.line < room),
       };
       appendFragment(plan, truncated);
       for (const sp of sixel) {
@@ -360,6 +370,7 @@ export async function buildRenderPlan(
   const cellRanges: CellRange[] = [];
   const cellSourceRanges: CellSourceRange[] = [];
   const mdDecorations: RenderPlan["mdDecorations"] = [];
+  const clickables: RenderPlan["clickables"] = [];
 
   if (nb.cells.length === 0) {
     lines.push(
@@ -415,7 +426,7 @@ export async function buildRenderPlan(
         ),
       );
       appendCellOutputs(
-        { lines, highlights, sixelPlacements, mdDecorations },
+        { lines, highlights, sixelPlacements, mdDecorations, clickables },
         cell.outputs,
         caps,
         mimePriority,
@@ -473,7 +484,7 @@ export async function buildRenderPlan(
     virtText: [],
     imagePlacements: [],
     sixelPlacements,
-    clickables: [],
+    clickables,
     mdDecorations,
     cellMap,
     cellRanges,

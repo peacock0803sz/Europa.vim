@@ -714,3 +714,89 @@ describe("buildRenderPlan — SVG shadow inject (T012)", () => {
     __resetSvgCacheForTest();
   });
 });
+
+describe("buildRenderPlan — traceback clickable propagation", () => {
+  it(
+    "lifts fragment-level clickables onto plan.clickables with absolute line offsets",
+    async () => {
+      const nb = makeNotebook([
+        {
+          cell_type: "code",
+          id: "err-cell",
+          source: "raise ValueError('oops')\n",
+          execution_count: 3,
+          outputs: [
+            {
+              output_type: "error",
+              ename: "ValueError",
+              evalue: "oops",
+              traceback: [
+                "Cell In[3], line 5",
+                "      4     pass",
+                '----> 5     raise ValueError("oops")',
+              ],
+            },
+          ],
+          metadata: {},
+        },
+      ]);
+      const plan = await buildRenderPlan(nb, defaultCaps);
+      // Without propagation, plan.clickables is empty and :EuropaJumpError
+      // becomes a silent no-op. This regression assertion guards against
+      // a future refactor accidentally dropping the per-fragment clickables
+      // again because that breaks the whole Phase 3.8 feature surface.
+      const jumpClickables = plan.clickables.filter(
+        (c) => c.action.type === "jump_to_cell_line",
+      );
+      assertEquals(
+        jumpClickables.length,
+        1,
+        "renderError emits one jump_to_cell_line clickable; builder must lift it",
+      );
+      // The clickable's `line` must be an ABSOLUTE buffer line so the
+      // dispatcher's findClickableAtCursor can match Vim's `line('.')`
+      // value. The error-fragment header sits below the cell source + the
+      // mid-border, so the absolute line is always > 0.
+      assertEquals(
+        jumpClickables[0].line > 0,
+        true,
+        "clickable.line must be an absolute buffer index, not fragment-relative 1",
+      );
+    },
+  );
+
+  it(
+    "keeps EuropaErrorJump highlights aligned with their lifted clickables",
+    async () => {
+      const nb = makeNotebook([
+        {
+          cell_type: "code",
+          id: "err-cell-2",
+          source: "x = 1\n",
+          execution_count: 7,
+          outputs: [
+            {
+              output_type: "error",
+              ename: "RuntimeError",
+              evalue: "bad",
+              traceback: ["Cell In[7], line 1"],
+            },
+          ],
+          metadata: {},
+        },
+      ]);
+      const plan = await buildRenderPlan(nb, defaultCaps);
+      const click = plan.clickables.find(
+        (c) => c.action.type === "jump_to_cell_line",
+      );
+      const hl = plan.highlights.find((h) => h.hlGroup === "EuropaErrorJump");
+      assertExists(click);
+      assertExists(hl);
+      // Builder must apply the same line offset to both the clickable and
+      // the highlight or rewriteMissingHighlights cannot pair them.
+      assertEquals(click.line, hl.line);
+      assertEquals(click.colStart, hl.col);
+      assertEquals(click.colEnd, hl.endCol);
+    },
+  );
+});
