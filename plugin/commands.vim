@@ -58,3 +58,7 @@ command! -nargs=0 EuropaUndo
       \ call denops#notify('europa', 'europaUndo', [bufnr('%')])
 command! -nargs=0 EuropaRedo
       \ call denops#notify('europa', 'europaRedo', [bufnr('%')])
+
+" Phase 3.8: traceback line jump
+command! -nargs=0 EuropaJumpError
+      \ call europa#jump_error()
