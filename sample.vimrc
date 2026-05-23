@@ -117,6 +117,11 @@ function! s:europa_keymap() abort
   nmap <buffer><silent> <localleader>k <Plug>(europa-cell-up)
   nmap <buffer><silent> <localleader>j <Plug>(europa-cell-down)
 
+  " Phase 3.8: jump to the source line referenced by the traceback frame
+  " under the cursor (Cell In[N], line K → cell source; File /path:K → :split).
+  " No JupyterLab equivalent — JupyterLab opens the source via mouse click.
+  nmap <buffer><silent> <localleader>e <Plug>(europa-jump-error)
+
   " Kernel lifecycle (no JupyterLab single-key equivalent).
   nmap <buffer><silent> <localleader>s <Plug>(europa-start-kernel)
   nmap <buffer><silent> <localleader>q <Plug>(europa-shutdown-kernel)
