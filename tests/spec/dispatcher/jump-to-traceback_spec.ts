@@ -213,6 +213,99 @@ describe("jumpToTraceback dispatcher RPC", () => {
         ),
     );
     assertEquals(setposCmd !== undefined, true);
+    // After the split, the new buffer's window must receive the centering
+    // command — without this the user lands at the right line but the
+    // viewport may scroll the target line to the screen bottom.
+    const zzCmd = host.calls.find(
+      (c) => c.method === "cmd" && c.args[0] === "normal! zz",
+    );
+    assertEquals(zzCmd !== undefined, true);
+  });
+
+  it("passes a HOME-expanded path through fnameescape for `~/...` frames", async () => {
+    // Override HOME so the assertion is deterministic regardless of the
+    // host running the test (CI box, dev laptop, etc.).
+    const origHome = Deno.env.get("HOME");
+    Deno.env.set("HOME", "/home/u");
+    try {
+      const d = makeDispatcher();
+      const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+      await host.call("bufload", bufnr);
+      seedSession(
+        bufnr,
+        planForFrame({ filePath: "~/x.py", line: 10 }),
+        "/home/u/proj",
+      );
+      await d.jumpToTraceback(bufnr, 6, 1);
+      const escape = host.callsTo("fnameescape").find(
+        (c) => c.args[1] === "/home/u/x.py",
+      );
+      assertEquals(escape !== undefined, true);
+    } finally {
+      if (origHome !== undefined) Deno.env.set("HOME", origHome);
+      else Deno.env.delete("HOME");
+    }
+  });
+
+  it("resolves relative paths against kernelRuntime.cwd before fnameescape", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    seedSession(
+      bufnr,
+      planForFrame({ filePath: "./util.py", line: 5 }),
+      "/home/u/proj",
+    );
+    await d.jumpToTraceback(bufnr, 6, 1);
+    const escape = host.callsTo("fnameescape").find(
+      (c) => c.args[1] === "/home/u/proj/util.py",
+    );
+    assertEquals(escape !== undefined, true);
+  });
+
+  it("passes absolute paths to fnameescape as-is (skips cwd resolution)", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    const abs = "/usr/lib/python3.12/json/__init__.py";
+    seedSession(
+      bufnr,
+      planForFrame({ filePath: abs, line: 123 }),
+      "/home/u/proj",
+    );
+    await d.jumpToTraceback(bufnr, 6, 1);
+    const escape = host.callsTo("fnameescape").find(
+      (c) => c.args[1] === abs,
+    );
+    assertEquals(escape !== undefined, true);
+  });
+
+  it("silently no-ops on jump_to_file when no kernelRuntime is attached", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    // Seed without kernelRuntime — simulates a notebook opened but
+    // never executed (no kernel started yet). Without cwd we cannot
+    // resolve relative paths, so the executor must bail rather than
+    // produce wrong results.
+    sessionStore.add({
+      bufnr,
+      notebook: notebookWithCell(),
+      sourcePath: `/tmp/nb-${bufnr}.ipynb`,
+      cellEditBuffers: new Map(),
+    } as never);
+    sessionStore.setRenderPlan(
+      bufnr,
+      planForFrame({ filePath: "./util.py", line: 5 }),
+    );
+    await d.jumpToTraceback(bufnr, 6, 1);
+    const splitCmd = host.calls.find(
+      (c) =>
+        c.method === "cmd" &&
+        typeof c.args[0] === "string" &&
+        (c.args[0] as string).startsWith("split "),
+    );
+    assertEquals(splitCmd, undefined);
   });
 
   it("is a silent no-op when the cursor is outside every clickable", async () => {
