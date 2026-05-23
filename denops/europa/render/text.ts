@@ -8,19 +8,25 @@
  * @module text
  */
 
-import type { Highlight, RenderFragment } from "../../../schema/render-plan.ts";
+import type {
+  Clickable,
+  Highlight,
+  RenderFragment,
+} from "../../../schema/render-plan.ts";
 import { stripAnsi } from "./ansi.ts";
+import { parseTraceback } from "./traceback-parser.ts";
 
 function makeFragment(
   lines: string[],
   highlights: Highlight[],
+  clickables: Clickable[] = [],
 ): RenderFragment {
   return {
     lines,
     highlights,
     virtText: [],
     imagePlacements: [],
-    clickables: [],
+    clickables,
     mdDecorations: [],
   };
 }
@@ -72,12 +78,16 @@ export function renderStream(
  * Render an error output with ename/evalue header and traceback.
  *
  * The first line is `ename: evalue`. Each traceback entry gets `EuropaError`
- * highlight. All content passes through `stripAnsi`.
+ * line-highlight. Frames recognised by the IPython 8.x parser additionally
+ * receive a `EuropaErrorJump` col-range highlight and a `Clickable` carrying
+ * either a `jump_to_cell_line` or `jump_to_file` action. Clickable / highlight
+ * line indices are fragment-relative (= header is line 0). All content passes
+ * through `stripAnsi`.
  *
  * @param ename - Exception class name.
  * @param evalue - Exception message.
  * @param traceback - Array of traceback strings (may contain ANSI codes).
- * @returns `RenderFragment` with error highlights applied.
+ * @returns `RenderFragment` with error highlights and clickables applied.
  * @spec-id europa.render.text.error
  */
 export function renderError(
@@ -100,5 +110,46 @@ export function renderError(
     endCol: -1,
   }));
 
-  return makeFragment(lines, highlights);
+  const frames = parseTraceback(tracebackLines);
+  const clickables: Clickable[] = [];
+  for (const frame of frames) {
+    // +1 because the header line occupies fragment line 0.
+    const fragmentLine = frame.line + 1;
+    highlights.push({
+      hlGroup: "EuropaErrorJump",
+      line: fragmentLine,
+      col: frame.colStart,
+      endCol: frame.colEnd,
+      hlEol: false,
+    });
+    if (frame.kind === "cell") {
+      clickables.push({
+        line: fragmentLine,
+        colStart: frame.colStart,
+        colEnd: frame.colEnd,
+        action: {
+          type: "jump_to_cell_line",
+          payload: {
+            executionCount: frame.executionCount,
+            line: frame.sourceLine,
+          },
+        },
+      });
+    } else {
+      clickables.push({
+        line: fragmentLine,
+        colStart: frame.colStart,
+        colEnd: frame.colEnd,
+        action: {
+          type: "jump_to_file",
+          payload: {
+            path: frame.path,
+            line: frame.sourceLine,
+          },
+        },
+      });
+    }
+  }
+
+  return makeFragment(lines, highlights, clickables);
 }
