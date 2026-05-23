@@ -274,6 +274,40 @@ KERNEL EXECUTION COMMANDS~
 
 	See also: |:EuropaUndo|, |<Plug>(europa-redo)|
 
+TRACEBACK NAVIGATION COMMANDS~
+					*europa-commands-traceback*
+
+							*:EuropaJumpError*
+:EuropaJumpError
+	Jump to the source line referenced by the IPython 8.x traceback
+	frame under the cursor. Two frame shapes are recognised:
+
+	  `Cell In[N], line K`   → cursor moves to line K of the code cell
+	                           whose `execution_count == N`. The
+	                           viewport is centered with `zz`.
+	  `File /path:K`         → opens `/path` in a `:split` and moves
+	                           the cursor to line K (also `zz`).
+	                           Relative paths are resolved against
+	                           the kernel's working directory; `~` is
+	                           HOME-expanded.
+
+	Silently no-ops when:
+	  - the cursor is not on a traceback frame range,
+	  - the referenced cell does not exist (e.g. it was deleted),
+	  - K is outside the cell's source range.
+
+	When the viewer buffer is hidden, the command warns once via
+	`:echom` and stores `b:europa_jump_warned = 1` so repeated invocations
+	stay silent. `BufWinEnter` resets the flag, so re-showing the buffer
+	re-arms the warning for the next attempt.
+
+	When the cell exists but is not actionable (missing or K-out-of-
+	range), the frame's underline switches from |hl-EuropaErrorJump|
+	to |hl-EuropaErrorJumpMissing| (the `Comment` link by default)
+	so you can tell at a glance which frames can be navigated to.
+
+	See also: |<Plug>(europa-jump-error)|
+
 FUTURE COMMANDS~
 						*europa-commands-future*
 The following commands are planned for a later phase.
