@@ -17,10 +17,28 @@ import type { Denops } from "@denops/std";
 import { isAbsolute } from "@std/path/is-absolute";
 import { resolve } from "@std/path/resolve";
 import type {
+  CellSourceRange,
   Clickable,
   Highlight,
   RenderPlan,
 } from "../../../schema/render-plan.ts";
+import type { Notebook } from "../../../schema/notebook.ts";
+
+/**
+ * Neovim namespace name used by `applyTracebackHighlights`. Stable across
+ * calls so each apply clears the previous frame's extmarks via
+ * `nvim_buf_clear_namespace`.
+ */
+const TRACEBACK_HL_NAMESPACE = "europa_traceback_hl";
+
+/**
+ * Vim text-property types this layer applies. Type registration lives in
+ * `plugin/europa.vim` (R9); the apply path only emits / removes props.
+ */
+const TRACEBACK_PROP_TYPES = [
+  "EuropaErrorJump",
+  "EuropaErrorJumpMissing",
+] as const;
 
 /**
  * Resolve cursor coordinates (1-origin from Vim) to the clickable whose
@@ -141,6 +159,106 @@ export function resolveFilePath(rawPath: string, kernelCwd: string): string {
     return home + rawPath.slice(1);
   }
   return resolve(kernelCwd, rawPath);
+}
+
+/**
+ * Build a notebook selector compatible with `rewriteMissingHighlights` and
+ * the upcoming qflist populator.
+ *
+ * Returns `{ actionable: true, sourceStartLine, sourceEndLine }` when
+ * `notebook.cells[i].cell_type === "code"` and
+ * `notebook.cells[i].execution_count === executionCount` AND `K` is within
+ * the cell's source range. Otherwise `{ actionable: false }` — the apply
+ * layer downgrades the highlight, and the qflist populator skips the
+ * entry.
+ */
+export function makeNotebookSelector(
+  notebook: Notebook,
+  cellSourceRanges: readonly CellSourceRange[] | undefined,
+): (
+  executionCount: number,
+  line: number,
+) =>
+  | { actionable: true; sourceStartLine: number; sourceEndLine: number }
+  | { actionable: false } {
+  return (executionCount: number, line: number) => {
+    const cell = notebook.cells.find(
+      (c) =>
+        c.cell_type === "code" &&
+        c.execution_count === executionCount,
+    );
+    if (!cell) return { actionable: false };
+    const range = cellSourceRanges?.find((r) => r.cellId === cell.id);
+    if (!range) return { actionable: false };
+    const sourceLen = range.sourceEndLine - range.sourceStartLine;
+    if (line < 1 || line > sourceLen) return { actionable: false };
+    return {
+      actionable: true,
+      sourceStartLine: range.sourceStartLine,
+      sourceEndLine: range.sourceEndLine,
+    };
+  };
+}
+
+/**
+ * Apply traceback line-jump highlights to the buffer.
+ *
+ * Filters `plan.highlights` to the `EuropaErrorJump` /
+ * `EuropaErrorJumpMissing` groups and emits them via the host-native
+ * highlight API. Each call clears the previous frame's highlights so
+ * re-renders don't accumulate stale marks.
+ *
+ * Priority values per R2: Neovim uses 200 (higher wins, front), Vim uses
+ * 100 (lower wins, front). The numeric reversal yields the same visual
+ * stacking on both hosts.
+ *
+ * The companion executors (`jumpToCellLine` / `jumpToFile`) carry the
+ * `europa.view.traceback-jump.*` spec-ids — this function is the shared
+ * visual layer they depend on.
+ */
+export async function applyTracebackHighlights(
+  host: Denops,
+  bufnr: number,
+  plan: RenderPlan,
+): Promise<void> {
+  const isNvim = host.meta.host === "nvim";
+  const targets = plan.highlights.filter(
+    (h) =>
+      h.hlGroup === "EuropaErrorJump" ||
+      h.hlGroup === "EuropaErrorJumpMissing",
+  );
+  if (isNvim) {
+    const ns = await host.call(
+      "nvim_create_namespace",
+      TRACEBACK_HL_NAMESPACE,
+    ) as number;
+    await host.call("nvim_buf_clear_namespace", bufnr, ns, 0, -1);
+    for (const hl of targets) {
+      await host.call(
+        "nvim_buf_set_extmark",
+        bufnr,
+        ns,
+        hl.line,
+        hl.col,
+        { end_col: hl.endCol, hl_group: hl.hlGroup, priority: 200 },
+      );
+    }
+    return;
+  }
+  // Vim path: prop_remove (clear) → prop_add (apply) per type.
+  for (const propType of TRACEBACK_PROP_TYPES) {
+    await host.call("prop_remove", { type: propType, bufnr, all: 1 });
+  }
+  for (const hl of targets) {
+    const length = hl.endCol - hl.col;
+    if (length <= 0) continue;
+    await host.call("prop_add", hl.line + 1, hl.col + 1, {
+      bufnr,
+      type: hl.hlGroup,
+      length,
+      priority: 100,
+    });
+  }
 }
 
 /**

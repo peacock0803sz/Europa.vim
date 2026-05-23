@@ -12,15 +12,18 @@
  */
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
-import { mockVim } from "../../fixtures/mock-host.ts";
+import { mockNvim, mockVim } from "../../fixtures/mock-host.ts";
 import {
+  applyTracebackHighlights,
   findClickableAtCursor,
   jumpToCellLine,
   jumpToFile,
+  makeNotebookSelector,
   resolveFilePath,
   rewriteMissingHighlights,
 } from "../../../denops/europa/view/traceback-jump.ts";
 import type { Clickable, RenderPlan } from "../../../schema/render-plan.ts";
+import type { Notebook } from "../../../schema/notebook.ts";
 
 function emptyPlan(overrides: Partial<RenderPlan> = {}): RenderPlan {
   return {
@@ -291,6 +294,151 @@ describe("resolveFilePath", () => {
       resolveFilePath("util.py", "/home/u/proj"),
       "/home/u/proj/util.py",
     );
+  });
+});
+
+describe("makeNotebookSelector", () => {
+  const notebook: Notebook = {
+    nbformat: 4,
+    nbformat_minor: 5,
+    metadata: {},
+    cells: [
+      {
+        cell_type: "code",
+        id: "code-3",
+        source: "x = 1\ny = 2\nz = 3\n",
+        execution_count: 3,
+        outputs: [],
+        metadata: {},
+      },
+      {
+        cell_type: "markdown",
+        id: "md-1",
+        source: "# heading",
+        metadata: {},
+      },
+    ],
+  };
+  const cellSourceRanges = [
+    {
+      cellId: "code-3",
+      kind: "code" as const,
+      sourceStartLine: 10,
+      sourceEndLine: 13,
+    },
+    {
+      cellId: "md-1",
+      kind: "markdown" as const,
+      sourceStartLine: 14,
+      sourceEndLine: 15,
+    },
+  ];
+
+  it("returns actionable when cell exists and K is within source length", () => {
+    const sel = makeNotebookSelector(notebook, cellSourceRanges);
+    const r = sel(3, 2);
+    assertEquals(r.actionable, true);
+    if (r.actionable) {
+      assertEquals(r.sourceStartLine, 10);
+      assertEquals(r.sourceEndLine, 13);
+    }
+  });
+
+  it("returns non-actionable when no cell has the matching execution_count", () => {
+    const sel = makeNotebookSelector(notebook, cellSourceRanges);
+    assertEquals(sel(99, 1).actionable, false);
+  });
+
+  it("returns non-actionable when K exceeds source length", () => {
+    const sel = makeNotebookSelector(notebook, cellSourceRanges);
+    // sourceEndLine - sourceStartLine = 3 → K must be 1..3
+    assertEquals(sel(3, 4).actionable, false);
+  });
+
+  it("returns non-actionable when K is less than 1", () => {
+    const sel = makeNotebookSelector(notebook, cellSourceRanges);
+    assertEquals(sel(3, 0).actionable, false);
+  });
+
+  it("returns non-actionable when cellSourceRanges is undefined", () => {
+    const sel = makeNotebookSelector(notebook, undefined);
+    assertEquals(sel(3, 1).actionable, false);
+  });
+
+  it("skips markdown cells (cell_type === 'code' filter)", () => {
+    const sel = makeNotebookSelector(
+      {
+        ...notebook,
+        cells: [{ ...notebook.cells[1], execution_count: 3 } as never],
+      },
+      cellSourceRanges,
+    );
+    assertEquals(sel(3, 1).actionable, false);
+  });
+});
+
+describe("applyTracebackHighlights", () => {
+  function planWith(highlights: RenderPlan["highlights"]): RenderPlan {
+    return {
+      lines: [],
+      highlights,
+      virtText: [],
+      imagePlacements: [],
+      clickables: [],
+      mdDecorations: [],
+      cellMap: [],
+      cellRanges: [],
+    };
+  }
+
+  it("Neovim: clears the namespace then emits one extmark per traceback hl", async () => {
+    const host = mockNvim();
+    const plan = planWith([
+      { hlGroup: "EuropaErrorJump", line: 1, col: 0, endCol: 18 },
+      { hlGroup: "EuropaError", line: 1, col: 0, endCol: -1 },
+      { hlGroup: "EuropaErrorJumpMissing", line: 5, col: 2, endCol: 22 },
+    ]);
+    await applyTracebackHighlights(host, 42, plan);
+    const clears = host.callsTo("nvim_buf_clear_namespace");
+    assertEquals(clears.length, 1);
+    const extmarks = host.callsTo("nvim_buf_set_extmark");
+    // Only the two traceback hls — EuropaError is filtered out
+    assertEquals(extmarks.length, 2);
+    // Priority 200 (R2 Neovim convention)
+    const opts1 = extmarks[0].args[5] as Record<string, unknown>;
+    assertEquals(opts1.priority, 200);
+    assertEquals(opts1.hl_group, "EuropaErrorJump");
+    assertEquals(opts1.end_col, 18);
+  });
+
+  it("Vim: prop_remove for each type then prop_add per highlight", async () => {
+    const host = mockVim();
+    const plan = planWith([
+      { hlGroup: "EuropaErrorJump", line: 1, col: 0, endCol: 18 },
+      { hlGroup: "EuropaErrorJumpMissing", line: 5, col: 2, endCol: 22 },
+    ]);
+    await applyTracebackHighlights(host, 42, plan);
+    const removes = host.callsTo("prop_remove");
+    assertEquals(removes.length, 2); // one per type
+    const adds = host.callsTo("prop_add");
+    assertEquals(adds.length, 2);
+    // Vim uses line+1 / col+1 (1-origin); priority 100 (R2 Vim reversal)
+    const firstAdd = adds[0];
+    assertEquals(firstAdd.args[1], 2); // line 1 → 2
+    assertEquals(firstAdd.args[2], 1); // col 0 → 1
+    const opts = firstAdd.args[3] as Record<string, unknown>;
+    assertEquals(opts.type, "EuropaErrorJump");
+    assertEquals(opts.length, 18);
+    assertEquals(opts.priority, 100);
+  });
+
+  it("emits nothing when no traceback highlights are present", async () => {
+    const host = mockNvim();
+    const plan = planWith([
+      { hlGroup: "EuropaError", line: 1, col: 0, endCol: -1 },
+    ]);
+    await applyTracebackHighlights(host, 42, plan);
+    assertEquals(host.callsTo("nvim_buf_set_extmark").length, 0);
   });
 });
 

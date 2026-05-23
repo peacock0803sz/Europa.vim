@@ -22,6 +22,7 @@ import {
   applyMdDecorations,
   ensureMdOverlayBufferOptions,
 } from "./markdown-overlay-nvim.ts";
+import { applyTracebackHighlights } from "./traceback-jump.ts";
 
 /**
  * Converts raw PNG bytes to Sixel bytes.
@@ -365,6 +366,13 @@ export async function applyRenderPlan(
   // own redraw for `screenpos()`, so this is harmlessly redundant on the
   // sixel path (`:redraw` is idempotent within a frame).
   await host.cmd("redraw");
+
+  // Phase 3.8: emit EuropaErrorJump / EuropaErrorJumpMissing extmarks (Neovim)
+  // or text-properties (Vim) so traceback frames are visually clickable. The
+  // dispatcher mutates plan.highlights via rewriteMissingHighlights upstream
+  // so non-actionable frames already carry the Missing variant by the time
+  // we reach here.
+  await applyTracebackHighlights(host, bufnr, plan);
 
   if (plan.sixelPlacements && plan.sixelPlacements.length > 0) {
     await applySixelPlacements(
