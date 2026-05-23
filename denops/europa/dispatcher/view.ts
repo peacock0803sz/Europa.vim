@@ -11,6 +11,12 @@ import {
 } from "../view/markdown-overlay-nvim.ts";
 import { applyRenderPlan } from "../view/viewer.ts";
 import {
+  findClickableAtCursor,
+  jumpToCellLine,
+  jumpToFile,
+  makeNotebookSelector,
+} from "../view/traceback-jump.ts";
+import {
   type DispatcherContext,
   echomError,
   renderPlanOpts,
@@ -286,18 +292,95 @@ export function buildViewDispatcher(
       await clearMdOverlay(denops, bn);
     },
 
-    // Phase 3.8 traceback jump RPCs — stubs only; behavior is wired up in
-    // Phase 3 (jumpToTraceback) and Phase 5 (jumpToTracebackList) of the 012
-    // plan. The @spec-id tags are attached at that point alongside paired
-    // spec tests (lint-spec-id-bijection requires both sides).
-    jumpToTraceback(
-      _bufnr: unknown,
-      _line: unknown,
-      _col: unknown,
+    /**
+     * Jump to the traceback frame under the cursor. Behaviour overview:
+     *
+     *  - `bufexists(bufnr) === 0` → throw command-level `Error`. Vim surfaces
+     *    the message via `:echohl ErrorMsg`.
+     *  - `bufwinid(bufnr) === -1` (viewer hidden) → warn once via
+     *    `b:europa_jump_warned` buffer-local guard, then silent until a
+     *    `BufWinEnter` resets the flag (FR-019).
+     *  - cursor outside every clickable → silent no-op.
+     *  - `jump_to_cell_line` with missing cell or K out of range → silent
+     *    no-op (executor handles the actionable check).
+     *
+     * @spec-id europa.dispatcher.jump-to-traceback
+     */
+    async jumpToTraceback(
+      bufnr: unknown,
+      line: unknown,
+      col: unknown,
     ): Promise<void> {
-      return Promise.resolve();
+      const bn = Number(bufnr);
+      const ln = Number(line);
+      const cl = Number(col);
+      if (!Number.isInteger(bn) || bn < 1) return;
+      if (!Number.isInteger(ln) || !Number.isInteger(cl)) return;
+
+      const exists = await denops.call("bufexists", bn);
+      if (exists === 0) {
+        throw new Error("Europa: no active notebook viewer");
+      }
+      const winid = await denops.call("bufwinid", bn);
+      if (winid === -1) {
+        const warned = await denops.call(
+          "getbufvar",
+          bn,
+          "europa_jump_warned",
+          0,
+        );
+        if (warned === 0 || warned === false) {
+          await denops.cmd(
+            "echohl WarningMsg | echom 'Europa: viewer buffer is not visible' | echohl None",
+          );
+          await denops.call("setbufvar", bn, "europa_jump_warned", 1);
+        }
+        return;
+      }
+
+      const session = sessionStore.get(bn);
+      const plan = sessionStore.getRenderPlan(bn);
+      if (!session || !plan) return;
+
+      const clickable = findClickableAtCursor(plan.clickables, ln, cl);
+      if (!clickable) return;
+
+      if (clickable.action.type === "jump_to_cell_line") {
+        const selector = makeNotebookSelector(
+          session.notebook,
+          plan.cellSourceRanges,
+        );
+        const cellResolver = (executionCount: number) => {
+          const res = selector(
+            executionCount,
+            clickable.action.type === "jump_to_cell_line"
+              ? clickable.action.payload.line
+              : 1,
+          );
+          if (!res.actionable) return { found: false } as const;
+          return {
+            found: true,
+            sourceStartLine: res.sourceStartLine,
+            sourceEndLine: res.sourceEndLine,
+          } as const;
+        };
+        await jumpToCellLine(denops, bn, cellResolver, clickable.action);
+        return;
+      }
+      if (clickable.action.type === "jump_to_file") {
+        const cwd = session.kernelRuntime?.cwd;
+        if (!cwd) return; // No kernel started → can't resolve relative paths
+        await jumpToFile(denops, cwd, clickable.action);
+        return;
+      }
+      // Other action types (open_url, scroll_to_cell, toggle_fold) are not
+      // dispatched here — they're handled by their own RPCs / mouse paths.
     },
 
+    /**
+     * Populate the quickfix list with every actionable traceback frame.
+     * Phase 5 (US3) work — stub kept in place until then.
+     */
     jumpToTracebackList(_bufnr: unknown): Promise<void> {
       return Promise.resolve();
     },

@@ -12,6 +12,7 @@
  * @spec-id europa.dispatcher.cleanup-with-scratch
  * @spec-id europa.dispatcher.cleanup-with-kernel
  * @spec-id europa.dispatcher.atexit
+ * @spec-id europa.session.events.jump-warned-reset
  */
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertGreater, assertNotEquals } from "@std/assert";
@@ -196,6 +197,26 @@ describe("cleanup dispatcher — scratch buffer wipeout", () => {
       host.cmdsMatching("bwipeout!").length,
       bwipeoutsAfterFirst,
       "Second cleanup must not issue additional bwipeout! calls",
+    );
+  });
+});
+
+// --- Phase 3.8 BufWinEnter resets europa_jump_warned (europa.session.events.jump-warned-reset) ---
+
+describe("setupAutocmds — BufWinEnter jump-warned reset (Phase 3.8)", () => {
+  it("BufWinEnter autocmd clears b:europa_jump_warned for the entering buffer", async () => {
+    const host = mockVim();
+    await setupAutocmds(host);
+    const cmds = host.cmdsMatching("BufWinEnter");
+    const resetsFlag = cmds.some((c) =>
+      String(c.args[0]).includes("BufWinEnter") &&
+      String(c.args[0]).includes("let b:europa_jump_warned = 0")
+    );
+    assertEquals(
+      resetsFlag,
+      true,
+      "BufWinEnter must reset b:europa_jump_warned so a hidden→visible " +
+        "transition re-enables the next :EuropaJumpError warning (FR-019)",
     );
   });
 });
