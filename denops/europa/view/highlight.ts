@@ -36,6 +36,9 @@ export const HIGHLIGHT_GROUPS = [
   "EuropaMdRule",
   "EuropaMdStrike",
   "EuropaMdFenceLang",
+  // Phase 3.8: error traceback line-jump highlight groups (FR-009)
+  "EuropaErrorJump",
+  "EuropaErrorJumpMissing",
 ] as const;
 
 type HighlightGroup = typeof HIGHLIGHT_GROUPS[number];
@@ -63,6 +66,8 @@ const LINKS: Record<HighlightGroup, string> = {
   EuropaMdRule: "Special",
   EuropaMdStrike: "NonText",
   EuropaMdFenceLang: "Type",
+  EuropaErrorJump: "Underlined",
+  EuropaErrorJumpMissing: "Comment",
 };
 
 /**
