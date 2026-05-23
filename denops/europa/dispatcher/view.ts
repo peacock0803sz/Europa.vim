@@ -35,6 +35,8 @@ export function buildViewDispatcher(
   | "onBufWinEnter"
   | "onMdOverlayScroll"
   | "onMdOverlayWipeout"
+  | "jumpToTraceback"
+  | "jumpToTracebackList"
 > {
   const { denops, sessionStore } = ctx;
   return {
@@ -282,6 +284,22 @@ export function buildViewDispatcher(
       const bn = Number(bufnr);
       if (!Number.isInteger(bn) || bn < 1) return;
       await clearMdOverlay(denops, bn);
+    },
+
+    // Phase 3.8 traceback jump RPCs — stubs only; behavior is wired up in
+    // Phase 3 (jumpToTraceback) and Phase 5 (jumpToTracebackList) of the 012
+    // plan. The @spec-id tags are attached at that point alongside paired
+    // spec tests (lint-spec-id-bijection requires both sides).
+    jumpToTraceback(
+      _bufnr: unknown,
+      _line: unknown,
+      _col: unknown,
+    ): Promise<void> {
+      return Promise.resolve();
+    },
+
+    jumpToTracebackList(_bufnr: unknown): Promise<void> {
+      return Promise.resolve();
     },
   };
 }

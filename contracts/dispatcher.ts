@@ -155,6 +155,22 @@ export type EuropaDispatcher = {
    */
   cancelCell(bufnr: unknown, cellId: unknown): Promise<void>;
 
+  // Phase 3.8: error traceback line jump (FR-013)
+  /**
+   * Jump to the traceback frame under the cursor in the viewer buffer.
+   * Resolves the clickable at (line, col) and dispatches to either a cell
+   * line jump or an external-file `:split`.
+   * @spec-id europa.dispatcher.jump-to-traceback
+   */
+  jumpToTraceback(bufnr: unknown, line: unknown, col: unknown): Promise<void>;
+
+  /**
+   * Populate the quickfix list with every actionable traceback frame in the
+   * viewer's current RenderPlan. Does not open the quickfix window.
+   * @spec-id europa.dispatcher.jump-to-traceback-list
+   */
+  jumpToTracebackList(bufnr: unknown): Promise<void>;
+
   // Phase 3.4: hidden-buffer resync (Q-hidden-buffer)
   /**
    * Full re-render of the viewer buffer when it becomes visible again.

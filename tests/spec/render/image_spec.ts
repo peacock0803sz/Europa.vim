@@ -104,7 +104,10 @@ describe("renderImage — placeholder format", () => {
     assertEquals(result.fragment.clickables.length > 0, true);
     const c = result.fragment.clickables[0];
     assertEquals(c.line, 0);
-    assertEquals(c.action.payload.includes("EuropaPreviewOutput 3 0"), true);
+    assertEquals(c.action.type, "open_url");
+    if (c.action.type === "open_url") {
+      assertEquals(c.action.payload.includes("EuropaPreviewOutput 3 0"), true);
+    }
   });
 
   it("returns no Sixel placement for placeholder backend (placement undefined)", () => {
