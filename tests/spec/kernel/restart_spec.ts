@@ -99,6 +99,7 @@ function makeRuntime(
     pendingRequests: new Map(),
     execState: "idle",
     cellStates: new Map(),
+    cwd: "/tmp/europa-test",
   };
 }
 
