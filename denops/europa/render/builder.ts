@@ -18,6 +18,10 @@ import type {
 import { convertSvgToPng } from "./svg-converter.ts";
 import { dispatchOutput } from "./dispatcher.ts";
 import { renderMarkdown } from "./markdown.ts";
+import {
+  makeNotebookSelector,
+  rewriteMissingHighlights,
+} from "../view/traceback-jump.ts";
 
 // Matches schema/config.ts and denops/europa/config.ts — when no opts are
 // passed, the renderer behaves as if the user accepted Vim defaults.
@@ -478,7 +482,7 @@ export async function buildRenderPlan(
     }
   }
 
-  return {
+  const plan: RenderPlan = {
     lines,
     highlights,
     virtText: [],
@@ -490,4 +494,11 @@ export async function buildRenderPlan(
     cellRanges,
     cellSourceRanges,
   };
+  // FR-012a: downgrade EuropaErrorJump → EuropaErrorJumpMissing for frames
+  // pointing at non-existent cells or K-out-of-range, so the viewer renders
+  // the visual distinction promised by :EuropaJumpError. The view/ layer's
+  // applyTracebackHighlights reads plan.highlights without re-checking the
+  // notebook, so the rewrite has to happen at plan construction.
+  rewriteMissingHighlights(plan, makeNotebookSelector(nb, cellSourceRanges));
+  return plan;
 }
