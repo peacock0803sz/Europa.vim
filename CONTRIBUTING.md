@@ -93,6 +93,18 @@ Phase 3.3 adds the following areas and topics to the allowlist in `scripts/lint-
 | `config` | `kernel-info-timeout-defaults` |
 | `render` | `cell-exec-state-sign` (topic added to existing area) |
 
+### Active `@spec-id` areas (Phase 3.8 — error traceback line jump)
+
+Phase 3.8 introduces the following spec-ids covering the renderError parser extension, the viewer-side jump executor, the dispatcher RPC pair, and the per-viewer warn-once autocmd:
+
+| Area | Topics added in Phase 3.8 |
+|------|--------------------------|
+| `render.traceback` | `parse.ipython8` |
+| `view.traceback-jump` | `cell-line`, `external-file`, `missing-detection` |
+| `dispatcher` | `jump-to-traceback`, `jump-to-traceback-list` |
+| `session.state` | `kernel-runtime-cwd` |
+| `session.events` | `jump-warned-reset` |
+
 ## 8. Commit and PR conventions
 
 - Documentation, in-code comments, and commit subjects are written in English.
