@@ -422,7 +422,10 @@ describe("jumpToTracebackList dispatcher RPC", () => {
     await d.jumpToTracebackList(bufnr);
     const setqf = host.callsTo("setqflist")[0];
     assertEquals(setqf !== undefined, true);
-    const entries = setqf.args[1] as Array<Record<string, unknown>>;
+    // Entries live inside what.items because Neovim rejects passing both
+    // a non-empty list AND a what dict (E475).
+    const opts = setqf.args[3] as Record<string, unknown>;
+    const entries = opts.items as Array<Record<string, unknown>>;
     assertEquals(entries.length, 3);
     assertEquals(entries[0].bufnr, bufnr);
     assertEquals(entries[0].lnum, 15);
@@ -442,6 +445,9 @@ describe("jumpToTracebackList dispatcher RPC", () => {
     seedSession(bufnr, planForMultiFrame());
     await d.jumpToTracebackList(bufnr);
     const setqf = host.callsTo("setqflist")[0];
+    // args[1] must be an empty list to satisfy Neovim's mutual-exclusion
+    // rule with the what dict in args[3].
+    assertEquals(setqf.args[1], []);
     assertEquals(setqf.args[2], "r");
     const opts = setqf.args[3] as Record<string, unknown>;
     assertEquals(opts.title, "Europa traceback");
@@ -470,7 +476,7 @@ describe("jumpToTracebackList dispatcher RPC", () => {
     seedSession(bufnr, planForFrame({ executionCount: 99, line: 1 }));
     await d.jumpToTracebackList(bufnr);
     const setqf = host.callsTo("setqflist")[0];
-    const entries = setqf.args[1] as Array<unknown>;
+    const entries = (setqf.args[3] as { items?: Array<unknown> }).items ?? [];
     assertEquals(entries.length, 0);
   });
 
@@ -481,7 +487,7 @@ describe("jumpToTracebackList dispatcher RPC", () => {
     seedSession(bufnr, planForFrame({ executionCount: 3, line: 999 }));
     await d.jumpToTracebackList(bufnr);
     const setqf = host.callsTo("setqflist")[0];
-    const entries = setqf.args[1] as Array<unknown>;
+    const entries = (setqf.args[3] as { items?: Array<unknown> }).items ?? [];
     assertEquals(entries.length, 0);
   });
 

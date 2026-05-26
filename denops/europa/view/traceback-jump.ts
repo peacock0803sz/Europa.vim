@@ -337,8 +337,13 @@ export async function populateTracebackQflist(
       });
     }
   }
-  await denops.call("setqflist", entries, "r", {
+  // Neovim raises E475 "cannot have both a list and a 'what' argument"
+  // when {list} is non-empty AND {what} is also supplied. Pass items
+  // inside the what dict (items + title together) to avoid the conflict;
+  // Vim accepts the same form.
+  await denops.call("setqflist", [], "r", {
     title: "Europa traceback",
+    items: entries,
   });
 }
 
