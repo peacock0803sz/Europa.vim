@@ -201,6 +201,26 @@ export function makeNotebookSelector(
 }
 
 /**
+ * Register the Vim text-property types this layer applies.
+ *
+ * Must run AFTER `defineHighlights` because `prop_type_add` raises E970
+ * if its `highlight` argument refers to an undefined group. The init
+ * dispatcher invokes this after the `hi default link` declarations land.
+ *
+ * No-op on Neovim — the host uses extmark namespaces (not prop types)
+ * and `prop_type_*` is undefined there.
+ */
+export async function registerTracebackPropTypes(host: Denops): Promise<void> {
+  if (host.meta.host !== "vim") return;
+  const existing = ((await host.eval("prop_type_list()")) as string[] | null) ??
+    [];
+  for (const name of TRACEBACK_PROP_TYPES) {
+    if (existing.includes(name)) continue;
+    await host.call("prop_type_add", name, { highlight: name });
+  }
+}
+
+/**
  * Apply traceback line-jump highlights to the buffer.
  *
  * Filters `plan.highlights` to the `EuropaErrorJump` /

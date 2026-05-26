@@ -9,6 +9,7 @@ import { buildRenderPlan } from "../render/builder.ts";
 import { setupAutocmds } from "../session/events.ts";
 import { applyRenderPlan } from "../view/viewer.ts";
 import { defineHighlights } from "../view/highlight.ts";
+import { registerTracebackPropTypes } from "../view/traceback-jump.ts";
 import {
   type DispatcherContext,
   echomError,
@@ -24,8 +25,12 @@ export function buildNotebookDispatcher(
   const { denops, sessionStore } = ctx;
   return {
     // Phase 2: init - wires highlights, config, capabilities, autocmds.
+    // registerTracebackPropTypes must run after defineHighlights — the
+    // Vim prop_type_add call references the highlight group by name and
+    // raises E970 if that group has not been linked yet.
     async init(): Promise<void> {
       await defineHighlights(denops);
+      await registerTracebackPropTypes(denops);
       await loadConfig(denops);
       await detectCapabilities(denops);
       await setupAutocmds(denops);

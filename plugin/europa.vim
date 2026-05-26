@@ -3,19 +3,6 @@ if exists('g:loaded_europa')
 endif
 let g:loaded_europa = 1
 
-" Phase 3.8: text-property types for the traceback line-jump highlight
-" groups. Idempotent via prop_type_exists (R9). Only Vim 9.x exposes the
-" prop_type_* API; on Neovim these calls are no-ops because the function
-" guard short-circuits.
-if exists('*prop_type_exists')
-  if !prop_type_exists('EuropaErrorJump')
-    call prop_type_add('EuropaErrorJump', {'highlight': 'EuropaErrorJump'})
-  endif
-  if !prop_type_exists('EuropaErrorJumpMissing')
-    call prop_type_add('EuropaErrorJumpMissing', {'highlight': 'EuropaErrorJumpMissing'})
-  endif
-endif
-
 augroup europa_plugin
   autocmd!
   autocmd User DenopsPluginPost:europa call denops#notify('europa', 'init', [])
