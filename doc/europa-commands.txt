@@ -306,6 +306,13 @@ TRACEBACK NAVIGATION COMMANDS~
 	to |hl-EuropaErrorJumpMissing| (the `Comment` link by default)
 	so you can tell at a glance which frames can be navigated to.
 
+	Relative `File ./...:K` frames resolve against the kernel's
+	working directory when a kernel is attached. Without an attached
+	kernel the dispatcher falls back to `nvim`'s launch directory so
+	the smoke walkthrough against
+	`tests/fixtures/ipynb/error-external-file.ipynb` works when
+	`nvim` is started from the repo root.
+
 	See also: |<Plug>(europa-jump-error)|
 
 FUTURE COMMANDS~
