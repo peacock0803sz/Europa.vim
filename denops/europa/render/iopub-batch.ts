@@ -27,7 +27,7 @@ type QueueEntry = { msg: KernelMessage; cellId: string; arrivedAt: number };
 
 class IopubBatchSchedulerImpl implements IopubBatchScheduler {
   private readonly queue: QueueEntry[] = [];
-  private timer: number | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   // Holds the Promise of the active batch so re-entrant flushNow() callers can
   // await it instead of returning before the RPC completes (F-reentrant-await).
   private _flushingPromise: Promise<void> | null = null;
