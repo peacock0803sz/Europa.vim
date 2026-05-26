@@ -368,10 +368,10 @@ export async function applyRenderPlan(
   await host.cmd("redraw");
 
   // Phase 3.8: emit EuropaErrorJump / EuropaErrorJumpMissing extmarks (Neovim)
-  // or text-properties (Vim) so traceback frames are visually clickable. The
-  // dispatcher mutates plan.highlights via rewriteMissingHighlights upstream
-  // so non-actionable frames already carry the Missing variant by the time
-  // we reach here.
+  // or text-properties (Vim) so traceback frames are visually clickable.
+  // buildRenderPlan runs rewriteMissingHighlights before returning, so
+  // non-actionable frames already carry the Missing variant by the time we
+  // reach here.
   await applyTracebackHighlights(host, bufnr, plan);
 
   if (plan.sixelPlacements && plan.sixelPlacements.length > 0) {
