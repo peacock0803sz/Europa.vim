@@ -262,6 +262,67 @@ export async function applyTracebackHighlights(
 }
 
 /**
+ * Populate the quickfix list with every actionable traceback frame in the
+ * RenderPlan.
+ *
+ * Actionable filter (Session Q-qflist-out-of-range):
+ *   - `jump_to_cell_line`: cell with the requested `execution_count` exists
+ *     in `cellSourceRanges` AND K is within the source range. Otherwise the
+ *     frame is skipped.
+ *   - `jump_to_file`: always included; file existence is delegated to Vim's
+ *     standard `:cnext` / `:cfirst` error if the file cannot be opened
+ *     (same convention as `jumpToFile`).
+ *
+ * Sets the qflist via `setqflist(list, 'r', { title: 'Europa traceback' })`.
+ * Does NOT call `:copen` — the user opens the window on their own (US3 AC2).
+ *
+ * The companion dispatcher RPC (`jumpToTracebackList`) carries the
+ * `europa.dispatcher.jump-to-traceback-list` spec-id; this helper is the
+ * shared view-layer body.
+ */
+export async function populateTracebackQflist(
+  denops: Denops,
+  bufnr: number,
+  plan: RenderPlan,
+  cwd: string,
+  notebookSelector: (
+    executionCount: number,
+    line: number,
+  ) =>
+    | { actionable: true; sourceStartLine: number; sourceEndLine: number }
+    | { actionable: false },
+): Promise<void> {
+  const entries: Array<Record<string, unknown>> = [];
+  for (const c of plan.clickables) {
+    if (c.action.type === "jump_to_cell_line") {
+      const { executionCount, line: k } = c.action.payload;
+      const res = notebookSelector(executionCount, k);
+      if (!res.actionable) continue;
+      entries.push({
+        bufnr,
+        lnum: res.sourceStartLine + k,
+        col: 1,
+        text: `Cell In[${executionCount}], line ${k}`,
+        type: "E",
+      });
+    } else if (c.action.type === "jump_to_file") {
+      const { path, line } = c.action.payload;
+      const resolved = resolveFilePath(path, cwd);
+      entries.push({
+        filename: resolved,
+        lnum: line,
+        col: 1,
+        text: `File ${path}:${line}`,
+        type: "E",
+      });
+    }
+  }
+  await denops.call("setqflist", entries, "r", {
+    title: "Europa traceback",
+  });
+}
+
+/**
  * Execute a `jump_to_file` action via `:split` in a new window.
  *
  * Path resolution per `resolveFilePath`. File existence is not validated —

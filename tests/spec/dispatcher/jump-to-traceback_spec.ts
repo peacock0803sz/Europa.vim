@@ -8,6 +8,7 @@
  * checks listed in `quickstart.md`.
  *
  * @spec-id europa.dispatcher.jump-to-traceback
+ * @spec-id europa.dispatcher.jump-to-traceback-list
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
@@ -34,6 +35,55 @@ function notebookWithCell(): Notebook {
         execution_count: 3,
         outputs: [],
         metadata: {},
+      },
+    ],
+  };
+}
+
+function planForMultiFrame(): RenderPlan {
+  return {
+    lines: [],
+    highlights: [],
+    virtText: [],
+    imagePlacements: [],
+    clickables: [
+      {
+        line: 5,
+        colStart: 0,
+        colEnd: 18,
+        action: {
+          type: "jump_to_cell_line",
+          payload: { executionCount: 3, line: 5 },
+        },
+      },
+      {
+        line: 6,
+        colStart: 0,
+        colEnd: 24,
+        action: {
+          type: "jump_to_file",
+          payload: { path: "/abs/foo.py", line: 42 },
+        },
+      },
+      {
+        line: 7,
+        colStart: 0,
+        colEnd: 24,
+        action: {
+          type: "jump_to_file",
+          payload: { path: "./bar.py", line: 7 },
+        },
+      },
+    ],
+    mdDecorations: [],
+    cellMap: [],
+    cellRanges: [],
+    cellSourceRanges: [
+      {
+        cellId,
+        kind: "code",
+        sourceStartLine: 10,
+        sourceEndLine: 15,
       },
     ],
   };
@@ -351,5 +401,124 @@ describe("jumpToTraceback dispatcher RPC", () => {
         (c.args[0] as string).includes("setpos"),
     );
     assertEquals(setposCmd, undefined);
+  });
+});
+
+describe("jumpToTracebackList dispatcher RPC", () => {
+  beforeEach(() => {
+    host = mockNvim();
+    sessionStore = new SessionStore();
+    host.bufwinidResult = 1000;
+  });
+  afterEach(() => {
+    for (const s of sessionStore.all()) sessionStore.remove(s.bufnr);
+  });
+
+  it("populates the qflist with one entry per actionable frame (3-frame mix)", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    seedSession(bufnr, planForMultiFrame());
+    await d.jumpToTracebackList(bufnr);
+    const setqf = host.callsTo("setqflist")[0];
+    assertEquals(setqf !== undefined, true);
+    const entries = setqf.args[1] as Array<Record<string, unknown>>;
+    assertEquals(entries.length, 3);
+    assertEquals(entries[0].bufnr, bufnr);
+    assertEquals(entries[0].lnum, 15);
+    assertEquals(entries[0].text, "Cell In[3], line 5");
+    assertEquals(entries[1].filename, "/abs/foo.py");
+    assertEquals(entries[1].lnum, 42);
+    // seedSession seeds kernelRuntime.cwd=/home/u/proj, so `./bar.py`
+    // resolves against that, not Deno.cwd().
+    assertEquals(entries[2].filename, "/home/u/proj/bar.py");
+    assertEquals(entries[2].lnum, 7);
+  });
+
+  it("sets the qflist title to 'Europa traceback' via the replace mode", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    seedSession(bufnr, planForMultiFrame());
+    await d.jumpToTracebackList(bufnr);
+    const setqf = host.callsTo("setqflist")[0];
+    assertEquals(setqf.args[2], "r");
+    const opts = setqf.args[3] as Record<string, unknown>;
+    assertEquals(opts.title, "Europa traceback");
+  });
+
+  it("does NOT call :copen — user controls when the window opens", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    seedSession(bufnr, planForMultiFrame());
+    await d.jumpToTracebackList(bufnr);
+    const copenCmd = host.calls.find(
+      (c) =>
+        c.method === "cmd" &&
+        typeof c.args[0] === "string" &&
+        ((c.args[0] as string).startsWith("copen") ||
+          (c.args[0] as string).includes(" copen")),
+    );
+    assertEquals(copenCmd, undefined);
+  });
+
+  it("skips non-actionable cell frames (missing execution_count)", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    seedSession(bufnr, planForFrame({ executionCount: 99, line: 1 }));
+    await d.jumpToTracebackList(bufnr);
+    const setqf = host.callsTo("setqflist")[0];
+    const entries = setqf.args[1] as Array<unknown>;
+    assertEquals(entries.length, 0);
+  });
+
+  it("skips K-out-of-range cell frames", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    seedSession(bufnr, planForFrame({ executionCount: 3, line: 999 }));
+    await d.jumpToTracebackList(bufnr);
+    const setqf = host.callsTo("setqflist")[0];
+    const entries = setqf.args[1] as Array<unknown>;
+    assertEquals(entries.length, 0);
+  });
+
+  it("throws a command-level error when bufexists is 0", async () => {
+    const d = makeDispatcher();
+    await assertRejects(
+      () => d.jumpToTracebackList(999),
+      Error,
+      "no active notebook viewer",
+    );
+  });
+
+  it("warns once when the viewer is hidden, then stays silent on repeat", async () => {
+    const d = makeDispatcher();
+    const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
+    await host.call("bufload", bufnr);
+    seedSession(bufnr, planForMultiFrame());
+    host.bufwinidResult = -1;
+    await d.jumpToTracebackList(bufnr);
+    const warn1 = host.calls.find(
+      (c) =>
+        c.method === "cmd" &&
+        typeof c.args[0] === "string" &&
+        (c.args[0] as string).includes("viewer buffer is not visible"),
+    );
+    assertEquals(warn1 !== undefined, true);
+    const callsBefore = host.calls.length;
+    await host.call("setbufvar", bufnr, "europa_jump_warned", 1);
+    await d.jumpToTracebackList(bufnr);
+    const warn2 = host.calls
+      .slice(callsBefore)
+      .find(
+        (c) =>
+          c.method === "cmd" &&
+          typeof c.args[0] === "string" &&
+          (c.args[0] as string).includes("viewer buffer is not visible"),
+      );
+    assertEquals(warn2, undefined);
   });
 });

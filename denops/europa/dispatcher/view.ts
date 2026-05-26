@@ -15,6 +15,7 @@ import {
   jumpToCellLine,
   jumpToFile,
   makeNotebookSelector,
+  populateTracebackQflist,
 } from "../view/traceback-jump.ts";
 import {
   type DispatcherContext,
@@ -381,11 +382,48 @@ export function buildViewDispatcher(
     },
 
     /**
-     * Populate the quickfix list with every actionable traceback frame.
-     * Phase 5 (US3) work — stub kept in place until then.
+     * Populate the quickfix list with every actionable traceback frame in
+     * the latest RenderPlan. Shares the same bufexists / bufwinid guards as
+     * `jumpToTraceback` so a hidden viewer warns once via
+     * `b:europa_jump_warned` then stays silent (FR-019 shared semantics).
+     *
+     * @spec-id europa.dispatcher.jump-to-traceback-list
      */
-    jumpToTracebackList(_bufnr: unknown): Promise<void> {
-      return Promise.resolve();
+    async jumpToTracebackList(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 1) return;
+
+      const exists = await denops.call("bufexists", bn);
+      if (exists === 0) {
+        throw new Error("Europa: no active notebook viewer");
+      }
+      const winid = await denops.call("bufwinid", bn);
+      if (winid === -1) {
+        const warned = await denops.call(
+          "getbufvar",
+          bn,
+          "europa_jump_warned",
+          0,
+        );
+        if (warned === 0 || warned === false) {
+          await denops.cmd(
+            "echohl WarningMsg | echom 'Europa: viewer buffer is not visible' | echohl None",
+          );
+          await denops.call("setbufvar", bn, "europa_jump_warned", 1);
+        }
+        return;
+      }
+
+      const session = sessionStore.get(bn);
+      const plan = sessionStore.getRenderPlan(bn);
+      if (!session || !plan) return;
+
+      const selector = makeNotebookSelector(
+        session.notebook,
+        plan.cellSourceRanges,
+      );
+      const cwd = session.kernelRuntime?.cwd ?? Deno.cwd();
+      await populateTracebackQflist(denops, bn, plan, cwd, selector);
     },
   };
 }
