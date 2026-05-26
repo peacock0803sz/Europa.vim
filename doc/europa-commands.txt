@@ -313,7 +313,35 @@ TRACEBACK NAVIGATION COMMANDS~
 	`tests/fixtures/ipynb/error-external-file.ipynb` works when
 	`nvim` is started from the repo root.
 
-	See also: |<Plug>(europa-jump-error)|
+	See also: |<Plug>(europa-jump-error)|, |:EuropaJumpErrorList|
+
+							*:EuropaJumpErrorList*
+:EuropaJumpErrorList
+	Populate the |quickfix-list| with every actionable IPython 8.x
+	traceback frame from the latest RenderPlan and set the qflist
+	title to "Europa traceback".
+
+	The command does NOT call `:copen`: it only writes the list so
+	you can decide whether to open the window with your own
+	`:copen` / `:cwindow` / quickfix-plugin workflow. Once populated,
+	standard Vim motions (`:cnext`, `:cprev`, `:cfirst`, `:clast`)
+	walk between frames.
+
+	Actionable filter:
+	  - `Cell In[N], line K` is included when a code cell with
+	    `execution_count == N` exists AND `K` is within the cell's
+	    source range. Otherwise the frame is skipped.
+	  - `File ...` frames are always included; non-existent files
+	    surface Vim's standard `E:Cannot find file` when you jump
+	    to them.
+
+	When the viewer is hidden, the command warns once via `:echom`
+	(same `b:europa_jump_warned` guard as |:EuropaJumpError|) and
+	is silent on repeated invocations until `BufWinEnter` re-arms
+	the flag.
+
+	See also: |<Plug>(europa-jump-error-list)|, |:EuropaJumpError|,
+	|quickfix|
 
 FUTURE COMMANDS~
 						*europa-commands-future*

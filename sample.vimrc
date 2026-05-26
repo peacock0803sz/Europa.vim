@@ -121,6 +121,7 @@ function! s:europa_keymap() abort
   " under the cursor (Cell In[N], line K → cell source; File /path:K → :split).
   " No JupyterLab equivalent — JupyterLab opens the source via mouse click.
   nmap <buffer><silent> <localleader>e <Plug>(europa-jump-error)
+  nmap <buffer><silent> <localleader>E <Plug>(europa-jump-error-list)
 
   " Kernel lifecycle (no JupyterLab single-key equivalent).
   nmap <buffer><silent> <localleader>s <Plug>(europa-start-kernel)
