@@ -62,3 +62,5 @@ command! -nargs=0 EuropaRedo
 " Phase 3.8: traceback line jump
 command! -nargs=0 EuropaJumpError
       \ call europa#jump_error()
+command! -nargs=0 EuropaJumpErrorList
+      \ call europa#jump_error_list()

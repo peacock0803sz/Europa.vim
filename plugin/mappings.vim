@@ -46,3 +46,4 @@ nnoremap <silent> <Plug>(europa-redo)                  :call denops#notify('euro
 
 " Phase 3.8: traceback line jump — no default key binding (FR-022)
 nnoremap <silent> <Plug>(europa-jump-error)            :<C-u>EuropaJumpError<CR>
+nnoremap <silent> <Plug>(europa-jump-error-list)       :<C-u>EuropaJumpErrorList<CR>
