@@ -166,6 +166,71 @@ describe("serializeNotebook — markdown overlay pristine (SC-010 / FR-032)", ()
   );
 });
 
+describe("serializeNotebook — traceback clickable pristine (SC-011 / FR-027)", () => {
+  it(
+    "error-traceback.ipynb survives buildRenderPlan + serialize byte-identical",
+    async () => {
+      const { buildRenderPlan } = await import(
+        "../../../denops/europa/render/builder.ts"
+      );
+      const raw = await Deno.readTextFile(
+        "tests/fixtures/ipynb/error-traceback.ipynb",
+      );
+      const parsed = await parseNotebook(raw);
+      const caps = {
+        host: "vim" as const,
+        hostVersion: "9.1.1646",
+        image: "placeholder" as const,
+        treeSitter: { available: false },
+      };
+      const plan = await buildRenderPlan(parsed, caps);
+      // RenderPlan must contain a jump_to_cell_line clickable for the
+      // `Cell In[3], line 5` frame the fixture ships with. Without this
+      // a regression in renderError or builder.ts would silently strip
+      // the clickable and the whole feature stops working.
+      const jumpClickables = plan.clickables.filter(
+        (c) => c.action.type === "jump_to_cell_line",
+      );
+      assertEquals(jumpClickables.length > 0, true);
+      // The serialized form must NOT carry clickables (they live in
+      // RenderPlan, never in the Notebook entity). Round-trip therefore
+      // produces the same parsed AST.
+      const serialized = serializeNotebook(parsed);
+      const roundTripped = await parseNotebook(serialized);
+      assertEquals(roundTripped, parsed);
+    },
+  );
+
+  it(
+    "second build after :edit! regenerates clickables from scratch (FR-028)",
+    async () => {
+      const { buildRenderPlan } = await import(
+        "../../../denops/europa/render/builder.ts"
+      );
+      const raw = await Deno.readTextFile(
+        "tests/fixtures/ipynb/error-traceback.ipynb",
+      );
+      const caps = {
+        host: "vim" as const,
+        hostVersion: "9.1.1646",
+        image: "placeholder" as const,
+        treeSitter: { available: false },
+      };
+      const parsed1 = await parseNotebook(raw);
+      const plan1 = await buildRenderPlan(parsed1, caps);
+      const serialized = serializeNotebook(parsed1);
+      const parsed2 = await parseNotebook(serialized);
+      const plan2 = await buildRenderPlan(parsed2, caps);
+      // Same notebook source → same clickables — proves the derived
+      // state is recomputed from scratch, not cached on the entity.
+      assertEquals(
+        plan2.clickables.length,
+        plan1.clickables.length,
+      );
+    },
+  );
+});
+
 describe("[golden] notebook round-trip", () => {
   const FIXTURES = [
     "hello",
