@@ -280,14 +280,14 @@ describe("jumpToTraceback dispatcher RPC", () => {
     assertEquals(escape !== undefined, true);
   });
 
-  it("silently no-ops on jump_to_file when no kernelRuntime is attached", async () => {
+  it("falls back to Deno.cwd() for jump_to_file when no kernelRuntime is attached", async () => {
+    // Allows the static-traceback demo to work without :EuropaStartKernel
+    // first. The dispatcher uses the denops process cwd (inherited from
+    // nvim's launch directory) so a relative frame resolves against the
+    // user's working directory.
     const d = makeDispatcher();
     const bufnr = await host.call("bufadd", "/tmp/nb.ipynb") as number;
     await host.call("bufload", bufnr);
-    // Seed without kernelRuntime — simulates a notebook opened but
-    // never executed (no kernel started yet). Without cwd we cannot
-    // resolve relative paths, so the executor must bail rather than
-    // produce wrong results.
     sessionStore.add({
       bufnr,
       notebook: notebookWithCell(),
@@ -299,13 +299,11 @@ describe("jumpToTraceback dispatcher RPC", () => {
       planForFrame({ filePath: "./util.py", line: 5 }),
     );
     await d.jumpToTraceback(bufnr, 6, 1);
-    const splitCmd = host.calls.find(
-      (c) =>
-        c.method === "cmd" &&
-        typeof c.args[0] === "string" &&
-        (c.args[0] as string).startsWith("split "),
+    const cwd = Deno.cwd();
+    const escape = host.callsTo("fnameescape").find(
+      (c) => c.args[1] === `${cwd}/util.py`,
     );
-    assertEquals(splitCmd, undefined);
+    assertEquals(escape !== undefined, true);
   });
 
   it("is a silent no-op when the cursor is outside every clickable", async () => {

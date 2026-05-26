@@ -368,8 +368,11 @@ export function buildViewDispatcher(
         return;
       }
       if (clickable.action.type === "jump_to_file") {
-        const cwd = session.kernelRuntime?.cwd;
-        if (!cwd) return; // No kernel started → can't resolve relative paths
+        // Fall back to the denops process cwd (= nvim's launch directory)
+        // when no kernel is attached so relative frames resolve from the
+        // repo root for the static-traceback smoke walkthrough — without
+        // this the demo requires :EuropaStartKernel first.
+        const cwd = session.kernelRuntime?.cwd ?? Deno.cwd();
         await jumpToFile(denops, cwd, clickable.action);
         return;
       }
