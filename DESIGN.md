@@ -2325,7 +2325,7 @@ The completion criteria are as follows. `pre-commit run --all-files` PASSes, `gi
 6. PNG conversion of image/svg+xml via rsvg-convert
 7. Strengthened text/markdown inline rendering (md-render.nvim style)
 8. Line jump for error traceback
-9. LSP integration (start `pyright` etc. per cell buffer; apply to the individual buffer opened by `:EuropaEditCell`)
+9. LSP integration (Phase 3.9): when `g:europa_lsp_enable` is active for a python notebook, `:EuropaEditCell` edits a single on-disk `.py` "notebook mirror" (all code cells concatenated, one `# %% <cellId>` region each) instead of a per-cell `__europa_cell_<id>__` scratch buffer, so the user's own LSP client (pyright / ruff / ty) attaches to a real file and cross-cell symbols resolve. Europa starts no server and is client-agnostic (no client-selection config). When LSP is disabled or the notebook is non-python, the per-cell scratch buffer above remains the fallback. The single concatenated mirror was chosen over per-cell preamble injection (degrades cross-cell go-to-definition) and LSP 3.17 `notebookDocument` sync (would require a supporting client, conflicting with client-agnosticism).
 
 ### Phase 4 - Extended MIME + ZMQ
 
