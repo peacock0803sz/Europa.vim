@@ -474,6 +474,24 @@ export function resolveScratchFiletype(
 }
 
 /**
+ * Decide whether `:EuropaEditCell` should open the LSP-ready notebook mirror or
+ * fall back to the 004 acwrite scratch buffer, from `g:europa_lsp_enable`.
+ *
+ * Both `true` and `"auto"` require the cell to resolve to python — a non-python
+ * notebook always falls back, since the mirror's normalization and suppression
+ * header are Python-specific. `false` always falls back. Kernel state is never
+ * consulted (notebook-metadata-driven, FR-004 / FR-006 / research §11).
+ */
+export function resolveLspEnabled(
+  setting: "auto" | true | false,
+  notebook: Notebook,
+  cell: Cell,
+): boolean {
+  if (setting === false) return false;
+  return resolveScratchFiletype(notebook, cell) === "python";
+}
+
+/**
  * Open (or reuse) a scratch buffer for editing a single cell's source.
  *
  * Pure host I/O: this function never touches `SessionStore`. The dispatcher
