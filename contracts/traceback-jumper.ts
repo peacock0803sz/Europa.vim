@@ -263,9 +263,11 @@ export type PopulateTracebackQflist = (
  *   1. Guard: `bufexists(bufnr)` — if `0`, throw command error
  *      `"Europa: no active notebook viewer"` (FR-019a).
  *   2. Guard: `bufwinid(bufnr)` — if `-1` (viewer hidden):
- *      - When `g:europa_internal_jump_warned === 1`: silent no-op.
+ *      - When `b:europa_jump_warned == 1`: silent no-op.
  *      - Otherwise: warn `"Europa: viewer buffer is not visible"` then
- *        set `g:europa_internal_jump_warned = 1` and no-op (FR-019).
+ *        set `b:europa_jump_warned = 1` (via `setbufvar`) and no-op. The
+ *        buffer-local flag is reset to `0` on `BufWinEnter`, so the warning
+ *        fires once per hidden interval (FR-019).
  *   3. `findClickableAtCursor(plan, line, col)` — null → silent no-op.
  *   4. Dispatch on action type:
  *      - `jump_to_cell_line` → `jumpToCellLine(bufnr, plan, action)`
