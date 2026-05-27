@@ -43,6 +43,15 @@ export interface KernelRuntime {
   // immediately after start() returns; undefined only between start() and the
   // first createIopubBatchScheduler() call inside startKernel().
   iopubBatchScheduler?: IopubBatchScheduler;
+  /**
+   * Kernel working directory captured at spawn time. Preserved across
+   * `restart()` (the kernel re-spawns inside the same process tree, so cwd
+   * stays unchanged), disposed when the runtime is shut down. Used by the
+   * Phase 3.8 traceback file-jump path to resolve relative paths.
+   *
+   * @spec-id europa.session.state.kernel-runtime-cwd
+   */
+  cwd: string;
 }
 
 /**

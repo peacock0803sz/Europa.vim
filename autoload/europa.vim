@@ -257,3 +257,27 @@ function! europa#cancel_cell() abort
   call denops#plugin#wait_async('europa',
         \ { -> denops#notify('europa', 'cancelCell', [l:bufnr, l:cell_id]) })
 endfunction
+
+" Phase 3.8: jump to the traceback frame under the cursor.  Reads
+" line('.') / col('.') eagerly so the values capture the cursor at
+" invocation time even if denops dispatches the RPC after a context
+" switch.  No-op when there is no clickable at the cursor — dispatcher
+" handles the silent fallback (FR-014).
+function! europa#jump_error() abort
+  let l:bufnr = europa#current_viewer_bufnr()
+  let l:line = line('.')
+  let l:col = col('.')
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'jumpToTraceback',
+        \                    [l:bufnr, l:line, l:col]) })
+endfunction
+
+" Phase 3.8: populate the quickfix list with every actionable traceback
+" frame from the cached RenderPlan. Does NOT open the qf window — the
+" user invokes :copen / :cnext explicitly so they retain control of
+" their layout (US3 AC2).
+function! europa#jump_error_list() abort
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'jumpToTracebackList', [l:bufnr]) })
+endfunction

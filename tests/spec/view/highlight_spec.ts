@@ -37,10 +37,13 @@ const EXPECTED_GROUPS = [
   "EuropaMdRule",
   "EuropaMdStrike",
   "EuropaMdFenceLang",
+  // Phase 3.8: error traceback line-jump groups (FR-009)
+  "EuropaErrorJump",
+  "EuropaErrorJumpMissing",
 ];
 
 describe("defineHighlights — hl_group definitions", () => {
-  it("defines all 21 Europa* highlight groups via hi default link", async () => {
+  it("defines all 23 Europa* highlight groups via hi default link", async () => {
     const denops = mockVim();
     await defineHighlights(denops);
 
@@ -54,8 +57,8 @@ describe("defineHighlights — hl_group definitions", () => {
     }
   });
 
-  it("exports the HIGHLIGHT_GROUPS constant listing all 21 groups", () => {
-    assertEquals(HIGHLIGHT_GROUPS.length, 21);
+  it("exports the HIGHLIGHT_GROUPS constant listing all 23 groups", () => {
+    assertEquals(HIGHLIGHT_GROUPS.length, 23);
     for (const g of EXPECTED_GROUPS) {
       assertEquals(
         (HIGHLIGHT_GROUPS as readonly string[]).includes(g),

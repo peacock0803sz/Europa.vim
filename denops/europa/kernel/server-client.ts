@@ -250,6 +250,7 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
 
     // @spec-id europa.session.state.exec-state-transition
     // @spec-id europa.session.state.cell-states-update
+    // @spec-id europa.session.state.kernel-runtime-cwd
     const runtime: KernelRuntime = {
       client: this,
       serverKey,
@@ -259,6 +260,7 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
       pendingRequests: new Map(),
       execState: "idle",
       cellStates: new Map(),
+      cwd: opts.cwd ?? Deno.cwd(),
     };
     this.wsRuntime = runtime;
 

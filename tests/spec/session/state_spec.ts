@@ -7,6 +7,7 @@
  * @spec-id europa.session.state.kernel-runtime-set
  * @spec-id europa.session.state.kernel-runtime-update
  * @spec-id europa.session.state.kernel-runtime-remove
+ * @spec-id europa.session.state.kernel-runtime-cwd
  * @spec-id europa.session.state.by-kernel-many
  * @spec-id europa.session.state.undo-history-init
  * @spec-id europa.session.state.last-saved-snapshot-init
@@ -195,6 +196,7 @@ function makeKernelRuntime(): KernelRuntime {
     pendingRequests: new Map(),
     execState: "idle",
     cellStates: new Map(),
+    cwd: "/tmp/europa-test",
   };
 }
 

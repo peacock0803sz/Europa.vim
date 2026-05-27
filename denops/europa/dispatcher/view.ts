@@ -11,6 +11,13 @@ import {
 } from "../view/markdown-overlay-nvim.ts";
 import { applyRenderPlan } from "../view/viewer.ts";
 import {
+  findClickableAtCursor,
+  jumpToCellLine,
+  jumpToFile,
+  makeNotebookSelector,
+  populateTracebackQflist,
+} from "../view/traceback-jump.ts";
+import {
   type DispatcherContext,
   echomError,
   renderPlanOpts,
@@ -35,6 +42,8 @@ export function buildViewDispatcher(
   | "onBufWinEnter"
   | "onMdOverlayScroll"
   | "onMdOverlayWipeout"
+  | "jumpToTraceback"
+  | "jumpToTracebackList"
 > {
   const { denops, sessionStore } = ctx;
   return {
@@ -282,6 +291,139 @@ export function buildViewDispatcher(
       const bn = Number(bufnr);
       if (!Number.isInteger(bn) || bn < 1) return;
       await clearMdOverlay(denops, bn);
+    },
+
+    /**
+     * Jump to the traceback frame under the cursor. Behaviour overview:
+     *
+     *  - `bufexists(bufnr) === 0` → throw command-level `Error`. Vim surfaces
+     *    the message via `:echohl ErrorMsg`.
+     *  - `bufwinid(bufnr) === -1` (viewer hidden) → warn once via
+     *    `b:europa_jump_warned` buffer-local guard, then silent until a
+     *    `BufWinEnter` resets the flag (FR-019).
+     *  - cursor outside every clickable → silent no-op.
+     *  - `jump_to_cell_line` with missing cell or K out of range → silent
+     *    no-op (executor handles the actionable check).
+     *
+     * @spec-id europa.dispatcher.jump-to-traceback
+     */
+    async jumpToTraceback(
+      bufnr: unknown,
+      line: unknown,
+      col: unknown,
+    ): Promise<void> {
+      const bn = Number(bufnr);
+      const ln = Number(line);
+      const cl = Number(col);
+      if (!Number.isInteger(bn) || bn < 1) return;
+      if (!Number.isInteger(ln) || !Number.isInteger(cl)) return;
+
+      const exists = await denops.call("bufexists", bn);
+      if (exists === 0) {
+        throw new Error("Europa: no active notebook viewer");
+      }
+      const winid = await denops.call("bufwinid", bn);
+      if (winid === -1) {
+        const warned = await denops.call(
+          "getbufvar",
+          bn,
+          "europa_jump_warned",
+          0,
+        );
+        if (warned === 0 || warned === false) {
+          await denops.cmd(
+            "echohl WarningMsg | echom 'Europa: viewer buffer is not visible' | echohl None",
+          );
+          await denops.call("setbufvar", bn, "europa_jump_warned", 1);
+        }
+        return;
+      }
+
+      const session = sessionStore.get(bn);
+      const plan = sessionStore.getRenderPlan(bn);
+      if (!session || !plan) return;
+
+      const clickable = findClickableAtCursor(plan.clickables, ln, cl);
+      if (!clickable) return;
+
+      if (clickable.action.type === "jump_to_cell_line") {
+        const selector = makeNotebookSelector(
+          session.notebook,
+          plan.cellSourceRanges,
+        );
+        const cellResolver = (executionCount: number) => {
+          const res = selector(
+            executionCount,
+            clickable.action.type === "jump_to_cell_line"
+              ? clickable.action.payload.line
+              : 1,
+          );
+          if (!res.actionable) return { found: false } as const;
+          return {
+            found: true,
+            sourceStartLine: res.sourceStartLine,
+            sourceEndLine: res.sourceEndLine,
+          } as const;
+        };
+        await jumpToCellLine(denops, bn, cellResolver, clickable.action);
+        return;
+      }
+      if (clickable.action.type === "jump_to_file") {
+        // Fall back to the denops process cwd (= nvim's launch directory)
+        // when no kernel is attached so relative frames resolve from the
+        // repo root for the static-traceback smoke walkthrough — without
+        // this the demo requires :EuropaStartKernel first.
+        const cwd = session.kernelRuntime?.cwd ?? Deno.cwd();
+        await jumpToFile(denops, cwd, clickable.action);
+        return;
+      }
+      // Other action types (open_url, scroll_to_cell, toggle_fold) are not
+      // dispatched here — they're handled by their own RPCs / mouse paths.
+    },
+
+    /**
+     * Populate the quickfix list with every actionable traceback frame in
+     * the latest RenderPlan. Shares the same bufexists / bufwinid guards as
+     * `jumpToTraceback` so a hidden viewer warns once via
+     * `b:europa_jump_warned` then stays silent (FR-019 shared semantics).
+     *
+     * @spec-id europa.dispatcher.jump-to-traceback-list
+     */
+    async jumpToTracebackList(bufnr: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 1) return;
+
+      const exists = await denops.call("bufexists", bn);
+      if (exists === 0) {
+        throw new Error("Europa: no active notebook viewer");
+      }
+      const winid = await denops.call("bufwinid", bn);
+      if (winid === -1) {
+        const warned = await denops.call(
+          "getbufvar",
+          bn,
+          "europa_jump_warned",
+          0,
+        );
+        if (warned === 0 || warned === false) {
+          await denops.cmd(
+            "echohl WarningMsg | echom 'Europa: viewer buffer is not visible' | echohl None",
+          );
+          await denops.call("setbufvar", bn, "europa_jump_warned", 1);
+        }
+        return;
+      }
+
+      const session = sessionStore.get(bn);
+      const plan = sessionStore.getRenderPlan(bn);
+      if (!session || !plan) return;
+
+      const selector = makeNotebookSelector(
+        session.notebook,
+        plan.cellSourceRanges,
+      );
+      const cwd = session.kernelRuntime?.cwd ?? Deno.cwd();
+      await populateTracebackQflist(denops, bn, plan, cwd, selector);
     },
   };
 }

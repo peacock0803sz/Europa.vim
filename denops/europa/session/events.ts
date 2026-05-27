@@ -34,6 +34,7 @@ import type { Denops } from "@denops/std";
  * @spec-id europa.session.events.vimleavepre-cleanup
  * @spec-id europa.session.events.md-overlay-scroll
  * @spec-id europa.session.events.md-overlay-wipeout
+ * @spec-id europa.session.events.jump-warned-reset
  */
 export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd("augroup europa_ipynb");
@@ -63,10 +64,12 @@ export async function setupAutocmds(host: Denops): Promise<void> {
   await host.cmd(
     "autocmd VimLeavePre * call denops#notify('europa', 'atexit', [])",
   );
-  // Q-hidden-buffer: detect when the viewer buffer becomes visible again so
-  // the scheduler-driven in-memory cell.outputs can be flushed to the screen.
+  // BufWinEnter must flush scheduler-buffered cell.outputs (hidden-buffer Q)
+  // and re-arm the per-viewer jump-warned flag so that the next
+  // :EuropaJumpError can warn again after a hidden→visible transition.
   await host.cmd(
-    "autocmd BufWinEnter *.ipynb call denops#notify('europa', 'onBufWinEnter', [bufnr('%')])",
+    "autocmd BufWinEnter *.ipynb let b:europa_jump_warned = 0 |" +
+      " call denops#notify('europa', 'onBufWinEnter', [bufnr('%')])",
   );
   await host.cmd("augroup END");
 }

@@ -39,6 +39,10 @@ const WHITELIST = new Set([
   // Phase 3.4: QueueEntry is an internal scheduler implementation detail
   // (KernelMessage + metadata) — not a domain entity and not exported.
   "denops/europa/render/iopub-batch.ts",
+  // Phase 3.8: TracebackFrame is an internal discriminated union for the
+  // parser output (cell|file frame variants). Not exported; the runtime
+  // contract lives in contracts/traceback-jumper.ts as TracebackFrame.
+  "denops/europa/render/traceback-parser.ts",
   // Dispatcher split: context shape and cell mutation operator result are
   // RPC-layer glue types, not schema/domain data.
   "denops/europa/dispatcher/context.ts",

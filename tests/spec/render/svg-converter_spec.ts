@@ -17,6 +17,15 @@ import {
   setBinaryMissingHandler,
 } from "../../../denops/europa/render/svg-converter.ts";
 
+// Deno 2.8.0 made `Deno.Command` a getter-only property, which blocks the
+// direct re-assignment pattern used below to inject mocks. Redefine it once
+// as a writable + configurable data property so the existing assignments work.
+Object.defineProperty(Deno, "Command", {
+  value: Deno.Command,
+  configurable: true,
+  writable: true,
+});
+
 // Minimal valid PNG bytes (1×1 pixel) — signature + IHDR with width=1, height=1
 const MINIMAL_PNG = new Uint8Array([
   0x89,

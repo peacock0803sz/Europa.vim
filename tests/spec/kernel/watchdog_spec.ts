@@ -180,7 +180,7 @@ describe("watchdog integration — spawn and detect parent death", () => {
       }).spawn();
 
       // Watchdog should detect dead parent and exit within 10s (1s poll + kill time)
-      let timerId: number | undefined;
+      let timerId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<null>((resolve) => {
         timerId = setTimeout(() => resolve(null), 10_000);
       });

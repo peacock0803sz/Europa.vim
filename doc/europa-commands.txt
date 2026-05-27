@@ -274,6 +274,75 @@ KERNEL EXECUTION COMMANDS~
 
 	See also: |:EuropaUndo|, |<Plug>(europa-redo)|
 
+TRACEBACK NAVIGATION COMMANDS~
+					*europa-commands-traceback*
+
+							*:EuropaJumpError*
+:EuropaJumpError
+	Jump to the source line referenced by the IPython 8.x traceback
+	frame under the cursor. Two frame shapes are recognised:
+
+	  `Cell In[N], line K`   → cursor moves to line K of the code cell
+	                           whose `execution_count == N`. The
+	                           viewport is centered with `zz`.
+	  `File /path:K`         → opens `/path` in a `:split` and moves
+	                           the cursor to line K (also `zz`).
+	                           Relative paths are resolved against
+	                           the kernel's working directory; `~` is
+	                           HOME-expanded.
+
+	Silently no-ops when:
+	  - the cursor is not on a traceback frame range,
+	  - the referenced cell does not exist (e.g. it was deleted),
+	  - K is outside the cell's source range.
+
+	When the viewer buffer is hidden, the command warns once via
+	`:echom` and stores `b:europa_jump_warned = 1` so repeated invocations
+	stay silent. `BufWinEnter` resets the flag, so re-showing the buffer
+	re-arms the warning for the next attempt.
+
+	When the cell exists but is not actionable (missing or K-out-of-
+	range), the frame's underline switches from |hl-EuropaErrorJump|
+	to |hl-EuropaErrorJumpMissing| (the `Comment` link by default)
+	so you can tell at a glance which frames can be navigated to.
+
+	Relative `File ./...:K` frames resolve against the kernel's
+	working directory when a kernel is attached. Without an attached
+	kernel the dispatcher falls back to `nvim`'s launch directory so
+	the smoke walkthrough against
+	`tests/fixtures/ipynb/error-external-file.ipynb` works when
+	`nvim` is started from the repo root.
+
+	See also: |<Plug>(europa-jump-error)|, |:EuropaJumpErrorList|
+
+							*:EuropaJumpErrorList*
+:EuropaJumpErrorList
+	Populate the |quickfix-list| with every actionable IPython 8.x
+	traceback frame from the latest RenderPlan and set the qflist
+	title to "Europa traceback".
+
+	The command does NOT call `:copen`: it only writes the list so
+	you can decide whether to open the window with your own
+	`:copen` / `:cwindow` / quickfix-plugin workflow. Once populated,
+	standard Vim motions (`:cnext`, `:cprev`, `:cfirst`, `:clast`)
+	walk between frames.
+
+	Actionable filter:
+	  - `Cell In[N], line K` is included when a code cell with
+	    `execution_count == N` exists AND `K` is within the cell's
+	    source range. Otherwise the frame is skipped.
+	  - `File ...` frames are always included; non-existent files
+	    surface Vim's standard `E:Cannot find file` when you jump
+	    to them.
+
+	When the viewer is hidden, the command warns once via `:echom`
+	(same `b:europa_jump_warned` guard as |:EuropaJumpError|) and
+	is silent on repeated invocations until `BufWinEnter` re-arms
+	the flag.
+
+	See also: |<Plug>(europa-jump-error-list)|, |:EuropaJumpError|,
+	|quickfix|
+
 FUTURE COMMANDS~
 						*europa-commands-future*
 The following commands are planned for a later phase.

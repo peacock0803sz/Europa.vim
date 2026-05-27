@@ -30,6 +30,8 @@ PLUG MAPPINGS~
 					    *<Plug>(europa-start-kernel)*
 					 *<Plug>(europa-shutdown-kernel)*
 					   *<Plug>(europa-kernel-status)*
+					      *<Plug>(europa-jump-error)*
+					 *<Plug>(europa-jump-error-list)*
 
 The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
 
@@ -56,6 +58,8 @@ The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
     <Plug>(europa-start-kernel)           Start the default kernel (python3)
     <Plug>(europa-shutdown-kernel)        Shutdown the active kernel
     <Plug>(europa-kernel-status)          Show kernel status
+    <Plug>(europa-jump-error)             Jump to traceback frame under cursor
+    <Plug>(europa-jump-error-list)        Populate qflist with all traceback frames
 
 Note: `:EuropaStartKernel [{name}]` accepts an optional kernel name argument; the
 `<Plug>(europa-start-kernel)` handle starts the default kernel. For non-default
@@ -182,6 +186,34 @@ pressed in the viewer.  See `sample.vimrc` for the canonical setup.
 
 	Example custom binding: >
 	  nmap <buffer><silent> <C-R> <Plug>(europa-redo)
+<
+
+					*<Plug>(europa-jump-error)*
+<Plug>(europa-jump-error)
+	Jump to the traceback frame under the cursor — see |:EuropaJumpError|
+	for the full behaviour.
+
+	There is NO default key binding; Europa intentionally leaves the
+	choice to the user (FR-022) because traceback jump is a power-user
+	feature and a default `gd`-style key would conflict with the user's
+	existing motions.
+
+	Example custom binding: >
+	  nmap <buffer><silent> gj <Plug>(europa-jump-error)
+<
+
+					*<Plug>(europa-jump-error-list)*
+<Plug>(europa-jump-error-list)
+	Populate the quickfix list with every actionable traceback
+	frame in the latest RenderPlan — see |:EuropaJumpErrorList| for
+	the full behaviour.
+
+	Like |<Plug>(europa-jump-error)|, no default binding because
+	a single-key default would collide with the user's existing
+	motions.
+
+	Example custom binding: >
+	  nmap <buffer><silent> gE <Plug>(europa-jump-error-list)
 <
 
 vim:tw=78:ts=8:noet:ft=help:norl:

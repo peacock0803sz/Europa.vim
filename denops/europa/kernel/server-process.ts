@@ -360,7 +360,7 @@ export async function killChildProcess(
   }
 
   // Wait up to 5s for graceful exit
-  let killTimerId: number | undefined;
+  let killTimerId: ReturnType<typeof setTimeout> | undefined;
   const status = await Promise.race([
     child.status,
     new Promise<null>((resolve) => {

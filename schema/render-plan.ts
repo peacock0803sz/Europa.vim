@@ -50,6 +50,32 @@ export const ClickActionSchema = Type.Union([
     payload: Type.String(),
   }),
   Type.Object({ type: Type.Literal("toggle_fold"), payload: Type.String() }),
+  /**
+   * Jump to a specific line inside a code cell identified by its IPython
+   * execution_count (Phase 3.8 traceback line-jump).
+   *
+   * @spec-id europa.view.traceback-jump.cell-line
+   */
+  Type.Object({
+    type: Type.Literal("jump_to_cell_line"),
+    payload: Type.Object({
+      executionCount: Type.Integer({ minimum: 1 }),
+      line: Type.Integer({ minimum: 1 }),
+    }),
+  }),
+  /**
+   * Jump to a specific line in an external file referenced by a traceback
+   * frame (Phase 3.8 external-file jump).
+   *
+   * @spec-id europa.view.traceback-jump.external-file
+   */
+  Type.Object({
+    type: Type.Literal("jump_to_file"),
+    payload: Type.Object({
+      path: Type.String({ minLength: 1 }),
+      line: Type.Integer({ minimum: 1 }),
+    }),
+  }),
 ]);
 
 export const ClickableSchema = Type.Object({
