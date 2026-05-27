@@ -16,6 +16,8 @@ import {
   vimSingleQuote,
 } from "../context.ts";
 import { scheduleHighlightRefresh } from "../syntax-highlight.ts";
+import { buildMirror } from "../../lsp/mirror.ts";
+import { materializeMirror } from "../../lsp/workspace.ts";
 
 export type MutationResult = {
   notebook: Notebook;
@@ -68,6 +70,19 @@ export async function operateCell(
     cellMap: plan.cellMap,
   });
   sessionStore.setRenderPlan(bufnr, plan);
+  if (session.lspMirror) {
+    // Structural cell op changed the notebook → regenerate the mirror so the
+    // line maps reflect the new cell order/set (FR-011 / research §8).
+    const rebuilt = buildMirror(mutation.notebook);
+    await materializeMirror(session.lspMirror.mirrorPath, rebuilt.text);
+    sessionStore.update(bufnr, {
+      lspMirror: {
+        ...session.lspMirror,
+        cellRegions: [...rebuilt.cellRegions],
+        lineProvenance: [...rebuilt.lineProvenance],
+      },
+    });
+  }
   try {
     await applyRenderPlan(denops, bufnr, plan);
     scheduleHighlightRefresh(ctx, bufnr); // FR-007: follow cell mutation

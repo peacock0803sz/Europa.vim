@@ -94,4 +94,17 @@ describe("LSP mirror edit path (US1)", () => {
       "no mirror is materialized when LSP is disabled",
     );
   });
+
+  it("(d) regenerates the mirror after a 004 cell op (FR-011 / US3)", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID); // materialize (1 cell)
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const before = (await Deno.readTextFile(mirrorFile)).match(/^# %% /gm) ??
+      [];
+    await dispatcher.insertCell(VIEWER_BUFNR, "code", "after", CELL_ID);
+    const after = (await Deno.readTextFile(mirrorFile)).match(/^# %% /gm) ?? [];
+    assertEquals(after.length, before.length + 1); // new cell reflected
+  });
 });
