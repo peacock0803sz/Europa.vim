@@ -30,8 +30,8 @@ PLUG MAPPINGS~
 					    *<Plug>(europa-start-kernel)*
 					 *<Plug>(europa-shutdown-kernel)*
 					   *<Plug>(europa-kernel-status)*
-					      *<Plug>(europa-jump-error)*
-					 *<Plug>(europa-jump-error-list)*
+					      |<Plug>(europa-jump-error)|
+					 |<Plug>(europa-jump-error-list)|
 
 The following `<Plug>` mappings are defined in `plugin/mappings.vim`:
 
