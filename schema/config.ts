@@ -97,6 +97,16 @@ export const EuropaConfigSchema = Type.Object({
 
   // Phase 009: tree-sitter syntax highlight mode (FR-010).
   ts_highlight: SyntaxHighlightModeSchema,
+
+  // Phase 3.9: LSP notebook-mirror enablement (= g:europa_lsp_enable).
+  // "auto" = enabled iff resolveScratchFiletype returns "python";
+  // true = mirror for python notebooks only (non-python falls back, FR-004);
+  // false = always fall back to the 004 acwrite scratch buffer.
+  // @spec-id europa.config.lsp-enable-default
+  lsp_enable: Type.Union(
+    [Type.Literal("auto"), Type.Literal(true), Type.Literal(false)],
+    { default: "auto" },
+  ),
 });
 
 export type EuropaConfig = Static<typeof EuropaConfigSchema>;

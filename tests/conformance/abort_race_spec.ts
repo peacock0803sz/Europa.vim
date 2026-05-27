@@ -75,6 +75,7 @@ function makeConfig(
     undo_max_history: 100,
     disable_default_mappings: false,
     ts_highlight: "auto",
+    lsp_enable: "auto",
   };
 }
 

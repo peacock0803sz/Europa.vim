@@ -55,6 +55,7 @@ const BASE_CONFIG: EuropaConfig = {
   undo_max_history: 100,
   disable_default_mappings: false,
   ts_highlight: "auto",
+  lsp_enable: "auto",
 };
 
 describe("resolveToken — priority order", () => {

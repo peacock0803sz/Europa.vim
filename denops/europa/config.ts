@@ -124,6 +124,13 @@ const OPTIONS: Array<{ key: keyof EuropaConfig; gvar: string; def: unknown }> =
       gvar: "ts_highlight",
       def: "auto",
     },
+    // Phase 3.9: LSP notebook-mirror enablement (FR-019 / FR-020)
+    // @spec-id europa.config.lsp-enable-default
+    {
+      key: "lsp_enable",
+      gvar: "lsp_enable",
+      def: "auto",
+    },
   ];
 
 /**

@@ -61,6 +61,50 @@ export const SessionSchema = Type.Object({
 });
 export type Session = Static<typeof SessionSchema>;
 
+/**
+ * Provenance of a single mirror line, used by write-back to de-normalize
+ * (FR-012d). "content" = verbatim cell source line; "marker" = the
+ * `# %% <cellId>` boundary comment; "header" = the inline suppression header
+ * at the mirror top; { kind: "magic", original } = a notebook-only line (line
+ * magic `%...` / shell `!...` / help `...?` / a cell-magic body line) that was
+ * commented out, remembering the original text for reversal.
+ */
+export const LineProvenanceSchema = Type.Union([
+  Type.Literal("content"),
+  Type.Literal("marker"),
+  Type.Literal("header"),
+  Type.Object({
+    kind: Type.Literal("magic"),
+    original: Type.String(),
+  }),
+]);
+export type LineProvenance = Static<typeof LineProvenanceSchema>;
+
+/** One code cell's region inside the mirror (0-based mirror line indices). */
+export const CellRegionSchema = Type.Object({
+  cellId: Type.String(),
+  markerLine: Type.Integer({ minimum: 0 }), // index of the `# %% <cellId>` marker
+  startLine: Type.Integer({ minimum: 0 }), // first content line (markerLine + 1)
+  endLine: Type.Integer({ minimum: 0 }), // last content line (inclusive; == startLine for an empty cell)
+});
+export type CellRegion = Static<typeof CellRegionSchema>;
+
+/**
+ * Runtime state for one notebook's on-disk `.py` mirror (Phase 3.9). Held on
+ * SessionRuntime (NOT serialized — never reaches notebook/serialize.ts,
+ * FR-016). Regenerated wholesale on every Europa-side notebook mutation
+ * (research.md §8). Cleanup deletes `mirrorPath` / `mirrorDir` only, never
+ * `workspaceRoot` (FR-018, research.md §9).
+ */
+export const LspMirrorStateSchema = Type.Object({
+  mirrorPath: Type.String({ minLength: 1 }), // real on-disk `.py` path (= buffer name)
+  workspaceRoot: Type.String({ minLength: 1 }), // project root (or $XDG_CACHE_HOME fallback); never deleted
+  mirrorDir: Type.String({ minLength: 1 }), // dedicated `.europa/lsp/` (or cache) dir — the cleanup unit
+  cellRegions: Type.Array(CellRegionSchema),
+  lineProvenance: Type.Array(LineProvenanceSchema), // length == mirror line count
+});
+export type LspMirrorState = Static<typeof LspMirrorStateSchema>;
+
 /** Reverse-lookup result from `SessionStore.findViewerByScratchBufnr`. */
 export const ScratchLookupSchema = Type.Object({
   viewerBufnr: Type.Integer({ minimum: 0 }),
