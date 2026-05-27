@@ -10,7 +10,10 @@ import { describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/assert";
 import { serializeNotebook } from "../../../denops/europa/notebook/serialize.ts";
 import { parseNotebook } from "../../../denops/europa/notebook/parse.ts";
-import type { Notebook } from "../../../schema/notebook.ts";
+import { updateCellSource } from "../../../denops/europa/notebook/cell.ts";
+import { buildMirror } from "../../../denops/europa/lsp/mirror.ts";
+import { distributeWriteBack } from "../../../denops/europa/lsp/writeback.ts";
+import type { Cell, Notebook } from "../../../schema/notebook.ts";
 
 function emptyNotebook(): Notebook {
   return { nbformat: 4, nbformat_minor: 5, metadata: {}, cells: [] };
@@ -253,4 +256,49 @@ describe("[golden] notebook round-trip", () => {
       assertEquals(roundTripped, parsed);
     });
   }
+});
+
+describe("notebook mirror round-trip (Phase 3.9, SC-011 nbformat-pristine)", () => {
+  function code(id: string, source: string): Cell {
+    return {
+      cell_type: "code",
+      id,
+      source,
+      execution_count: null,
+      outputs: [],
+      metadata: {},
+    };
+  }
+
+  it("an unedited mirror round-trips to a byte-identical .ipynb (magic preserved)", () => {
+    const original: Notebook = {
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: {},
+      cells: [
+        // magic + shell + trailing bare expression must survive the round-trip
+        code("c1", "import os\n%timeit os.getcwd()\n!ls\ndf"),
+        code("c2", "x = 1"),
+      ],
+    };
+    const build = buildMirror(original);
+    // Simulate `:w` with NO user edits: the buffer equals the mirror text.
+    const perCell = distributeWriteBack(build.text.split("\n"), build);
+
+    // De-normalization restores the original cell sources verbatim ...
+    assertEquals(perCell, [
+      { cellId: "c1", source: "import os\n%timeit os.getcwd()\n!ls\ndf" },
+      { cellId: "c2", source: "x = 1" },
+    ]);
+
+    // ... so the serialized .ipynb is byte-identical to the original (FR-016).
+    let reconstructed = original;
+    for (const { cellId, source } of perCell) {
+      reconstructed = updateCellSource(reconstructed, cellId, source);
+    }
+    assertEquals(
+      serializeNotebook(reconstructed),
+      serializeNotebook(original),
+    );
+  });
 });
