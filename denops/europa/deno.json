@@ -4,7 +4,7 @@
     "@lambdalisue/ansi-escape-code": "jsr:@lambdalisue/ansi-escape-code@^1.0.4",
     "@sinclair/typebox": "npm:@sinclair/typebox@^0.34.49",
     "@sinclair/typebox/": "npm:/@sinclair/typebox@^0.34.49/",
-    "@std/async": "jsr:@std/async@^1.3.0",
+    "@std/async": "jsr:@std/async@^1.4.0",
     "@std/cache": "jsr:@std/cache@^0.2.3",
     "@std/cli": "jsr:@std/cli@^1.0.29",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
