@@ -8,6 +8,7 @@ import { takeStructuralSnapshot } from "../notebook/structural-snapshot.ts";
 import { buildRenderPlan } from "../render/builder.ts";
 import { setupAutocmds } from "../session/events.ts";
 import { applyRenderPlan } from "../view/viewer.ts";
+import { cleanupMirrorFile } from "../lsp/workspace.ts";
 import { defineHighlights } from "../view/highlight.ts";
 import { registerTracebackPropTypes } from "../view/traceback-jump.ts";
 import {
@@ -77,6 +78,11 @@ export function buildNotebookDispatcher(
       })();
 
       await Promise.all([kernelShutdown, scratchWipeout]);
+      // Phase 3.9: remove the notebook mirror file if one was materialized
+      // (FR-018). Only the file is removed, never the shared mirror dir.
+      if (session.lspMirror) {
+        await cleanupMirrorFile(session.lspMirror.mirrorPath).catch(() => {});
+      }
       // Detach syntax highlighter before removing session (FR-003 cleanup)
       const orc = getOrCreateOrchestrator(denops);
       await orc.detach(denops, viewerBufnr).catch(() => {});
