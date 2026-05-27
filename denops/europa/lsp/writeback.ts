@@ -11,6 +11,7 @@
  *
  * Pure + synchronous: no I/O, no host RPC.
  *
+ * @category LSP
  * @module denops/europa/lsp/writeback
  */
 

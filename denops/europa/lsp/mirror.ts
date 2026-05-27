@@ -13,6 +13,7 @@
  * Pure + synchronous: no I/O, no host RPC. The I/O layer (lsp/workspace.ts)
  * writes `text` to disk and pairs the result with paths.
  *
+ * @category LSP
  * @module denops/europa/lsp/mirror
  */
 

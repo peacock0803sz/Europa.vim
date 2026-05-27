@@ -9,6 +9,7 @@
  * mirror valid Python while staying reversible via per-line provenance, so the
  * saved `.ipynb` keeps the original notation (FR-012a–d, nbformat-pristine).
  *
+ * @category LSP
  * @module denops/europa/lsp/normalize
  */
 

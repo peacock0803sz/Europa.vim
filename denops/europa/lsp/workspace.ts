@@ -13,6 +13,7 @@
  * `cleanupMirrorDir` removes only the dedicated `.europa/lsp/` (or cache)
  * directory (FR-018 / research §9).
  *
+ * @category LSP
  * @module denops/europa/lsp/workspace
  */
 
