@@ -1,9 +1,9 @@
-"""Phase 3.8 fixture: target of `File ~/.cache/europa-test/x.py:10`.
+"""Phase 3.8 fixture: target of `File ./tests/fixtures/external/x.py:10`.
 
-The setup script `scripts/setup-error-fixture.ts` copies this file
-into `~/.cache/europa-test/x.py` so the :EuropaJumpError smoke test
-against `tests/fixtures/ipynb/error-external-file.ipynb` lands the
-cursor on a real, in-repo body line.
+`tests/fixtures/ipynb/error-external-file.ipynb` references this file
+in place at `./tests/fixtures/external/x.py:10` (relative to the repo
+root), so the :EuropaJumpError smoke test lands the cursor on a real,
+in-repo body line — no copy/setup step required.
 """
 
 def foo():
