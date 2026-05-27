@@ -17,6 +17,7 @@ import { assert, assertEquals, assertExists } from "@std/assert";
 import { exists } from "@std/fs/exists";
 import { join } from "@std/path/join";
 import { buildDispatcher } from "../../../denops/europa/main.ts";
+import { loadConfig } from "../../../denops/europa/config.ts";
 import { mockVim } from "../../fixtures/mock-host.ts";
 import type { MockHost } from "../../fixtures/mock-host.ts";
 
@@ -106,5 +107,56 @@ describe("LSP mirror edit path (US1)", () => {
     await dispatcher.insertCell(VIEWER_BUFNR, "code", "after", CELL_ID);
     const after = (await Deno.readTextFile(mirrorFile)).match(/^# %% /gm) ?? [];
     assertEquals(after.length, before.length + 1); // new cell reflected
+  });
+});
+
+describe("LSP enablement matrix (US5)", () => {
+  let host: MockHost;
+  let tmp: string;
+
+  beforeEach(async () => {
+    host = mockVim();
+    tmp = await Deno.makeTempDir({ prefix: "europa-lsp-us5-" });
+    await Deno.writeTextFile(join(tmp, "pyproject.toml"), "[project]\n");
+  });
+  afterEach(async () => {
+    await Deno.remove(tmp, { recursive: true }).catch(() => {});
+  });
+
+  it("'auto' on a non-python notebook falls back to the scratch (US5 AC2)", async () => {
+    const rNotebook = JSON.stringify({
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: { kernelspec: { language: "r" } },
+      cells: [{
+        cell_type: "code",
+        id: "r1",
+        source: "x <- 1",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      }],
+    });
+    const path = join(tmp, "r.ipynb");
+    await Deno.writeTextFile(path, rNotebook);
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, path);
+    host.calls = [];
+    await dispatcher.editCell(VIEWER_BUFNR, "r1");
+
+    const bufadds = host.callsTo("bufadd").map((c) => String(c.args[1]));
+    assert(bufadds.some((n) => n.includes("__europa_cell_r1__")));
+    assertEquals(await exists(join(tmp, ".europa", "lsp", "r.py")), false);
+  });
+
+  it("exposes no client-selection config (client-agnostic, FR-007a)", async () => {
+    const config = await loadConfig(host);
+    const keys = Object.keys(config);
+    assert(keys.includes("lsp_enable"));
+    assert(
+      !keys.some((k) => /client/i.test(k)),
+      "Europa must not expose an LSP client-selection option",
+    );
   });
 });
