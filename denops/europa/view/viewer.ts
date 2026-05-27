@@ -18,6 +18,7 @@ import type {
   SixelPlacement,
 } from "../../../schema/render-plan.ts";
 import type { Cell, Notebook } from "../../../schema/notebook.ts";
+import type { CellRegion } from "../../../schema/session.ts";
 import {
   applyMdDecorations,
   ensureMdOverlayBufferOptions,
@@ -579,6 +580,102 @@ export async function openCellEditBuffer(
 
   await denops.cmd(`split #${scratchBufnr}`);
   return scratchBufnr;
+}
+
+/**
+ * Fold every non-target cell region and move the cursor to the target cell's
+ * first content line, giving per-cell focus while the LSP server still sees the
+ * whole mirror (host-agnostic: fold / setpos only, FR-005a / FR-025).
+ */
+async function focusCellRegion(
+  denops: Denops,
+  cellRegions: readonly CellRegion[],
+  cellId: string,
+): Promise<void> {
+  await denops.cmd("setlocal foldmethod=manual");
+  await denops.cmd("normal! zE"); // drop any existing folds
+  for (const region of cellRegions) {
+    if (region.cellId === cellId) continue;
+    // 0-based marker..endLine → 1-based inclusive fold range.
+    await denops.cmd(`${region.markerLine + 1},${region.endLine + 1}fold`);
+  }
+  const target = cellRegions.find((r) => r.cellId === cellId);
+  if (target) {
+    await denops.call("setpos", ".", [0, target.startLine + 1, 1, 0]);
+    await denops.cmd("normal! zz");
+  }
+}
+
+/**
+ * Open (or focus) the on-disk notebook mirror buffer and focus a cell's region
+ * (Phase 3.9 LSP path). Replaces {@link openCellEditBuffer} when LSP is enabled
+ * for a python notebook; the 004 acwrite scratch remains the fallback (FR-004).
+ *
+ * The mirror file at `opts.mirrorPath` must already be materialized on disk
+ * (the dispatcher does this); `bufload` reads it, then `&buftype=acwrite` routes
+ * `:w` through `saveCellEdit` exactly like the scratch path. All cells share one
+ * buffer so the LSP client sees a single Python module (cross-cell, FR-008).
+ *
+ * @spec-id europa.view.lsp.edit-cell-region
+ */
+export async function openCellRegion(
+  denops: Denops,
+  opts: {
+    mirrorPath: string;
+    viewerBufnr: number;
+    cellRegions: readonly CellRegion[];
+    cellId: string;
+    existingMirrorBufnr?: number;
+  },
+): Promise<number> {
+  if (opts.existingMirrorBufnr !== undefined) {
+    const exists = await denops.call("bufexists", opts.existingMirrorBufnr);
+    if (exists) {
+      const winids = await denops.call(
+        "win_findbuf",
+        opts.existingMirrorBufnr,
+      ) as number[];
+      if (winids.length > 0) {
+        await denops.call("win_gotoid", winids[0]);
+      } else {
+        await denops.cmd(`split #${opts.existingMirrorBufnr}`);
+      }
+      await focusCellRegion(denops, opts.cellRegions, opts.cellId);
+      return opts.existingMirrorBufnr;
+    }
+  }
+
+  const mirrorBufnr = await denops.call("bufadd", opts.mirrorPath) as number;
+  await denops.call("bufload", mirrorBufnr); // reads the materialized file
+
+  await denops.call("setbufvar", mirrorBufnr, "&buftype", "acwrite");
+  await denops.call("setbufvar", mirrorBufnr, "&swapfile", 0);
+  await denops.call("setbufvar", mirrorBufnr, "&bufhidden", "hide");
+  await denops.call("setbufvar", mirrorBufnr, "&buflisted", 0);
+  await denops.call("setbufvar", mirrorBufnr, "&filetype", "python");
+  await denops.call("setbufvar", mirrorBufnr, "&modified", 0);
+  await denops.call(
+    "setbufvar",
+    mirrorBufnr,
+    "europa_viewer_bufnr",
+    opts.viewerBufnr,
+  );
+
+  const group = `europa_mirror_${mirrorBufnr}`;
+  await denops.cmd(`augroup ${group}`);
+  await denops.cmd("autocmd!");
+  // Synchronous request (see openCellEditBuffer) so :wq saves before wipeout.
+  await denops.cmd(
+    `autocmd BufWriteCmd <buffer=${mirrorBufnr}> call denops#request('europa', 'saveCellEdit', [${mirrorBufnr}])`,
+  );
+  await denops.cmd(
+    `autocmd BufWipeout <buffer=${mirrorBufnr}> call denops#notify('europa', 'closeCellEdit', [${mirrorBufnr}])`,
+  );
+  await denops.cmd("augroup END");
+
+  await denops.cmd(`split #${mirrorBufnr}`);
+  await focusCellRegion(denops, opts.cellRegions, opts.cellId);
+  return mirrorBufnr;
 }
 
 /**

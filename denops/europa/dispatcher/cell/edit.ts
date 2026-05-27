@@ -9,8 +9,17 @@ import {
   closeCellEditAutocmds,
   lineToCellId as resolveLineToCellId,
   openCellEditBuffer,
+  openCellRegion,
+  resolveLspEnabled,
   resolveScratchFiletype,
 } from "../../view/viewer.ts";
+import { buildMirror } from "../../lsp/mirror.ts";
+import { distributeWriteBack } from "../../lsp/writeback.ts";
+import {
+  cleanupMirrorFile,
+  materializeMirror,
+  resolveMirrorPlacement,
+} from "../../lsp/workspace.ts";
 import {
   type DispatcherContext,
   echomError,
@@ -44,6 +53,37 @@ export function buildEditCellDispatcher(
         await echomError(denops, `editCell: cell '${cid}' not found`);
         return;
       }
+      const config = await loadConfig(denops);
+      if (resolveLspEnabled(config.lsp_enable, session.notebook, cell)) {
+        // LSP path: edit the single on-disk notebook mirror (FR-001 / FR-005a).
+        let mirror = session.lspMirror;
+        if (!mirror) {
+          const placement = await resolveMirrorPlacement(
+            session.notebookPath || undefined,
+          );
+          const build = buildMirror(session.notebook);
+          await materializeMirror(placement.mirrorPath, build.text);
+          mirror = {
+            mirrorPath: placement.mirrorPath,
+            workspaceRoot: placement.workspaceRoot,
+            mirrorDir: placement.mirrorDir,
+            cellRegions: [...build.cellRegions],
+            lineProvenance: [...build.lineProvenance],
+          };
+          sessionStore.update(bn, { lspMirror: mirror });
+        }
+        const open = await denops.call("bufnr", mirror.mirrorPath) as number;
+        const mirrorBufnr = await openCellRegion(denops, {
+          mirrorPath: mirror.mirrorPath,
+          viewerBufnr: bn,
+          cellRegions: mirror.cellRegions,
+          cellId: cid,
+          existingMirrorBufnr: open > 0 ? open : undefined,
+        });
+        sessionStore.setCellEditBuffer(bn, cid, mirrorBufnr);
+        return;
+      }
+      // 004 fallback: per-cell acwrite scratch buffer (FR-004).
       const filetype = resolveScratchFiletype(session.notebook, cell);
       const sourceLines = cell.source.split("\n");
       const existing = sessionStore.getScratchBufnr(bn, cid);
@@ -75,33 +115,56 @@ export function buildEditCellDispatcher(
         1,
         "$",
       ) as string[];
-      const newSource = lines.join("\n");
-      const cellIdx = session.notebook.cells.findIndex(
-        (c) => c.id === lookup.cellId,
-      );
-      if (cellIdx >= 0) {
+
+      const mirror = session.lspMirror;
+      let newNotebook = session.notebook;
+      if (mirror) {
+        // Mirror: distribute the whole buffer back to every cell by re-scanning
+        // the live `# %% <cellId>` markers (FR-013); one save = one undo entry.
+        const perCell = distributeWriteBack(lines, {
+          text: "",
+          cellRegions: mirror.cellRegions,
+          lineProvenance: mirror.lineProvenance,
+        });
         session.undoHistory.push({
           opType: "saveCellEdit",
           snapshot: takeStructuralSnapshot(session.notebook),
           beforeHint: { kind: "single", cellId: lookup.cellId },
           afterHint: { kind: "single", cellId: lookup.cellId },
-          scratchSync: {
-            cellId: lookup.cellId,
-            preSource: session.notebook.cells[cellIdx].source,
-          },
         });
-      }
-      const newNotebook = updateCellSource(
-        session.notebook,
-        lookup.cellId,
-        newSource,
-      );
-      if (Object.is(newNotebook, session.notebook)) {
-        await echomError(
-          denops,
-          `saveCellEdit: cell '${lookup.cellId}' is no longer in the notebook; edit was not applied`,
+        for (const { cellId, source } of perCell) {
+          newNotebook = updateCellSource(newNotebook, cellId, source);
+        }
+      } else {
+        // 004 scratch: single-cell write-back (unchanged).
+        const newSource = lines.join("\n");
+        const cellIdx = session.notebook.cells.findIndex(
+          (c) => c.id === lookup.cellId,
         );
-        return;
+        if (cellIdx >= 0) {
+          session.undoHistory.push({
+            opType: "saveCellEdit",
+            snapshot: takeStructuralSnapshot(session.notebook),
+            beforeHint: { kind: "single", cellId: lookup.cellId },
+            afterHint: { kind: "single", cellId: lookup.cellId },
+            scratchSync: {
+              cellId: lookup.cellId,
+              preSource: session.notebook.cells[cellIdx].source,
+            },
+          });
+        }
+        newNotebook = updateCellSource(
+          session.notebook,
+          lookup.cellId,
+          newSource,
+        );
+        if (Object.is(newNotebook, session.notebook)) {
+          await echomError(
+            denops,
+            `saveCellEdit: cell '${lookup.cellId}' is no longer in the notebook; edit was not applied`,
+          );
+          return;
+        }
       }
       const config = await loadConfig(denops);
       const caps = await detectCapabilities(denops);
@@ -115,6 +178,20 @@ export function buildEditCellDispatcher(
         cellMap: plan.cellMap,
       });
       sessionStore.setRenderPlan(lookup.viewerBufnr, plan);
+      if (mirror) {
+        // Regenerate the mirror state + on-disk file from the updated notebook
+        // so the line maps stay consistent for the next save (research §8). The
+        // buffer is left as-is (line count is preserved through the round-trip).
+        const rebuilt = buildMirror(newNotebook);
+        await materializeMirror(mirror.mirrorPath, rebuilt.text);
+        sessionStore.update(lookup.viewerBufnr, {
+          lspMirror: {
+            ...mirror,
+            cellRegions: [...rebuilt.cellRegions],
+            lineProvenance: [...rebuilt.lineProvenance],
+          },
+        });
+      }
       try {
         await applyRenderPlan(denops, lookup.viewerBufnr, plan);
         scheduleHighlightRefresh(ctx, lookup.viewerBufnr); // FR-007: text-edit follow-up
@@ -138,8 +215,15 @@ export function buildEditCellDispatcher(
       const sbn = Number(scratchBufnr);
       const lookup = sessionStore.findViewerByScratchBufnr(sbn);
       if (!lookup) return;
+      const session = sessionStore.get(lookup.viewerBufnr);
       sessionStore.removeCellEditBuffer(lookup.viewerBufnr, lookup.cellId);
       await closeCellEditAutocmds(denops, sbn);
+      // Mirror mode: the wiped buffer is the shared mirror — remove the on-disk
+      // file and drop the state so a later edit re-materializes (FR-018).
+      if (session?.lspMirror) {
+        await cleanupMirrorFile(session.lspMirror.mirrorPath);
+        sessionStore.update(lookup.viewerBufnr, { lspMirror: undefined });
+      }
     },
     /**
      * Resolve a 1-origin viewer buffer line number to the cell id containing it.
