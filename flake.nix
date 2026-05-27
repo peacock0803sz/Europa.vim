@@ -4,6 +4,10 @@
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nur = {
+      url = "github:nix-community/NUR";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -42,6 +46,13 @@
           # module parameters provide easy access to attributes of the same
           # system.
 
+          # Bring NUR into pkgs via its overlay so `nur.repos.<user>.<pkg>`
+          # resolves under `with pkgs;` (used by deno below).
+          _module.args.pkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [ inputs.nur.overlays.default ];
+          };
+
           pre-commit.settings.hooks = {
             # Nix formatter
             nixfmt.enable = true;
@@ -53,7 +64,7 @@
             deno-check = {
               enable = true;
               name = "deno task check";
-              entry = "${pkgs.deno}/bin/deno task check";
+              entry = "${pkgs.nur.repos.peacock0803sz.deno}/bin/deno task check";
               files = "\\.(ts|js|tsx|jsx|json|jsonc)$";
               pass_filenames = false;
             };
@@ -63,7 +74,7 @@
           devShells.default = pkgs.mkShell {
             inputsFrom = [ config.pre-commit.devShell ];
             packages = with pkgs; [
-              deno # runtime + fmt + lint + test + runs npm:typedoc
+              nur.repos.peacock0803sz.deno # runtime + fmt + lint + test + runs npm:typedoc
               pandoc # required by panvimdoc (final stage: md -> vimdoc)
               nodejs # for npm: packages with native deps
 
