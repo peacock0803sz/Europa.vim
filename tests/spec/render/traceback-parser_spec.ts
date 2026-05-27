@@ -80,6 +80,17 @@ describe("parseTraceback", () => {
     }
   });
 
+  it("extracts a File frame with a Windows drive-letter path (keeps the drive colon, splits on the final `:<line>`)", () => {
+    const frames = parseTraceback(["File C:\\proj\\x.py:10, in foo()"]);
+    assertEquals(frames.length, 1);
+    const f = frames[0];
+    assertEquals(f.kind, "file");
+    if (f.kind === "file") {
+      assertEquals(f.path, "C:\\proj\\x.py");
+      assertEquals(f.sourceLine, 10);
+    }
+  });
+
   it("does NOT match the legacy IPython 7.x <ipython-input-N-...> format (SC-017)", () => {
     const frames = parseTraceback(["<ipython-input-3-0d4c1234abcd>"]);
     assertEquals(frames, []);

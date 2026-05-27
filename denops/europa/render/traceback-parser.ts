@@ -7,7 +7,8 @@
  *
  * Two regexes are tried in priority order per line:
  *   1. Cell frame   `/Cell In\[(\d+)\], line (\d+)/`
- *   2. File frame   `/File "?([^":\n]+?)"?:(\d+)(?:, in .+)?$/m`
+ *   2. File frame   `/File "?((?:[A-Za-z]:)?[^":\n]+?)"?:(\d+)(?:, in .+)?$/m`
+ *      (the optional `[A-Za-z]:` keeps a Windows drive letter in the path).
  *
  * Only the **first match per line** is recorded (Session Q-multiple-frames-
  * per-line). The legacy IPython 7.x `<ipython-input-N-...>` shape is
@@ -36,7 +37,11 @@ type TracebackFrame =
   };
 
 const CELL_FRAME_RE = /Cell In\[(\d+)\], line (\d+)/;
-const FILE_FRAME_RE = /File "?([^":\n]+?)"?:(\d+)(?:, in .+)?$/m;
+// IPython emits Windows frames like `File C:\proj\x.py:10`, where the drive
+// colon must not be mistaken for the trailing `:<line>` separator. The
+// optional `[A-Za-z]:` prefix sits ahead of the colon-free path body so that
+// such frames parse; without it the regex cannot match them at all.
+const FILE_FRAME_RE = /File "?((?:[A-Za-z]:)?[^":\n]+?)"?:(\d+)(?:, in .+)?$/m;
 
 /**
  * Parse an array of ANSI-stripped traceback lines into a list of frames.
