@@ -5,7 +5,7 @@ requires-python = ">=3.13"
 dependencies = [
     "jupyter-server>=2.19.0",
     "matplotlib>=3.10.9",
-    "notebook>=7.5.6",
+    "notebook>=7.5.7",
     "numpy>=2.4.6",
     "pandas>=3.0.3",
 ]
