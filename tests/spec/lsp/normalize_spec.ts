@@ -42,6 +42,16 @@ describe("normalizeCell — notebook-only syntax", () => {
     assertEquals(normalizeCell("np.array??").lines, ["# np.array??"]);
   });
 
+  it("(c2) comments a PREFIX help line (? / ?? before the name)", () => {
+    // IPython also accepts `?obj` / `??obj`; left uncommented they make the
+    // whole mirror a syntax-error module for the LSP server.
+    assertEquals(normalizeCell("?obj").lines, ["# ?obj"]);
+    assertEquals(normalizeCell("?obj").provenance, [
+      { kind: "magic", original: "?obj" },
+    ]);
+    assertEquals(normalizeCell("??np.array").lines, ["# ??np.array"]);
+  });
+
   it("(c') does NOT treat a code line that merely ENDS with `?` as help", () => {
     // A trailing-`?` comment is ordinary code; commenting it out would hide
     // real code from the LSP server (diagnostics false negatives).
