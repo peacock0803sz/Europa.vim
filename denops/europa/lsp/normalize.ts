@@ -20,9 +20,10 @@ const LINE_MAGIC_RE = /^\s*%(?!%)/;
 // Shell escape: leading `!` (e.g. `!pip install x`).
 const SHELL_ESCAPE_RE = /^\s*!/;
 // Help: the WHOLE line is a name expression with `?`/`??` appended (`obj?`,
-// `np.array??`) or prepended (`?obj`, `??np.array`). Anchored so that code
-// merely ending with `?` is not hidden from the LSP server.
-const HELP_RE = /^\s*(?:[\w.]+\?\??|\?\??[\w.]+)\s*$/;
+// `np.array??`), prepended (`?obj`, `??np.array`), or a lone `?`/`??` (the
+// IPython help intro). Anchored so that code merely ending with `?` is not
+// hidden from the LSP server.
+const HELP_RE = /^\s*(?:[\w.]+\?\??|\?\??[\w.]*)\s*$/;
 // Cell magic: the cell's first non-blank line starts with `%%` (e.g. `%%bash`).
 const CELL_MAGIC_RE = /^\s*%%/;
 

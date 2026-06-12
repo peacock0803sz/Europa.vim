@@ -50,6 +50,9 @@ describe("normalizeCell — notebook-only syntax", () => {
       { kind: "magic", original: "?obj" },
     ]);
     assertEquals(normalizeCell("??np.array").lines, ["# ??np.array"]);
+    // A lone `?` / `??` (IPython help intro) is notebook-only syntax too.
+    assertEquals(normalizeCell("?").lines, ["# ?"]);
+    assertEquals(normalizeCell("??").lines, ["# ??"]);
   });
 
   it("(c') does NOT treat a code line that merely ENDS with `?` as help", () => {
