@@ -12,7 +12,6 @@ import {
   openCellRegion,
   resolveLspEnabled,
   resolveScratchFiletype,
-  syncMirrorBuffer,
 } from "../../view/viewer.ts";
 import { buildMirror } from "../../lsp/mirror.ts";
 import {
@@ -30,6 +29,7 @@ import {
   renderPlanOpts,
 } from "../context.ts";
 import { scheduleHighlightRefresh } from "../syntax-highlight.ts";
+import { refreshMirror } from "../_mirror.ts";
 
 export function buildEditCellDispatcher(
   ctx: DispatcherContext,
@@ -193,31 +193,14 @@ export function buildEditCellDispatcher(
         cellMap: plan.cellMap,
       });
       sessionStore.setRenderPlan(lookup.viewerBufnr, plan);
-      if (mirror) {
-        // Regenerate the mirror state + on-disk file from the updated notebook
-        // so the line maps stay consistent for the next save (research §8).
-        const rebuilt = buildMirror(newNotebook);
-        await materializeMirror(mirror.mirrorPath, rebuilt.text);
-        sessionStore.update(lookup.viewerBufnr, {
-          lspMirror: {
-            ...mirror,
-            cellRegions: [...rebuilt.cellRegions],
-            lineProvenance: [...rebuilt.lineProvenance],
-          },
-        });
-        if (mirror.mirrorBufnr !== undefined) {
-          // Keep the open buffer in step with the regenerated mirror. For the
-          // mirror's own :w the content was just absorbed, so force-replace it
-          // with the re-normalized text; for a scratch-originated save the
-          // buffer may hold unsaved edits and is only synced when clean.
-          await syncMirrorBuffer(
-            denops,
-            mirror.mirrorBufnr,
-            rebuilt.text.split("\n"),
-            { force: isMirrorSave },
-          );
-        }
-      }
+      // Regenerate the mirror state + on-disk file from the updated notebook
+      // so the line maps stay consistent for the next save (research §8). For
+      // the mirror's own :w the buffer content was just absorbed, so it is
+      // force-replaced with the re-normalized text; for a scratch-originated
+      // save the buffer may hold unsaved edits and is only synced when clean.
+      await refreshMirror(ctx, lookup.viewerBufnr, newNotebook, {
+        forceBufferSync: isMirrorSave,
+      });
       try {
         await applyRenderPlan(denops, lookup.viewerBufnr, plan);
         scheduleHighlightRefresh(ctx, lookup.viewerBufnr); // FR-007: text-edit follow-up
