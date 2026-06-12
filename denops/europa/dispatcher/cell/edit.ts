@@ -19,7 +19,7 @@ import {
   pickMirrorSaveHintCell,
 } from "../../lsp/writeback.ts";
 import {
-  cleanupMirrorFile,
+  cleanupMirrorOnExit,
   materializeMirror,
   resolveMirrorPlacement,
 } from "../../lsp/workspace.ts";
@@ -243,10 +243,13 @@ export function buildEditCellDispatcher(
       sessionStore.removeCellEditBuffer(lookup.viewerBufnr, lookup.cellId);
       await closeCellEditAutocmds(denops, sbn);
       // Only when the wiped buffer IS the shared mirror: remove the on-disk
-      // file and drop the state so a later edit re-materializes (FR-018). A
+      // mirror and drop the state so a later edit re-materializes (FR-018). A
       // coexisting 004 scratch wipeout must leave the mirror untouched.
+      // cleanupMirrorOnExit (not just the file) because dropping the state
+      // makes this the last chance to remove an unsaved notebook's
+      // per-session cache dir — atexit can no longer see it.
       if (session?.lspMirror?.mirrorBufnr === sbn) {
-        await cleanupMirrorFile(session.lspMirror.mirrorPath);
+        await cleanupMirrorOnExit(session.lspMirror);
         sessionStore.update(lookup.viewerBufnr, { lspMirror: undefined });
       }
     },
