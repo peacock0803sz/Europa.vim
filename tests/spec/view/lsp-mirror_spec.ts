@@ -272,6 +272,27 @@ describe("LSP mirror edit path (US1)", () => {
     );
   });
 
+  it("(i) re-opening the viewer (:e) tears the old session's mirror down", async () => {
+    // BufReadCmd re-fires open() for an already-open session; replacing it
+    // without teardown leaks the on-disk mirror forever (the new session has
+    // no lspMirror) and leaves an orphaned mirror buffer whose stale content
+    // could be re-adopted later with the stale guard unset.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    assertEquals(await exists(mirrorFile), true);
+
+    await dispatcher.open(VIEWER_BUFNR, notebookPath); // :e reload
+
+    assertEquals(
+      await exists(mirrorFile),
+      false,
+      "the previous session's mirror file must be cleaned up on reload",
+    );
+  });
+
   it("(h0) refuses a mirror :w when every cell marker is gone", async () => {
     // ggdG + rewrite leaves no `# %% <id>` markers: distributing yields zero
     // blocks, which must not be confused with a clean no-op save — Vim would
