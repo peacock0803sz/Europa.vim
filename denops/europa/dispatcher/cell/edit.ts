@@ -127,11 +127,7 @@ export function buildEditCellDispatcher(
       if (mirror && isMirrorSave) {
         // Mirror: distribute the whole buffer back to every cell by re-scanning
         // the live `# %% <cellId>` markers (FR-013); one save = one undo entry.
-        const perCell = distributeWriteBack(lines, {
-          text: "",
-          cellRegions: mirror.cellRegions,
-          lineProvenance: mirror.lineProvenance,
-        });
+        const perCell = distributeWriteBack(lines, mirror);
         session.undoHistory.push({
           opType: "saveCellEdit",
           snapshot: takeStructuralSnapshot(session.notebook),

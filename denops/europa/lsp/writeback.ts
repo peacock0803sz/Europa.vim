@@ -26,13 +26,14 @@ const MARKER_RE = /^# %% (.+)$/;
  * `{ cellId, source }` per code cell in buffer order.
  *
  * @param mirrorLines - The mirror buffer's current full contents (one per line).
- * @param build - The MirrorBuildResult the buffer was opened from (provides the
- *                per-cell provenance used to restore untouched magic lines).
+ * @param build - The regions + provenance of the build the buffer was opened
+ *                from (used to restore untouched magic lines). `text` is not
+ *                needed, so LspMirrorState is accepted directly.
  * @spec-id europa.lsp.mirror.writeback
  */
 export function distributeWriteBack(
   mirrorLines: readonly string[],
-  build: MirrorBuildResult,
+  build: Pick<MirrorBuildResult, "cellRegions" | "lineProvenance">,
 ): ReadonlyArray<{ cellId: string; source: string }> {
   // Per-cell provenance from the build (for restoring untouched magic lines).
   const provByCell = new Map<string, readonly LineProvenance[]>();

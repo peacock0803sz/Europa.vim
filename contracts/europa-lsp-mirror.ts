@@ -220,14 +220,15 @@ export type MapCellLineToMirror = (
  *
  * @param mirrorLines - The mirror buffer's current full contents (one entry
  *                       per line, e.g. from `getbufline(bufnr, 1, "$")`).
- * @param build - The `MirrorBuildResult` the regions / provenance came from
- *                (= the build that produced the buffer the user edited).
+ * @param build - The regions / provenance of the build that produced the
+ *                buffer the user edited. Only these two fields are consumed
+ *                (`text` is not), so `LspMirrorState` is accepted directly.
  * @returns One `{ cellId, source }` per code cell, in notebook order.
  * @spec-id europa.lsp.mirror.writeback
  */
 export type DistributeWriteBack = (
   mirrorLines: readonly string[],
-  build: MirrorBuildResult,
+  build: Pick<MirrorBuildResult, "cellRegions" | "lineProvenance">,
 ) => ReadonlyArray<{ cellId: string; source: string }>;
 
 /**
