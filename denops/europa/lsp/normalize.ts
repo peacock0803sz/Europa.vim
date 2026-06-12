@@ -19,8 +19,9 @@ import type { LineProvenance } from "../../../schema/session.ts";
 const LINE_MAGIC_RE = /^\s*%(?!%)/;
 // Shell escape: leading `!` (e.g. `!pip install x`).
 const SHELL_ESCAPE_RE = /^\s*!/;
-// Help: line ends with `?` or `??` (e.g. `obj?` / `obj??`).
-const HELP_RE = /\?\??\s*$/;
+// Help: the WHOLE line is a name expression + `?`/`??` (`obj?`, `np.array??`).
+// Anchored so code merely ending with `?` is not hidden from the LSP server.
+const HELP_RE = /^\s*[\w.]+\?\??\s*$/;
 // Cell magic: the cell's first non-blank line starts with `%%` (e.g. `%%bash`).
 const CELL_MAGIC_RE = /^\s*%%/;
 

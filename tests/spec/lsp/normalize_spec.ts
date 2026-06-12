@@ -38,6 +38,20 @@ describe("normalizeCell — notebook-only syntax", () => {
     assertEquals(normalizeCell("obj??").provenance, [
       { kind: "magic", original: "obj??" },
     ]);
+    // Dotted attribute access is still a whole-line help expression.
+    assertEquals(normalizeCell("np.array??").lines, ["# np.array??"]);
+  });
+
+  it("(c') does NOT treat a code line that merely ENDS with `?` as help", () => {
+    // A trailing-`?` comment is ordinary code; commenting it out would hide
+    // real code from the LSP server (diagnostics false negatives).
+    const withComment = "x = compute()  # TODO: correct?";
+    assertEquals(normalizeCell(withComment).lines, [withComment]);
+    assertEquals(normalizeCell(withComment).provenance, ["content"]);
+    // A bare comment line ending with `?` stays content too.
+    const comment = "# is this right?";
+    assertEquals(normalizeCell(comment).lines, [comment]);
+    assertEquals(normalizeCell(comment).provenance, ["content"]);
   });
 
   it("(d) comments the WHOLE cell when the first line is a cell magic", () => {
