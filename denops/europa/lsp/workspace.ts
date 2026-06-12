@@ -71,10 +71,16 @@ export async function resolveMirrorPlacement(
       mirrorDir,
     };
   }
-  // Unsaved notebook: isolate in a per-session cache dir (XDG, ~/.cache fallback).
+  // Unsaved notebook: isolate in a per-session cache dir (XDG, ~/.cache
+  // fallback). With neither env var set, fall back to a real temp dir —
+  // a CWD-relative ".cache" would drop a directory into whatever directory
+  // the denops host happens to run in.
+  const home = Deno.env.get("HOME");
   const cacheBase = Deno.env.get("XDG_CACHE_HOME") ??
-    join(Deno.env.get("HOME") ?? ".", ".cache");
-  const mirrorDir = join(cacheBase, "europa", "lsp", crypto.randomUUID());
+    (home !== undefined && home !== "" ? join(home, ".cache") : undefined);
+  const mirrorDir = cacheBase !== undefined
+    ? join(cacheBase, "europa", "lsp", crypto.randomUUID())
+    : await Deno.makeTempDir({ prefix: "europa-lsp-" });
   // For an unsaved notebook the mirror dir IS the workspace root (nothing else
   // to anchor to); cleanup still only ever removes mirrorDir, never a parent.
   return {
