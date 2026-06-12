@@ -15,7 +15,10 @@ import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import type { Cell, Notebook } from "../../../schema/notebook.ts";
 import { buildMirror } from "../../../denops/europa/lsp/mirror.ts";
-import { distributeWriteBack } from "../../../denops/europa/lsp/writeback.ts";
+import {
+  distributeWriteBack,
+  pickMirrorSaveHintCell,
+} from "../../../denops/europa/lsp/writeback.ts";
 
 function code(id: string, source: string): Cell {
   return {
@@ -118,5 +121,39 @@ describe("distributeWriteBack", () => {
       source: "a = 1\n# %% my jupytext note\na2 = 2",
     });
     assertEquals(out[1], { cellId: "c2", source: "b = 2" });
+  });
+});
+
+describe("pickMirrorSaveHintCell", () => {
+  // A mirror :w can change several cells at once while the registered
+  // edit-origin cell stays untouched (e.g. a formatter pass), so the undo
+  // hint must point at a cell that actually changed.
+  const cells = [
+    { id: "c1", source: "a = 1" },
+    { id: "c2", source: "b = 2" },
+  ];
+
+  it("prefers the origin cell when it actually changed", () => {
+    const perCell = [
+      { cellId: "c1", source: "a = 100" },
+      { cellId: "c2", source: "b = 99" },
+    ];
+    assertEquals(pickMirrorSaveHintCell(perCell, cells, "c1"), "c1");
+  });
+
+  it("falls back to the first changed cell when the origin is untouched", () => {
+    const perCell = [
+      { cellId: "c1", source: "a = 1" }, // unchanged origin
+      { cellId: "c2", source: "b = 99" },
+    ];
+    assertEquals(pickMirrorSaveHintCell(perCell, cells, "c1"), "c2");
+  });
+
+  it("returns the origin for a no-op save (nothing changed)", () => {
+    const perCell = [
+      { cellId: "c1", source: "a = 1" },
+      { cellId: "c2", source: "b = 2" },
+    ];
+    assertEquals(pickMirrorSaveHintCell(perCell, cells, "c1"), "c1");
   });
 });

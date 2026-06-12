@@ -15,7 +15,10 @@ import {
   syncMirrorBuffer,
 } from "../../view/viewer.ts";
 import { buildMirror } from "../../lsp/mirror.ts";
-import { distributeWriteBack } from "../../lsp/writeback.ts";
+import {
+  distributeWriteBack,
+  pickMirrorSaveHintCell,
+} from "../../lsp/writeback.ts";
 import {
   cleanupMirrorFile,
   materializeMirror,
@@ -129,11 +132,18 @@ export function buildEditCellDispatcher(
         // Mirror: distribute the whole buffer back to every cell by re-scanning
         // the live `# %% <cellId>` markers (FR-013); one save = one undo entry.
         const perCell = distributeWriteBack(lines, mirror);
+        // The hint must name a cell that actually changed — the registered
+        // origin cell may be untouched when e.g. a formatter edited others.
+        const hintCellId = pickMirrorSaveHintCell(
+          perCell,
+          session.notebook.cells,
+          lookup.cellId,
+        );
         session.undoHistory.push({
           opType: "saveCellEdit",
           snapshot: takeStructuralSnapshot(session.notebook),
-          beforeHint: { kind: "single", cellId: lookup.cellId },
-          afterHint: { kind: "single", cellId: lookup.cellId },
+          beforeHint: { kind: "single", cellId: hintCellId },
+          afterHint: { kind: "single", cellId: hintCellId },
         });
         for (const { cellId, source } of perCell) {
           newNotebook = updateCellSource(newNotebook, cellId, source);
