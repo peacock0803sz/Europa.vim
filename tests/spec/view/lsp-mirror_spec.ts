@@ -233,6 +233,38 @@ describe("LSP mirror edit path (US1)", () => {
       "the already-open mirror buffer must be reused",
     );
   });
+
+  it("(g) :EuropaUndo of a cell op regenerates the mirror (file + buffer)", async () => {
+    // Undo restores the notebook like any other structural mutation; without
+    // regeneration the on-disk mirror, the open buffer, and the line maps all
+    // stay at the pre-undo state, and the next mirror :w silently re-applies
+    // the undone change.
+    const countMarkers = (text: string) =>
+      (text.match(/^# %% /gm) ?? []).length;
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
+    await dispatcher.insertCell(VIEWER_BUFNR, "code", "after", CELL_ID);
+    assertEquals(countMarkers(await Deno.readTextFile(mirrorFile)), 2);
+
+    await dispatcher.europaUndo(VIEWER_BUFNR);
+    await new Promise((r) => setTimeout(r, 80)); // drain the undo FIFO
+
+    assertEquals(
+      countMarkers(await Deno.readTextFile(mirrorFile)),
+      1,
+      "the on-disk mirror must reflect the undone notebook",
+    );
+    assertEquals(
+      host.getBufLines(mirrorBufnr).filter((l) => l.startsWith("# %% "))
+        .length,
+      1,
+      "the open mirror buffer must reflect the undone notebook",
+    );
+  });
 });
 
 describe("LSP enablement matrix (US5)", () => {
