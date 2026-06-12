@@ -116,6 +116,23 @@ describe("distributeWriteBack", () => {
     ]);
   });
 
+  it("(h) routes content inserted before the first marker into the first cell", () => {
+    // An LSP "add missing import" / organize-imports action inserts at the
+    // top of the module — after the suppression header, before the first
+    // marker. Dropping those lines would silently lose an applied edit.
+    const build = buildMirror(
+      nb([code("c1", "a = np.int64(1)"), code("c2", "b = 2")]),
+    );
+    const lines = build.text.split("\n");
+    lines.splice(2, 0, "import numpy as np"); // after the 2 header lines
+    const out = distributeWriteBack(lines, build);
+    assertEquals(out[0], {
+      cellId: "c1",
+      source: "import numpy as np\na = np.int64(1)",
+    });
+    assertEquals(out[1], { cellId: "c2", source: "b = 2" });
+  });
+
   it("(g) keeps a user-typed `# %% ...` line (unknown cellId) as cell content", () => {
     // A jupytext-style comment inside a cell must NOT become a cell boundary —
     // otherwise every line after it would be routed to a nonexistent cell and

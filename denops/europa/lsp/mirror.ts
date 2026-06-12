@@ -29,8 +29,10 @@ export type { MirrorBuildResult };
  * the unused-/pointless-expression rules that a notebook's trailing bare
  * expressions (`df`) would otherwise trip, while inheriting the user's project
  * pyright/ruff config + venv (no competing config file is written, research §2).
+ * Exported so write-back can recognize (and drop) exactly these lines in the
+ * pre-first-marker region while preserving everything else there.
  */
-const SUPPRESSION_HEADER: readonly string[] = [
+export const SUPPRESSION_HEADER: readonly string[] = [
   "# pyright: reportUnusedExpression=false",
   "# ruff: noqa: B018, B015",
 ];
