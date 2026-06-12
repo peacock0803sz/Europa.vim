@@ -35,7 +35,11 @@ export function buildEditCellDispatcher(
   ctx: DispatcherContext,
 ): Pick<
   EuropaDispatcher,
-  "editCell" | "saveCellEdit" | "closeCellEdit" | "lineToCellId"
+  | "editCell"
+  | "saveCellEdit"
+  | "closeCellEdit"
+  | "mirrorReloaded"
+  | "lineToCellId"
 > {
   const { denops, sessionStore } = ctx;
   return {
@@ -129,6 +133,17 @@ export function buildEditCellDispatcher(
       // SAVING buffer is the mirror itself — a scratch's lines have no markers
       // and would otherwise be silently dropped.
       const isMirrorSave = mirror !== undefined && mirror.mirrorBufnr === sbn;
+      if (mirror && isMirrorSave && mirror.bufferStale) {
+        // The notebook changed while this buffer held unsaved edits, so its
+        // lines describe the OLD cell layout: distributing them against the
+        // new regions would merge removed cells' content into neighbours.
+        await echomError(
+          denops,
+          "saveCellEdit: the mirror buffer is out of sync with the notebook" +
+            " — :edit! it to reload (this discards its unsaved edits)",
+        );
+        return;
+      }
       let newNotebook = session.notebook;
       if (mirror && isMirrorSave) {
         // Mirror: distribute the whole buffer back to every cell by re-scanning
@@ -234,6 +249,26 @@ export function buildEditCellDispatcher(
         await cleanupMirrorFile(session.lspMirror.mirrorPath);
         sessionStore.update(lookup.viewerBufnr, { lspMirror: undefined });
       }
+    },
+    /**
+     * Lift the stale-save guard after the mirror buffer is reloaded from
+     * disk: the on-disk mirror is regenerated on every notebook mutation, so
+     * a reload (`:edit!`, BufReadPost) brings the buffer back in sync with
+     * the regions/provenance held in state.
+     *
+     * @spec-id europa.dispatcher.mirror-reloaded
+     */
+    mirrorReloaded(mirrorBufnr: unknown): Promise<void> {
+      const sbn = Number(mirrorBufnr);
+      const lookup = sessionStore.findViewerByScratchBufnr(sbn);
+      if (!lookup) return Promise.resolve();
+      const mirror = sessionStore.get(lookup.viewerBufnr)?.lspMirror;
+      if (mirror?.mirrorBufnr === sbn && mirror.bufferStale) {
+        sessionStore.update(lookup.viewerBufnr, {
+          lspMirror: { ...mirror, bufferStale: false },
+        });
+      }
+      return Promise.resolve();
     },
     /**
      * Resolve a 1-origin viewer buffer line number to the cell id containing it.

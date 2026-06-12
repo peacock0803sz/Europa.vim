@@ -10,6 +10,7 @@
  *
  * @module tests/spec/view/lsp-mirror_spec
  * @spec-id europa.view.lsp.edit-cell-region
+ * @spec-id europa.dispatcher.mirror-reloaded
  */
 
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
@@ -263,6 +264,54 @@ describe("LSP mirror edit path (US1)", () => {
         .length,
       1,
       "the open mirror buffer must reflect the undone notebook",
+    );
+  });
+
+  it("(h) refuses a mirror :w from a stale buffer until it is reloaded", async () => {
+    // When a structural op regenerates the mirror while the buffer holds
+    // unsaved edits, the buffer keeps the OLD cell layout: distributing it
+    // against the new regions would merge a deleted/changed cell's lines into
+    // a neighbour. Such a save must be refused, not silently corrupted.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
+    // Unsaved edits in the mirror ...
+    await host.call("appendbufline", mirrorBufnr, "$", "tainted = 1");
+    await host.call("setbufvar", mirrorBufnr, "&modified", 1);
+    // ... then a structural op regenerates the mirror (buffer sync skipped).
+    await dispatcher.insertCell(VIEWER_BUFNR, "code", "after", CELL_ID);
+
+    host.calls = [];
+    await dispatcher.saveCellEdit(mirrorBufnr);
+
+    assert(
+      host.cmdsMatching("out of sync").length > 0,
+      "the stale save must be refused with an explanation",
+    );
+    assert(
+      !host.getBufLines(VIEWER_BUFNR).some((l) => l.includes("tainted")),
+      "the stale buffer's lines must not reach the notebook",
+    );
+
+    // Reloading from disk (:e! → BufReadPost → mirrorReloaded) resyncs.
+    const text = await Deno.readTextFile(mirrorFile);
+    const reloaded = text.endsWith("\n")
+      ? text.slice(0, -1).split("\n")
+      : text.split("\n");
+    await host.call("setbufline", mirrorBufnr, 1, reloaded);
+    await host.call("deletebufline", mirrorBufnr, reloaded.length + 1, "$");
+    await host.call("setbufvar", mirrorBufnr, "&modified", 0);
+    await dispatcher.mirrorReloaded(mirrorBufnr);
+
+    host.calls = [];
+    await dispatcher.saveCellEdit(mirrorBufnr);
+    assertEquals(
+      host.cmdsMatching("out of sync").length,
+      0,
+      "a reloaded mirror buffer must save normally again",
     );
   });
 });

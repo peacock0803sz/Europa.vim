@@ -35,19 +35,22 @@ export async function refreshMirror(
   if (!mirror) return;
   const rebuilt = buildMirror(notebook);
   await materializeMirror(mirror.mirrorPath, rebuilt.text);
-  sessionStore.update(bufnr, {
-    lspMirror: {
-      ...mirror,
-      cellRegions: [...rebuilt.cellRegions],
-      lineProvenance: [...rebuilt.lineProvenance],
-    },
-  });
-  if (mirror.mirrorBufnr !== undefined) {
+  // A skipped buffer reload (unsaved edits) leaves the buffer's lines behind
+  // the regions/provenance stored below — record that so that saveCellEdit
+  // can refuse a :w from the stale buffer instead of corrupting cells.
+  const synced = mirror.mirrorBufnr === undefined ||
     await syncMirrorBuffer(
       denops,
       mirror.mirrorBufnr,
       rebuilt.text.split("\n"),
       { force: opts.forceBufferSync },
     );
-  }
+  sessionStore.update(bufnr, {
+    lspMirror: {
+      ...mirror,
+      cellRegions: [...rebuilt.cellRegions],
+      lineProvenance: [...rebuilt.lineProvenance],
+      bufferStale: !synced,
+    },
+  });
 }

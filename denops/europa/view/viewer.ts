@@ -590,15 +590,19 @@ export async function openCellEditBuffer(
  * they must never be discarded — unless `force` is set, which the dispatcher
  * uses right after the buffer's own `:w` (its content was just absorbed, so
  * it is replaced by the re-normalized mirror).
+ *
+ * Returns whether the buffer now matches `mirrorLines`: `false` only for the
+ * skipped-because-modified case, which the caller records as `bufferStale`
+ * so a later `:w` from the stale buffer can be refused.
  */
 export async function syncMirrorBuffer(
   denops: Denops,
   mirrorBufnr: number,
   mirrorLines: readonly string[],
   opts: { force?: boolean } = {},
-): Promise<void> {
+): Promise<boolean> {
   const loaded = await denops.call("bufexists", mirrorBufnr) as number;
-  if (!loaded) return;
+  if (!loaded) return true; // no buffer → nothing that could go stale
   if (!opts.force) {
     const modified = await denops.call(
       "getbufvar",
@@ -608,14 +612,15 @@ export async function syncMirrorBuffer(
     );
     if (Number(modified) !== 0) {
       await denops.cmd(
-        "echohl WarningMsg | echom 'Europa: notebook changed but the mirror buffer has unsaved edits — save or :edit! it to resync' | echohl None",
+        "echohl WarningMsg | echom 'Europa: notebook changed but the mirror buffer has unsaved edits — :edit! it to resync' | echohl None",
       );
-      return;
+      return false;
     }
   }
   await denops.call("setbufline", mirrorBufnr, 1, [...mirrorLines]);
   await denops.call("deletebufline", mirrorBufnr, mirrorLines.length + 1, "$");
   await denops.call("setbufvar", mirrorBufnr, "&modified", 0);
+  return true;
 }
 
 /**
@@ -706,6 +711,11 @@ export async function openCellRegion(
   );
   await denops.cmd(
     `autocmd BufWipeout <buffer=${mirrorBufnr}> call denops#notify('europa', 'closeCellEdit', [${mirrorBufnr}])`,
+  );
+  // A reload from disk (:e!) brings the buffer back in sync with the latest
+  // regenerated mirror, lifting the stale-save guard.
+  await denops.cmd(
+    `autocmd BufReadPost <buffer=${mirrorBufnr}> call denops#notify('europa', 'mirrorReloaded', [${mirrorBufnr}])`,
   );
   await denops.cmd("augroup END");
 

@@ -106,6 +106,11 @@ export const LspMirrorStateSchema = Type.Object({
   // coexist (g:europa_lsp_enable is re-read per editCell), so save / wipeout
   // handlers gate the mirror path on THIS buffer, not on state presence.
   mirrorBufnr: Type.Optional(Type.Integer({ minimum: 1 })),
+  // True when a notebook mutation regenerated the mirror while the open
+  // buffer held unsaved edits (its reload was skipped): the buffer's lines no
+  // longer match cellRegions/lineProvenance, so a :w from it must be refused
+  // until the user reloads it from disk (BufReadPost clears the flag).
+  bufferStale: Type.Optional(Type.Boolean()),
 });
 export type LspMirrorState = Static<typeof LspMirrorStateSchema>;
 
