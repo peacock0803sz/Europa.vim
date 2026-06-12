@@ -209,6 +209,30 @@ describe("LSP mirror edit path (US1)", () => {
       : saved.cells[0].source;
     assertEquals(source, "%timeit f()\nx = 1\n");
   });
+
+  it("(f) re-focusing an open mirror reuses the tracked bufnr, not a name lookup", async () => {
+    // bufnr("<path>") is a file-PATTERN lookup: wildcards in the path break
+    // it and substring matches can resolve to an UNRELATED buffer that would
+    // then receive the mirror autocmds. The dispatcher must reuse the bufnr
+    // tracked in lspMirror state instead.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    host.calls = [];
+
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+
+    assert(
+      host.callsTo("bufnr").every((c) => typeof c.args[1] !== "string"),
+      "must not look the mirror buffer up by name",
+    );
+    assertEquals(
+      host.callsTo("bufadd").length,
+      0,
+      "the already-open mirror buffer must be reused",
+    );
+  });
 });
 
 describe("LSP enablement matrix (US5)", () => {

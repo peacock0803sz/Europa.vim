@@ -76,13 +76,15 @@ export function buildEditCellDispatcher(
           };
           sessionStore.update(bn, { lspMirror: mirror });
         }
-        const open = await denops.call("bufnr", mirror.mirrorPath) as number;
+        // Reuse the bufnr tracked in state — bufnr("<path>") treats the name
+        // as a file-pattern (wildcards, substring matches) and can resolve to
+        // an unrelated buffer. openCellRegion re-validates it via bufexists.
         const mirrorBufnr = await openCellRegion(denops, {
           mirrorPath: mirror.mirrorPath,
           viewerBufnr: bn,
           cellRegions: mirror.cellRegions,
           cellId: cid,
-          existingMirrorBufnr: open > 0 ? open : undefined,
+          existingMirrorBufnr: mirror.mirrorBufnr,
         });
         sessionStore.update(bn, { lspMirror: { ...mirror, mirrorBufnr } });
         sessionStore.setCellEditBuffer(bn, cid, mirrorBufnr);
