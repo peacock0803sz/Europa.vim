@@ -272,6 +272,37 @@ describe("LSP mirror edit path (US1)", () => {
     );
   });
 
+  it("(h0) refuses a mirror :w when every cell marker is gone", async () => {
+    // ggdG + rewrite leaves no `# %% <id>` markers: distributing yields zero
+    // blocks, which must not be confused with a clean no-op save — Vim would
+    // report success while the buffer content is silently ignored.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+    const total = host.getBufLines(mirrorBufnr).length;
+    await host.call("setbufline", mirrorBufnr, 1, ["x = 1"]);
+    await host.call("deletebufline", mirrorBufnr, 2, total);
+    await host.call("setbufvar", mirrorBufnr, "&modified", 1);
+    host.calls = [];
+
+    await dispatcher.saveCellEdit(mirrorBufnr);
+
+    assert(
+      host.cmdsMatching("marker").length > 0,
+      "the markerless save must be refused with an explanation",
+    );
+    assertEquals(
+      await host.call("getbufvar", mirrorBufnr, "&modified"),
+      1,
+      "the buffer must stay modified so the content is not presumed saved",
+    );
+  });
+
   it("(h) refuses a mirror :w from a stale buffer until it is reloaded", async () => {
     // When a structural op regenerates the mirror while the buffer holds
     // unsaved edits, the buffer keeps the OLD cell layout: distributing it

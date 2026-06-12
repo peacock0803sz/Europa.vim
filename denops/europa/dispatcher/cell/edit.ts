@@ -190,6 +190,18 @@ export function buildEditCellDispatcher(
         // Mirror: distribute the whole buffer back to every cell by re-scanning
         // the live `# %% <cellId>` markers (FR-013); one save = one undo entry.
         const perCell = distributeWriteBack(lines, mirror);
+        if (perCell.length === 0 && mirror.cellRegions.length > 0) {
+          // Zero blocks from a non-empty build means every marker was
+          // deleted/rewritten — NOT a clean no-op. Acknowledging the write
+          // would silently ignore the whole buffer and let the next sync
+          // replace it.
+          await echomError(
+            denops,
+            "saveCellEdit: no cell markers left in the mirror buffer" +
+              " — :edit! it to restore them (the buffer was not saved)",
+          );
+          return;
+        }
         // The hint must name a cell that actually changed — the registered
         // origin cell may be untouched when e.g. a formatter edited others.
         // null = no cell changed: skip the undo entry so a no-op :w does not
