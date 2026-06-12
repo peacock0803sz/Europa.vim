@@ -517,6 +517,37 @@ describe("mirror / 004-scratch coexistence", () => {
     );
   });
 
+  it("a mirror orphaned by a scratch re-registration still saves and cleans up", async () => {
+    // Re-opening a cell as a 004 scratch (after the toggle flips) overwrites
+    // the cellId→bufnr registration; the still-open mirror must remain
+    // reachable via lspMirror state, or its :w becomes a silent no-op and
+    // its wipeout leaks the on-disk file.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL); // scratch takes the slot
+
+    const lines = host.getBufLines(mirrorBufnr).slice();
+    lines[lines.indexOf("a = 1")] = "a = 42";
+    await host.call("setbufline", mirrorBufnr, 1, lines);
+    await dispatcher.saveCellEdit(mirrorBufnr);
+    assert(
+      host.getBufLines(VIEWER).some((l) => l.includes("a = 42")),
+      "the orphaned mirror's :w must still reach the notebook",
+    );
+
+    await dispatcher.closeCellEdit(mirrorBufnr);
+    assertEquals(
+      await exists(mirrorFile),
+      false,
+      "the orphaned mirror's wipeout must still remove the file",
+    );
+  });
+
   it("saving a 004 scratch while a mirror exists commits the scratch edit", async () => {
     const dispatcher = buildDispatcher(host);
     const scratchBufnr = await openMirrorThenScratch(dispatcher);

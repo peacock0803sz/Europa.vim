@@ -30,6 +30,33 @@ import {
 } from "../context.ts";
 import { scheduleHighlightRefresh } from "../syntax-highlight.ts";
 import { refreshMirror } from "../_mirror.ts";
+import type { SessionStore } from "../../session/state.ts";
+
+/**
+ * Resolve the viewer/cell a saving or wiped buffer belongs to. The cellId
+ * registration can be overwritten when a cell is re-opened as a 004 scratch
+ * (the lsp_enable toggle is re-read per editCell), which would orphan a
+ * still-open mirror buffer — its :w silently no-ops and its wipeout leaks
+ * the on-disk file. Fall back to the mirror bufnr tracked in session state.
+ */
+function resolveEditTarget(
+  sessionStore: SessionStore,
+  sbn: number,
+): { viewerBufnr: number; cellId: string } | undefined {
+  const lookup = sessionStore.findViewerByScratchBufnr(sbn);
+  if (lookup) return lookup;
+  for (const session of sessionStore.all()) {
+    if (session.lspMirror?.mirrorBufnr === sbn) {
+      // Any mirrored cell works as the nominal origin: the mirror save path
+      // only uses it as the undo-hint fallback.
+      const cellId = session.lspMirror.cellRegions[0]?.cellId;
+      if (cellId !== undefined) {
+        return { viewerBufnr: session.bufnr, cellId };
+      }
+    }
+  }
+  return undefined;
+}
 
 export function buildEditCellDispatcher(
   ctx: DispatcherContext,
@@ -121,7 +148,7 @@ export function buildEditCellDispatcher(
      */
     async saveCellEdit(scratchBufnr: unknown): Promise<void> {
       const sbn = Number(scratchBufnr);
-      const lookup = sessionStore.findViewerByScratchBufnr(sbn);
+      const lookup = resolveEditTarget(sessionStore, sbn);
       if (!lookup) return;
       const session = sessionStore.get(lookup.viewerBufnr);
       if (!session) return;
@@ -247,7 +274,7 @@ export function buildEditCellDispatcher(
      */
     async closeCellEdit(scratchBufnr: unknown): Promise<void> {
       const sbn = Number(scratchBufnr);
-      const lookup = sessionStore.findViewerByScratchBufnr(sbn);
+      const lookup = resolveEditTarget(sessionStore, sbn);
       if (!lookup) return;
       const session = sessionStore.get(lookup.viewerBufnr);
       // The mirror is registered once per edited cell — remove EVERY entry
@@ -284,7 +311,7 @@ export function buildEditCellDispatcher(
      */
     mirrorReloaded(mirrorBufnr: unknown): Promise<void> {
       const sbn = Number(mirrorBufnr);
-      const lookup = sessionStore.findViewerByScratchBufnr(sbn);
+      const lookup = resolveEditTarget(sessionStore, sbn);
       if (!lookup) return Promise.resolve();
       const mirror = sessionStore.get(lookup.viewerBufnr)?.lspMirror;
       if (mirror?.mirrorBufnr === sbn && mirror.bufferStale) {
