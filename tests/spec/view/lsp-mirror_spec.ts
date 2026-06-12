@@ -450,6 +450,33 @@ describe("mirror / 004-scratch coexistence", () => {
     );
   });
 
+  it("wiping a mirror that served several cells clears every registration", async () => {
+    // The mirror is registered once per edited cell; removing only the
+    // entry the wipeout resolved to leaves the other cellId→bufnr entries
+    // dangling, and a later save against the dead bufnr would route the
+    // whole mirror text into that cell via the 004 scratch path.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+    await dispatcher.editCell(VIEWER, SCRATCH_CELL); // same mirror, 2nd cell
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+    assert(mirrorBufnr > 0);
+
+    await dispatcher.closeCellEdit(mirrorBufnr);
+
+    const before = host.getBufLines(VIEWER).slice();
+    await dispatcher.saveCellEdit(mirrorBufnr);
+    assertEquals(
+      host.getBufLines(VIEWER),
+      before,
+      "a save against the wiped mirror bufnr must be a no-op",
+    );
+  });
+
   it("wiping the mirror buffer itself still cleans up the mirror file", async () => {
     const dispatcher = buildDispatcher(host);
     host.currentBufnr = VIEWER;

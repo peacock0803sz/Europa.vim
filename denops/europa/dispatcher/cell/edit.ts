@@ -240,7 +240,18 @@ export function buildEditCellDispatcher(
       const lookup = sessionStore.findViewerByScratchBufnr(sbn);
       if (!lookup) return;
       const session = sessionStore.get(lookup.viewerBufnr);
-      sessionStore.removeCellEditBuffer(lookup.viewerBufnr, lookup.cellId);
+      // The mirror is registered once per edited cell — remove EVERY entry
+      // pointing at the wiped bufnr, or a later save against the dead bufnr
+      // would still resolve and route through the 004 scratch path.
+      for (
+        const [cellId, bufnr] of sessionStore.getAllScratchBufnrs(
+          lookup.viewerBufnr,
+        )
+      ) {
+        if (bufnr === sbn) {
+          sessionStore.removeCellEditBuffer(lookup.viewerBufnr, cellId);
+        }
+      }
       await closeCellEditAutocmds(denops, sbn);
       // Only when the wiped buffer IS the shared mirror: remove the on-disk
       // mirror and drop the state so a later edit re-materializes (FR-018). A

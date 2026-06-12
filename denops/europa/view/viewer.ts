@@ -702,7 +702,9 @@ export async function openCellRegion(
     opts.viewerBufnr,
   );
 
-  const group = `europa_mirror_${mirrorBufnr}`;
+  // Same group naming as the 004 scratch so the shared teardown paths
+  // (closeCellEditAutocmds, viewer cleanup) remove the mirror's group too.
+  const group = `europa_cell_edit_${mirrorBufnr}`;
   await denops.cmd(`augroup ${group}`);
   await denops.cmd("autocmd!");
   // Synchronous request (see openCellEditBuffer) so :wq saves before wipeout.
