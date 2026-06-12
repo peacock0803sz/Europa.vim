@@ -160,6 +160,23 @@ export class MockHost implements Denops {
     if (augroupClear) {
       this._autocmdGroups.delete(augroupClear[1]);
     }
+    // bwipeout[!] <nr> — the :cmd form used by the teardown paths; mirror
+    // the call-form handling so wiped buffers actually disappear in tests.
+    const bwipe = command.match(/^bwipeout!?\s+(\d+)$/);
+    if (bwipe) {
+      const nr = parseInt(bwipe[1]);
+      const buf = this._buffers.get(nr);
+      if (buf) {
+        buf.exists = false;
+        buf.loaded = false;
+      }
+      for (const [name, n] of this._bufnames) {
+        if (n === nr) {
+          this._bufnames.delete(name);
+          break;
+        }
+      }
+    }
     return Promise.resolve();
   }
 

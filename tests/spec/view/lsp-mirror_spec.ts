@@ -574,6 +574,30 @@ describe("mirror / 004-scratch coexistence", () => {
     );
   });
 
+  it("re-opening the viewer wipes a mirror buffer that lost its registrations", async () => {
+    // deleteCell drops the mirror's per-cell registration, so the teardown's
+    // scratch loop misses the mirror buffer; without an explicit wipe a
+    // re-materialize at the same path re-adopts the stale loaded buffer via
+    // bufadd (bufload no-ops) with the stale-save guard unset.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL); // only registration
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+    await dispatcher.deleteCell(VIEWER, MIRROR_CELL); // registration dropped
+
+    await dispatcher.open(VIEWER, notebookPath); // :e reload
+
+    assertEquals(
+      await host.call("bufexists", mirrorBufnr),
+      0,
+      "the stale mirror buffer must be wiped on viewer re-open",
+    );
+  });
+
   it("re-focusing a stale (shorter) mirror buffer clamps its folds", async () => {
     // A stale buffer can be shorter than the fresh regions; an out-of-range
     // fold raises E16 and aborts editCell entirely.

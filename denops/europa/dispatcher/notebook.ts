@@ -66,6 +66,21 @@ export function buildNotebookDispatcher(
     })();
 
     await Promise.all([kernelShutdown, scratchWipeout]);
+    // deleteCell / joinCell can drop the mirror's per-cell registrations, so
+    // the scratch loop above may miss the mirror buffer: wipe it explicitly,
+    // or a later re-open at the same path would re-adopt the stale loaded
+    // buffer via bufadd (bufload no-ops when already loaded) with the
+    // stale-save guard unset.
+    const mirrorBufnr = session.lspMirror?.mirrorBufnr;
+    if (mirrorBufnr !== undefined) {
+      const mirrorExists = await denops.call("bufexists", mirrorBufnr);
+      if (mirrorExists) {
+        await denops.cmd(`bwipeout! ${mirrorBufnr}`);
+      }
+      const group = `europa_cell_edit_${mirrorBufnr}`;
+      await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
+      await denops.cmd(`augroup! ${group}`);
+    }
     // Phase 3.9: remove the notebook mirror if one was materialized
     // (FR-018). cleanupMirrorOnExit removes only the mirror file for a
     // project-placed mirror (the .europa/lsp dir may be shared) but the
