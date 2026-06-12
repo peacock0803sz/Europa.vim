@@ -51,12 +51,21 @@ export function distributeWriteBack(
   // suppression header) are dropped.
   const knownCellIds = new Set(build.cellRegions.map((r) => r.cellId));
   const blocks: { cellId: string; lines: string[] }[] = [];
+  const blockById = new Map<string, { cellId: string; lines: string[] }>();
   let current: { cellId: string; lines: string[] } | undefined;
   for (const line of mirrorLines) {
     const marker = MARKER_RE.exec(line);
     if (marker && knownCellIds.has(marker[1])) {
-      current = { cellId: marker[1], lines: [] };
-      blocks.push(current);
+      const existing = blockById.get(marker[1]);
+      if (existing) {
+        // Duplicated marker (e.g. yank/paste): merge into the first block —
+        // last-block-wins would silently discard the earlier block's lines.
+        current = existing;
+      } else {
+        current = { cellId: marker[1], lines: [] };
+        blockById.set(marker[1], current);
+        blocks.push(current);
+      }
     } else if (current) {
       current.lines.push(line);
     }

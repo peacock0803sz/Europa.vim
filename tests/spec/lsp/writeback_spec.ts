@@ -103,6 +103,19 @@ describe("distributeWriteBack", () => {
     assertEquals(out[1], { cellId: "c2", source: "b = 2" });
   });
 
+  it("(f'') merges duplicate blocks of one cellId instead of dropping the first", () => {
+    // A yank/paste can duplicate a known `# %% <id>` marker line; last-block-
+    // wins would silently discard the lines of the earlier block.
+    const build = buildMirror(nb([code("c1", "a = 1"), code("c2", "b = 2")]));
+    const lines = build.text.split("\n");
+    lines.push("# %% c1", "a2 = 2"); // pasted duplicate of c1's marker + line
+    const out = distributeWriteBack(lines, build);
+    assertEquals(out, [
+      { cellId: "c1", source: "a = 1\na2 = 2" },
+      { cellId: "c2", source: "b = 2" },
+    ]);
+  });
+
   it("(g) keeps a user-typed `# %% ...` line (unknown cellId) as cell content", () => {
     // A jupytext-style comment inside a cell must NOT become a cell boundary —
     // otherwise every line after it would be routed to a nonexistent cell and
