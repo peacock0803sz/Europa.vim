@@ -517,6 +517,41 @@ describe("mirror / 004-scratch coexistence", () => {
     );
   });
 
+  it("undoing a scratch save never replays its source into the mirror", async () => {
+    // A scratch-save undo entry carries scratchSync{cellId, preSource}; after
+    // a scratch→mirror re-registration the cellId resolves to the MIRROR
+    // bufnr, and replaying preSource there would wipe the regenerated mirror.
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL); // 004 scratch
+    const scratchBufnr = await host.call(
+      "bufnr",
+      `__europa_cell_${MIRROR_CELL}__`,
+    ) as number;
+    await host.call("setbufline", scratchBufnr, 1, ["a = 42"]);
+    await dispatcher.saveCellEdit(scratchBufnr); // undo entry w/ scratchSync
+
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, "auto");
+    await dispatcher.editCell(VIEWER, MIRROR_CELL); // mirror takes the slot
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+
+    await dispatcher.europaUndo(VIEWER);
+    await new Promise((r) => setTimeout(r, 80)); // drain the undo FIFO
+
+    const markers = host.getBufLines(mirrorBufnr)
+      .filter((l) => l.startsWith("# %% "));
+    assertEquals(
+      markers.length,
+      2,
+      "the mirror must keep the regenerated (undone) content, not preSource",
+    );
+  });
+
   it("a mirror orphaned by a scratch re-registration still saves and cleans up", async () => {
     // Re-opening a cell as a 004 scratch (after the toggle flips) overwrites
     // the cellId→bufnr registration; the still-open mirror must remain

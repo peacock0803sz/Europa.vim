@@ -143,7 +143,12 @@ export async function processOne(
         bufnr,
         entry.scratchSync.cellId,
       );
-      if (scrBn !== undefined) {
+      // The cellId may have been re-registered to the SHARED mirror buffer
+      // since the entry was pushed; replaying one cell's preSource there
+      // would wipe the mirror refreshMirror just regenerated above.
+      const isMirror =
+        scrBn === sessionStore.get(bufnr)?.lspMirror?.mirrorBufnr;
+      if (scrBn !== undefined && !isMirror) {
         const newLines = entry.scratchSync.preSource.split("\n");
         await denops.call("setbufline", scrBn, 1, newLines);
         await denops.call("setbufvar", scrBn, "&modified", 0);
