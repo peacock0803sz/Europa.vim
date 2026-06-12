@@ -160,3 +160,104 @@ describe("LSP enablement matrix (US5)", () => {
     );
   });
 });
+
+describe("mirror / 004-scratch coexistence", () => {
+  // A mirror and a 004 scratch can coexist in one session: editCell re-reads
+  // g:europa_lsp_enable on every call, so disabling it after a mirror was
+  // materialized opens a scratch while session.lspMirror is still set. The
+  // save / wipeout handlers must branch on WHICH buffer fired, not on the
+  // mere presence of mirror state — otherwise a scratch `:w` is misrouted
+  // through the marker-based distributor (no markers → edit silently lost)
+  // and a scratch wipeout deletes the shared mirror.
+  const VIEWER = 7;
+  const MIRROR_CELL = "lsp-cross-cell-1";
+  const SCRATCH_CELL = "lsp-cross-cell-2";
+
+  let host: MockHost;
+  let tmp: string;
+  let notebookPath: string;
+
+  beforeEach(async () => {
+    host = mockVim();
+    tmp = await Deno.makeTempDir({ prefix: "europa-lsp-coexist-" });
+    await Deno.writeTextFile(join(tmp, "pyproject.toml"), "[project]\n");
+    notebookPath = join(tmp, "demo.ipynb");
+    const fixture = await Deno.readTextFile(
+      new URL("../../fixtures/ipynb/lsp-cross-cell.ipynb", import.meta.url),
+    );
+    await Deno.writeTextFile(notebookPath, fixture);
+  });
+
+  afterEach(async () => {
+    await Deno.remove(tmp, { recursive: true }).catch(() => {});
+  });
+
+  /** Materialize the mirror, then disable LSP and open a 004 scratch. */
+  async function openMirrorThenScratch(
+    dispatcher: ReturnType<typeof buildDispatcher>,
+  ): Promise<number> {
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL); // mirror materialized
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
+    await dispatcher.editCell(VIEWER, SCRATCH_CELL); // 004 scratch opens
+    const scratchBufnr = await host.call(
+      "bufnr",
+      `__europa_cell_${SCRATCH_CELL}__`,
+    ) as number;
+    assert(scratchBufnr > 0, "a 004 scratch buffer must have been opened");
+    return scratchBufnr;
+  }
+
+  it("saving a 004 scratch while a mirror exists commits the scratch edit", async () => {
+    const dispatcher = buildDispatcher(host);
+    const scratchBufnr = await openMirrorThenScratch(dispatcher);
+    await host.call("setbufline", scratchBufnr, 1, ["b = 99"]);
+    await dispatcher.saveCellEdit(scratchBufnr);
+
+    const viewerLines = host.getBufLines(VIEWER);
+    assert(
+      viewerLines.some((l) => l.includes("b = 99")),
+      "the scratch edit must reach the cell (not be lost in the mirror path)",
+    );
+    // The on-disk mirror is regenerated from the updated notebook.
+    const mirrorText = await Deno.readTextFile(
+      join(tmp, ".europa", "lsp", "demo.py"),
+    );
+    assert(
+      mirrorText.includes("b = 99"),
+      "the mirror must be regenerated with the scratch edit",
+    );
+  });
+
+  it("wiping a 004 scratch while a mirror exists keeps the mirror file + state", async () => {
+    const dispatcher = buildDispatcher(host);
+    const scratchBufnr = await openMirrorThenScratch(dispatcher);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    assertEquals(await exists(mirrorFile), true);
+
+    await dispatcher.closeCellEdit(scratchBufnr);
+    assertEquals(
+      await exists(mirrorFile),
+      true,
+      "a scratch wipeout must not delete the shared mirror file",
+    );
+  });
+
+  it("wiping the mirror buffer itself still cleans up the mirror file", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
+    assert(mirrorBufnr > 0);
+
+    await dispatcher.closeCellEdit(mirrorBufnr);
+    assertEquals(
+      await exists(mirrorFile),
+      false,
+      "wiping the mirror buffer must remove the mirror file (FR-018)",
+    );
+  });
+});

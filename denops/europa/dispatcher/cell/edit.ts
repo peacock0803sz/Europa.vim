@@ -80,6 +80,7 @@ export function buildEditCellDispatcher(
           cellId: cid,
           existingMirrorBufnr: open > 0 ? open : undefined,
         });
+        sessionStore.update(bn, { lspMirror: { ...mirror, mirrorBufnr } });
         sessionStore.setCellEditBuffer(bn, cid, mirrorBufnr);
         return;
       }
@@ -117,8 +118,13 @@ export function buildEditCellDispatcher(
       ) as string[];
 
       const mirror = session.lspMirror;
+      // The mirror and a 004 scratch can coexist (the toggle is re-read per
+      // editCell), so route through the marker-based distributor only when the
+      // SAVING buffer is the mirror itself — a scratch's lines have no markers
+      // and would otherwise be silently dropped.
+      const isMirrorSave = mirror !== undefined && mirror.mirrorBufnr === sbn;
       let newNotebook = session.notebook;
-      if (mirror) {
+      if (mirror && isMirrorSave) {
         // Mirror: distribute the whole buffer back to every cell by re-scanning
         // the live `# %% <cellId>` markers (FR-013); one save = one undo entry.
         const perCell = distributeWriteBack(lines, {
@@ -218,9 +224,10 @@ export function buildEditCellDispatcher(
       const session = sessionStore.get(lookup.viewerBufnr);
       sessionStore.removeCellEditBuffer(lookup.viewerBufnr, lookup.cellId);
       await closeCellEditAutocmds(denops, sbn);
-      // Mirror mode: the wiped buffer is the shared mirror — remove the on-disk
-      // file and drop the state so a later edit re-materializes (FR-018).
-      if (session?.lspMirror) {
+      // Only when the wiped buffer IS the shared mirror: remove the on-disk
+      // file and drop the state so a later edit re-materializes (FR-018). A
+      // coexisting 004 scratch wipeout must leave the mirror untouched.
+      if (session?.lspMirror?.mirrorBufnr === sbn) {
         await cleanupMirrorFile(session.lspMirror.mirrorPath);
         sessionStore.update(lookup.viewerBufnr, { lspMirror: undefined });
       }

@@ -102,6 +102,10 @@ export const LspMirrorStateSchema = Type.Object({
   mirrorDir: Type.String({ minLength: 1 }), // dedicated `.europa/lsp/` (or cache) dir — the cleanup unit
   cellRegions: Type.Array(CellRegionSchema),
   lineProvenance: Type.Array(LineProvenanceSchema), // length == mirror line count
+  // Buffer number of the opened mirror buffer. A mirror and a 004 scratch can
+  // coexist (g:europa_lsp_enable is re-read per editCell), so save / wipeout
+  // handlers gate the mirror path on THIS buffer, not on state presence.
+  mirrorBufnr: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 export type LspMirrorState = Static<typeof LspMirrorStateSchema>;
 
