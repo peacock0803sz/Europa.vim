@@ -415,6 +415,88 @@ describe("mirror / 004-scratch coexistence", () => {
     return scratchBufnr;
   }
 
+  it("deleting a cell edited via the mirror leaves the mirror intact", async () => {
+    // The post-delete scratch fixup must never freeze the SHARED mirror:
+    // marking it nofile/nomodifiable would break :w for every other cell and
+    // make the following refreshMirror sync fail.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+
+    await dispatcher.deleteCell(VIEWER, MIRROR_CELL);
+
+    assertEquals(
+      await host.call("getbufvar", mirrorBufnr, "&buftype"),
+      "acwrite",
+      "the mirror must not be frozen into a nofile buffer",
+    );
+    const lines = host.getBufLines(mirrorBufnr);
+    assert(
+      !lines.some((l) => l.includes("[Cell deleted")),
+      "the deletion marker must not be appended to the mirror",
+    );
+    assertEquals(
+      lines.filter((l) => l.startsWith("# %% ")).length,
+      1,
+      "the mirror must be regenerated for the remaining cell",
+    );
+  });
+
+  it("joining cells edited via the mirror leaves the mirror intact", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL); // registers cell 1
+    await dispatcher.editCell(VIEWER, SCRATCH_CELL); // registers cell 2
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+
+    await dispatcher.joinCell(VIEWER, SCRATCH_CELL);
+
+    assertEquals(
+      await host.call("getbufvar", mirrorBufnr, "&buftype"),
+      "acwrite",
+      "the joined-away cell's fixup must not freeze the mirror",
+    );
+    const lines = host.getBufLines(mirrorBufnr);
+    assertEquals(
+      lines.filter((l) => l.startsWith("# %% ")).length,
+      1,
+      "the surviving cell's fixup must not replace the regenerated mirror",
+    );
+    assert(
+      lines.includes("a = 1") && lines.includes("print(a)"),
+      "the mirror must show the merged cell with its marker",
+    );
+  });
+
+  it("splitting a cell edited via the mirror leaves the mirror intact", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+
+    await dispatcher.splitCell(mirrorBufnr, MIRROR_CELL, 1);
+
+    const lines = host.getBufLines(mirrorBufnr);
+    assertEquals(
+      lines.filter((l) => l.startsWith("# %% ")).length,
+      3,
+      "the post-split fixup must not replace the regenerated mirror",
+    );
+  });
+
   it("disabling LSP opens a 004 scratch even for a cell edited via the mirror", async () => {
     // The mirror bufnr is registered under the cell's id; the scratch
     // fallback must not adopt it as the "existing scratch", or flipping

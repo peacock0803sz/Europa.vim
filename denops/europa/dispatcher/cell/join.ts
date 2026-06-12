@@ -64,20 +64,33 @@ export function buildJoinCellDispatcher(
         mutate: () => ({ notebook: newNotebook, preferCellId: prevCellId }),
       });
 
+      // Either registration may point at the SHARED mirror buffer (LSP
+      // path): freezing or overwriting it would clobber the regenerated
+      // mirror that operateCell's refreshMirror just synced, so the per-cell
+      // scratch fixups below must skip it (only the dead registration is
+      // dropped).
+      const mirrorBufnr = sessionStore.get(bn)?.lspMirror?.mirrorBufnr;
       const targetScratchBufnr = sessionStore.getScratchBufnr(bn, cid);
-      if (targetScratchBufnr !== undefined) {
+      if (
+        targetScratchBufnr !== undefined && targetScratchBufnr !== mirrorBufnr
+      ) {
         const exists = await denops.call("bufexists", targetScratchBufnr);
         if (exists) {
           await freezeCellEditBuffer(denops, targetScratchBufnr, cid);
         }
         await closeCellEditAutocmds(denops, targetScratchBufnr);
+      }
+      if (targetScratchBufnr !== undefined) {
         sessionStore.removeCellEditBuffer(bn, cid);
       }
       const survivingScratchBufnr = sessionStore.getScratchBufnr(
         bn,
         prevCellId,
       );
-      if (survivingScratchBufnr !== undefined) {
+      if (
+        survivingScratchBufnr !== undefined &&
+        survivingScratchBufnr !== mirrorBufnr
+      ) {
         const survivingExists = await denops.call(
           "bufexists",
           survivingScratchBufnr,
