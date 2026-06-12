@@ -202,6 +202,11 @@ describe("LSP mirror edit path (US1)", () => {
     assert(mirrorBufnr > 0);
 
     await dispatcher.saveCellEdit(mirrorBufnr);
+    assertEquals(
+      await host.call("getbufvar", VIEWER_BUFNR, "&modified", 0),
+      0,
+      "a no-op mirror save must not dirty the viewer",
+    );
     await dispatcher.save(VIEWER_BUFNR);
 
     const saved = JSON.parse(await Deno.readTextFile(path));

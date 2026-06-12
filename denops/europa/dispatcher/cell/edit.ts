@@ -191,14 +191,18 @@ export function buildEditCellDispatcher(
           session.notebook.cells,
           lookup.cellId,
         );
-        if (hintCellId !== null) {
-          session.undoHistory.push({
-            opType: "saveCellEdit",
-            snapshot: takeStructuralSnapshot(session.notebook),
-            beforeHint: { kind: "single", cellId: hintCellId },
-            afterHint: { kind: "single", cellId: hintCellId },
-          });
+        if (hintCellId === null) {
+          // No cell changed: re-rendering and dirtying the viewer would
+          // falsely mark the notebook modified — just acknowledge the write.
+          await denops.call("setbufvar", sbn, "&modified", 0);
+          return;
         }
+        session.undoHistory.push({
+          opType: "saveCellEdit",
+          snapshot: takeStructuralSnapshot(session.notebook),
+          beforeHint: { kind: "single", cellId: hintCellId },
+          afterHint: { kind: "single", cellId: hintCellId },
+        });
         for (const { cellId, source } of perCell) {
           newNotebook = updateCellSource(newNotebook, cellId, source);
         }
