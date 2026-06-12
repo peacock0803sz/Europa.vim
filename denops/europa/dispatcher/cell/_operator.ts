@@ -5,6 +5,7 @@ import {
   applyRenderPlan,
   lineToCellId,
   restoreCursor,
+  syncMirrorBuffer,
 } from "../../view/viewer.ts";
 import type { SessionRuntime } from "../../session/state.ts";
 import type { Notebook } from "../../../../schema/notebook.ts";
@@ -82,6 +83,13 @@ export async function operateCell(
         lineProvenance: [...rebuilt.lineProvenance],
       },
     });
+    if (session.lspMirror.mirrorBufnr !== undefined) {
+      await syncMirrorBuffer(
+        denops,
+        session.lspMirror.mirrorBufnr,
+        rebuilt.text.split("\n"),
+      );
+    }
   }
   try {
     await applyRenderPlan(denops, bufnr, plan);

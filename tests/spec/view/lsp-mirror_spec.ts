@@ -108,6 +108,68 @@ describe("LSP mirror edit path (US1)", () => {
     const after = (await Deno.readTextFile(mirrorFile)).match(/^# %% /gm) ?? [];
     assertEquals(after.length, before.length + 1); // new cell reflected
   });
+
+  it("(d2) reloads an UNMODIFIED open mirror buffer after a cell op", async () => {
+    // The on-disk regeneration alone would leave the open buffer stale: the
+    // next :w would distribute outdated lines and Vim would warn (W11).
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
+    assert(mirrorBufnr > 0);
+
+    await dispatcher.insertCell(VIEWER_BUFNR, "code", "after", CELL_ID);
+
+    const markers = host.getBufLines(mirrorBufnr)
+      .filter((l) => l.startsWith("# %% "));
+    assertEquals(markers.length, 2, "buffer must show the regenerated mirror");
+  });
+
+  it("(d3) leaves a MODIFIED mirror buffer untouched and warns instead", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
+    await host.call("setbufline", mirrorBufnr, 1, ["my unsaved edit"]);
+    await host.call("setbufvar", mirrorBufnr, "&modified", 1);
+    host.calls = [];
+
+    await dispatcher.insertCell(VIEWER_BUFNR, "code", "after", CELL_ID);
+
+    assertEquals(
+      host.getBufLines(mirrorBufnr),
+      ["my unsaved edit"],
+      "unsaved mirror edits must never be discarded",
+    );
+    assert(
+      host.cmdsMatching("unsaved edits").length > 0,
+      "the user must be warned that the mirror buffer is stale",
+    );
+  });
+
+  it("(d4) saving the mirror re-normalizes the buffer (newly typed magic line)", async () => {
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, notebookPath);
+    await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
+    const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
+    const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
+    // Simulate the loaded buffer, then type an UNcommented magic line into it.
+    const lines = (await Deno.readTextFile(mirrorFile)).split("\n");
+    lines.push("%timeit x");
+    await host.call("setbufline", mirrorBufnr, 1, lines);
+
+    await dispatcher.saveCellEdit(mirrorBufnr);
+
+    assert(
+      host.getBufLines(mirrorBufnr).includes("# %timeit x"),
+      "after :w the buffer must show the regenerated (normalized) mirror",
+    );
+  });
 });
 
 describe("LSP enablement matrix (US5)", () => {

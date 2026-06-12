@@ -583,6 +583,42 @@ export async function openCellEditBuffer(
 }
 
 /**
+ * Reload an open mirror buffer with freshly regenerated mirror text, because
+ * regenerating only the on-disk file would leave the buffer stale: the next
+ * `:w` would distribute outdated lines and Vim would raise W11 (file changed
+ * on disk). Skips with a WarningMsg when the buffer holds unsaved edits —
+ * they must never be discarded — unless `force` is set, which the dispatcher
+ * uses right after the buffer's own `:w` (its content was just absorbed, so
+ * it is replaced by the re-normalized mirror).
+ */
+export async function syncMirrorBuffer(
+  denops: Denops,
+  mirrorBufnr: number,
+  mirrorLines: readonly string[],
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  const loaded = await denops.call("bufexists", mirrorBufnr) as number;
+  if (!loaded) return;
+  if (!opts.force) {
+    const modified = await denops.call(
+      "getbufvar",
+      mirrorBufnr,
+      "&modified",
+      0,
+    );
+    if (Number(modified) !== 0) {
+      await denops.cmd(
+        "echohl WarningMsg | echom 'Europa: notebook changed but the mirror buffer has unsaved edits — save or :edit! it to resync' | echohl None",
+      );
+      return;
+    }
+  }
+  await denops.call("setbufline", mirrorBufnr, 1, [...mirrorLines]);
+  await denops.call("deletebufline", mirrorBufnr, mirrorLines.length + 1, "$");
+  await denops.call("setbufvar", mirrorBufnr, "&modified", 0);
+}
+
+/**
  * Fold every non-target cell region and move the cursor to the target cell's
  * first content line, giving per-cell focus while the LSP server still sees the
  * whole mirror (host-agnostic: fold / setpos only, FR-005a / FR-025).
