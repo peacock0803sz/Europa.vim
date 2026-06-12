@@ -601,8 +601,11 @@ export async function syncMirrorBuffer(
   mirrorLines: readonly string[],
   opts: { force?: boolean } = {},
 ): Promise<boolean> {
-  const loaded = await denops.call("bufexists", mirrorBufnr) as number;
-  if (!loaded) return true; // no buffer → nothing that could go stale
+  // bufexists (not bufloaded) is sufficient: an existing-but-unloaded buffer
+  // has no in-memory lines to go stale — it reloads fresh from the (just
+  // regenerated) file when next displayed.
+  const exists = await denops.call("bufexists", mirrorBufnr) as number;
+  if (!exists) return true; // no buffer → nothing that could go stale
   if (!opts.force) {
     const modified = await denops.call(
       "getbufvar",
