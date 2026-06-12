@@ -28,7 +28,7 @@
     "@std/uuid": "jsr:@std/uuid@^1.1.1",
     "marked": "npm:marked@^18.0.4",
     "typedoc": "npm:typedoc@^0.28.19",
-    "typedoc-plugin-markdown": "npm:typedoc-plugin-markdown@^4.11.0",
+    "typedoc-plugin-markdown": "npm:typedoc-plugin-markdown@^4.12.0",
     "typescript": "npm:typescript@^6.0.3"
   },
   "nodeModulesDir": "auto",
