@@ -316,10 +316,13 @@ export type ResolveLspEnabled = (
  * I/O layer (`lsp/workspace.ts`, NOT declared here as a function shape):
  * - Resolves `mirrorPath` / `workspaceRoot` / `mirrorDir` (research.md §1),
  *   writes `buildMirror().text` to disk, and cleans up on BufWipeout (delete
- *   the `mirrorPath` file) / process exit (remove `mirrorDir`). Cleanup NEVER
- *   deletes `workspaceRoot` (= the user's project root) — only `mirrorPath` /
- *   `mirrorDir` (the dedicated `.europa/lsp/` or cache dir), FR-018. Uses only
- *   `@std/fs` / `@std/path` (no new deps, FR-028).
+ *   the `mirrorPath` file) / process exit (delete the file for a
+ *   project-placed mirror whose `.europa/lsp/` dir may be shared; remove the
+ *   whole per-session cache `mirrorDir` for an unsaved notebook, recognizable
+ *   by `workspaceRoot === mirrorDir`). Cleanup NEVER deletes `workspaceRoot`
+ *   (= the user's project root) — only `mirrorPath` / `mirrorDir` (the
+ *   dedicated `.europa/lsp/` or cache dir), FR-018. Uses only `@std/fs` /
+ *   `@std/path` (no new deps, FR-028).
  *
  * `openCellRegion` (view side effects):
  * - Calls `denops.call("bufadd"/"bufload"/...)`, `denops.cmd(":split ..." /

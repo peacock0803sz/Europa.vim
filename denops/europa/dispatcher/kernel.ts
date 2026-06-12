@@ -5,7 +5,7 @@ import { loadConfig } from "../config.ts";
 import { createKernelClient } from "../kernel/client.ts";
 import { EuropaKernelError } from "../kernel/errors.ts";
 import { createIopubBatchScheduler } from "../render/iopub-batch.ts";
-import { cleanupMirrorFile } from "../lsp/workspace.ts";
+import { cleanupMirrorOnExit } from "../lsp/workspace.ts";
 import {
   type DispatcherContext,
   echomError,
@@ -161,14 +161,13 @@ export function buildKernelDispatcher(
      */
     async atexit(): Promise<void> {
       const sessions = sessionStore.all();
-      // Phase 3.9: best-effort remove any materialized mirror files on exit
-      // (FR-018). Only files are removed, never the shared mirror dir.
+      // Phase 3.9: best-effort mirror cleanup on exit (FR-018). A project
+      // mirror loses only its file (the shared `.europa/lsp/` dir survives);
+      // an unsaved-notebook mirror drops its whole per-session cache dir.
       await Promise.all(
         sessions
           .filter((s) => s.lspMirror != null)
-          .map((s) =>
-            cleanupMirrorFile(s.lspMirror!.mirrorPath).catch(() => {})
-          ),
+          .map((s) => cleanupMirrorOnExit(s.lspMirror!).catch(() => {})),
       );
       await Promise.all(
         sessions

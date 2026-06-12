@@ -106,3 +106,20 @@ export async function cleanupMirrorDir(mirrorDir: string): Promise<void> {
     if (!(error instanceof Deno.errors.NotFound)) throw error;
   }
 }
+
+/**
+ * Process-exit cleanup for one mirror (FR-018). A project-placed mirror
+ * removes only its `.py` file — the `.europa/lsp/` dir may be shared with
+ * other notebooks or Vim instances. An unsaved-notebook mirror (recognizable
+ * by `workspaceRoot === mirrorDir`, see {@link resolveMirrorPlacement})
+ * removes its whole per-session cache dir so UUID dirs do not accumulate.
+ */
+export async function cleanupMirrorOnExit(
+  state: { mirrorPath: string; workspaceRoot: string; mirrorDir: string },
+): Promise<void> {
+  if (state.mirrorDir === state.workspaceRoot) {
+    await cleanupMirrorDir(state.mirrorDir);
+  } else {
+    await cleanupMirrorFile(state.mirrorPath);
+  }
+}

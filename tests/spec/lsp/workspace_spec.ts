@@ -14,6 +14,7 @@ import { dirname, join } from "@std/path";
 import {
   cleanupMirrorDir,
   cleanupMirrorFile,
+  cleanupMirrorOnExit,
   materializeMirror,
   resolveMirrorPlacement,
 } from "../../../denops/europa/lsp/workspace.ts";
@@ -100,5 +101,59 @@ describe("resolveMirrorPlacement + cleanup safety", () => {
     );
     await cleanupMirrorFile(mirrorPath); // never created
     await cleanupMirrorDir(mirrorDir); // never created
+  });
+});
+
+describe("cleanupMirrorOnExit", () => {
+  // Process-exit cleanup policy: a project-placed mirror removes only its
+  // file (the `.europa/lsp/` dir may be shared with other Vim instances /
+  // notebooks); an unsaved-notebook mirror removes its whole per-session
+  // cache dir (recognizable by workspaceRoot === mirrorDir) so UUID dirs do
+  // not accumulate under the cache.
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await Deno.makeTempDir({ prefix: "europa-lsp-exit-" });
+  });
+  afterEach(async () => {
+    await Deno.remove(tmp, { recursive: true }).catch(() => {});
+  });
+
+  it("removes only the mirror file for a project-placed mirror", async () => {
+    await Deno.writeTextFile(join(tmp, "pyproject.toml"), "[project]\n");
+    const placement = await resolveMirrorPlacement(join(tmp, "demo.ipynb"));
+    await materializeMirror(placement.mirrorPath, "# %% c1\nx = 1\n");
+
+    await cleanupMirrorOnExit(placement);
+
+    assertEquals(
+      await Deno.stat(placement.mirrorPath).then(() => true).catch(() => false),
+      false,
+      "the mirror file must be removed on exit",
+    );
+    assertEquals(
+      await Deno.stat(placement.mirrorDir).then(() => true).catch(() => false),
+      true,
+      "the shared .europa/lsp dir must survive",
+    );
+  });
+
+  it("removes the whole per-session cache dir for an unsaved-notebook mirror", async () => {
+    // Shape of resolveMirrorPlacement(undefined): workspaceRoot === mirrorDir.
+    const mirrorDir = join(tmp, "cache-uuid");
+    const placement = {
+      mirrorPath: join(mirrorDir, "mirror.py"),
+      workspaceRoot: mirrorDir,
+      mirrorDir,
+    };
+    await materializeMirror(placement.mirrorPath, "# %% c1\nx = 1\n");
+
+    await cleanupMirrorOnExit(placement);
+
+    assertEquals(
+      await Deno.stat(mirrorDir).then(() => true).catch(() => false),
+      false,
+      "the per-session cache dir must be removed on exit",
+    );
   });
 });
