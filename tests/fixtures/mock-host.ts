@@ -306,6 +306,13 @@ export class MockHost implements Denops {
       }
       return Promise.resolve(null);
     }
+    if (fn === "getbufinfo") {
+      const nr = args[0] as number;
+      const buf = this._buffers.get(nr);
+      return Promise.resolve(
+        buf ? [{ bufnr: nr, linecount: buf.lines.length }] : [],
+      );
+    }
     if (fn === "getbufvar") {
       const nr = args[0] as number;
       const varName = args[1] as string;

@@ -574,6 +574,40 @@ describe("mirror / 004-scratch coexistence", () => {
     );
   });
 
+  it("re-focusing a stale (shorter) mirror buffer clamps its folds", async () => {
+    // A stale buffer can be shorter than the fresh regions; an out-of-range
+    // fold raises E16 and aborts editCell entirely.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "demo.py"),
+    ) as number;
+    // Trim the buffer to one line with unsaved edits, then mutate the
+    // notebook so the regions grow while the buffer stays short (stale).
+    const total = host.getBufLines(mirrorBufnr).length;
+    await host.call("setbufline", mirrorBufnr, 1, ["short"]);
+    await host.call("deletebufline", mirrorBufnr, 2, total);
+    await host.call("setbufvar", mirrorBufnr, "&modified", 1);
+    await dispatcher.insertCell(VIEWER, "code", "after", MIRROR_CELL);
+    host.calls = [];
+
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+
+    const oversizedFolds = host.calls.filter((c) => {
+      if (c.method !== "cmd") return false;
+      const m = /^(\d+),(\d+)fold$/.exec(String(c.args[0]));
+      return m !== null && Number(m[2]) > 1;
+    });
+    assertEquals(
+      oversizedFolds.length,
+      0,
+      "fold ranges must be clamped to the stale buffer's line count",
+    );
+  });
+
   it("undoing a scratch save never replays its source into the mirror", async () => {
     // A scratch-save undo entry carries scratchSync{cellId, preSource}; after
     // a scratch→mirror re-registration the cellId resolves to the MIRROR

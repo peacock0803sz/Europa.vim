@@ -630,18 +630,30 @@ export async function syncMirrorBuffer(
  */
 async function focusCellRegion(
   denops: Denops,
+  mirrorBufnr: number,
   cellRegions: readonly CellRegion[],
   cellId: string,
 ): Promise<void> {
   await denops.cmd("setlocal foldmethod=manual");
   await denops.cmd("normal! zE"); // drop any existing folds
+  // The buffer can be SHORTER than the fresh regions when it kept unsaved
+  // edits across a notebook mutation (stale): an out-of-range fold raises
+  // E16 and aborts the whole editCell, so clamp to the actual line count.
+  const info = await denops.call(
+    "getbufinfo",
+    mirrorBufnr,
+  ) as { linecount: number }[];
+  const lineCount = info?.[0]?.linecount ?? Number.MAX_SAFE_INTEGER;
   for (const region of cellRegions) {
     if (region.cellId === cellId) continue;
     // 0-based marker..endLine → 1-based inclusive fold range.
-    await denops.cmd(`${region.markerLine + 1},${region.endLine + 1}fold`);
+    const start = region.markerLine + 1;
+    const end = Math.min(region.endLine + 1, lineCount);
+    if (start > end) continue;
+    await denops.cmd(`${start},${end}fold`);
   }
   const target = cellRegions.find((r) => r.cellId === cellId);
-  if (target) {
+  if (target && target.startLine + 1 <= lineCount) {
     await denops.call("setpos", ".", [0, target.startLine + 1, 1, 0]);
     await denops.cmd("normal! zz");
   }
@@ -681,7 +693,12 @@ export async function openCellRegion(
       } else {
         await denops.cmd(`split #${opts.existingMirrorBufnr}`);
       }
-      await focusCellRegion(denops, opts.cellRegions, opts.cellId);
+      await focusCellRegion(
+        denops,
+        opts.existingMirrorBufnr,
+        opts.cellRegions,
+        opts.cellId,
+      );
       return opts.existingMirrorBufnr;
     }
   }
@@ -722,7 +739,7 @@ export async function openCellRegion(
   await denops.cmd("augroup END");
 
   await denops.cmd(`split #${mirrorBufnr}`);
-  await focusCellRegion(denops, opts.cellRegions, opts.cellId);
+  await focusCellRegion(denops, mirrorBufnr, opts.cellRegions, opts.cellId);
   return mirrorBufnr;
 }
 
