@@ -70,8 +70,11 @@ coc.nvim: install `coc-pyright`, and register ruff as a separate server.
 
 Notes:
 - Add `.europa/` to your project `.gitignore` (the mirror lives there).
-- Format on save is delegated to your client (e.g. ruff formatting on
-  `BufWritePre`); Europa absorbs the result on `:w`.
+- To format, run your client's formatter explicitly (e.g.
+  `:lua vim.lsp.buf.format()` or `:LspDocumentFormat`) and then `:w`;
+  Europa absorbs the formatted buffer.  `BufWritePre`-based format-on-save
+  does NOT fire on the mirror: its writes go through a `BufWriteCmd`
+  handler, which suppresses the `BufWritePre`/`BufWritePost` events.
 - All code cells share one mirror file, so diagnostics and go-to-definition
   work across cells.
 
