@@ -97,7 +97,13 @@ export function buildEditCellDispatcher(
       // 004 fallback: per-cell acwrite scratch buffer (FR-004).
       const filetype = resolveScratchFiletype(session.notebook, cell);
       const sourceLines = cell.source.split("\n");
-      const existing = sessionStore.getScratchBufnr(bn, cid);
+      // The registration under this cellId may point at the MIRROR buffer
+      // (the toggle is re-read per editCell) — reusing it here would silently
+      // ignore g:europa_lsp_enable=false for cells edited via the mirror.
+      const registered = sessionStore.getScratchBufnr(bn, cid);
+      const existing = registered === session.lspMirror?.mirrorBufnr
+        ? undefined
+        : registered;
       const scratchBufnr = await openCellEditBuffer(denops, {
         bufname: `__europa_cell_${cid}__`,
         cellId: cid,

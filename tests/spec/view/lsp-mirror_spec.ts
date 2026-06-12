@@ -415,6 +415,26 @@ describe("mirror / 004-scratch coexistence", () => {
     return scratchBufnr;
   }
 
+  it("disabling LSP opens a 004 scratch even for a cell edited via the mirror", async () => {
+    // The mirror bufnr is registered under the cell's id; the scratch
+    // fallback must not adopt it as the "existing scratch", or flipping
+    // g:europa_lsp_enable off appears to have no effect for that cell.
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER;
+    await dispatcher.open(VIEWER, notebookPath);
+    await dispatcher.editCell(VIEWER, MIRROR_CELL); // registered to the mirror
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
+    host.calls = [];
+
+    await dispatcher.editCell(VIEWER, MIRROR_CELL);
+
+    const bufadds = host.callsTo("bufadd").map((c) => String(c.args[1]));
+    assert(
+      bufadds.some((n) => n.includes(`__europa_cell_${MIRROR_CELL}__`)),
+      "a 004 scratch must open for the cell, not the mirror buffer",
+    );
+  });
+
   it("saving a 004 scratch while a mirror exists commits the scratch edit", async () => {
     const dispatcher = buildDispatcher(host);
     const scratchBufnr = await openMirrorThenScratch(dispatcher);
