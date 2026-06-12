@@ -136,13 +136,14 @@ describe("LSP mirror edit path (US1)", () => {
     const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
     await host.call("setbufline", mirrorBufnr, 1, ["my unsaved edit"]);
     await host.call("setbufvar", mirrorBufnr, "&modified", 1);
+    const editedLines = host.getBufLines(mirrorBufnr).slice();
     host.calls = [];
 
     await dispatcher.insertCell(VIEWER_BUFNR, "code", "after", CELL_ID);
 
     assertEquals(
       host.getBufLines(mirrorBufnr),
-      ["my unsaved edit"],
+      editedLines,
       "unsaved mirror edits must never be discarded",
     );
     assert(
@@ -158,10 +159,8 @@ describe("LSP mirror edit path (US1)", () => {
     await dispatcher.editCell(VIEWER_BUFNR, CELL_ID);
     const mirrorFile = join(tmp, ".europa", "lsp", "demo.py");
     const mirrorBufnr = await host.call("bufnr", mirrorFile) as number;
-    // Simulate the loaded buffer, then type an UNcommented magic line into it.
-    const lines = (await Deno.readTextFile(mirrorFile)).split("\n");
-    lines.push("%timeit x");
-    await host.call("setbufline", mirrorBufnr, 1, lines);
+    // Type an UNcommented magic line at the end of the loaded buffer.
+    await host.call("appendbufline", mirrorBufnr, "$", "%timeit x");
 
     await dispatcher.saveCellEdit(mirrorBufnr);
 
@@ -169,6 +168,46 @@ describe("LSP mirror edit path (US1)", () => {
       host.getBufLines(mirrorBufnr).includes("# %timeit x"),
       "after :w the buffer must show the regenerated (normalized) mirror",
     );
+  });
+
+  it("(e) a no-op :w right after open preserves trailing newline + magic (FR-016)", async () => {
+    // The on-disk mirror ends with one terminating "\n" that Vim reads as the
+    // last line's EOL — the loaded buffer must still map 1:1 to the build, or
+    // an untouched save drops the last cell's trailing newline and commits
+    // its magic line in commented form.
+    const nb = JSON.stringify({
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: { kernelspec: { language: "python" } },
+      cells: [{
+        cell_type: "code",
+        id: "tn1",
+        source: "%timeit f()\nx = 1\n",
+        execution_count: null,
+        outputs: [],
+        metadata: {},
+      }],
+    });
+    const path = join(tmp, "trailing.ipynb");
+    await Deno.writeTextFile(path, nb);
+    const dispatcher = buildDispatcher(host);
+    host.currentBufnr = VIEWER_BUFNR;
+    await dispatcher.open(VIEWER_BUFNR, path);
+    await dispatcher.editCell(VIEWER_BUFNR, "tn1");
+    const mirrorBufnr = await host.call(
+      "bufnr",
+      join(tmp, ".europa", "lsp", "trailing.py"),
+    ) as number;
+    assert(mirrorBufnr > 0);
+
+    await dispatcher.saveCellEdit(mirrorBufnr);
+    await dispatcher.save(VIEWER_BUFNR);
+
+    const saved = JSON.parse(await Deno.readTextFile(path));
+    const source = Array.isArray(saved.cells[0].source)
+      ? saved.cells[0].source.join("")
+      : saved.cells[0].source;
+    assertEquals(source, "%timeit f()\nx = 1\n");
   });
 });
 

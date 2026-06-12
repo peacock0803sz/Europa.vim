@@ -84,13 +84,22 @@ export async function resolveMirrorPlacement(
   };
 }
 
-/** Write the mirror text to disk, creating the mirror dir if needed. */
+/**
+ * Write the mirror text to disk, creating the mirror dir if needed.
+ *
+ * Exactly one terminating newline is appended: Vim treats a final `"\n"` as
+ * the last line's EOL (not an extra empty line), so the buffer `bufload`
+ * produces always equals `text.split("\n")`. Without it, a build whose last
+ * line is empty (last cell source ends with `"\n"`) would read back one line
+ * short, desynchronizing write-back's per-cell line counts and dropping the
+ * cell's trailing newline (FR-016).
+ */
 export async function materializeMirror(
   mirrorPath: string,
   text: string,
 ): Promise<void> {
   await ensureDir(dirname(mirrorPath));
-  await Deno.writeTextFile(mirrorPath, text);
+  await Deno.writeTextFile(mirrorPath, `${text}\n`);
 }
 
 /** Remove just the mirror `.py` file (BufWipeout). Never touches a directory. */

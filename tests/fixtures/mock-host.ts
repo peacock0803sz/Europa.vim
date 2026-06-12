@@ -209,6 +209,23 @@ export class MockHost implements Denops {
     if (fn === "bufload") {
       const nr = args[0] as number;
       const buf = this._buffers.get(nr);
+      if (buf && !buf.loaded) {
+        // Mimic Vim's file-read semantics: a terminating "\n" is the last
+        // line's EOL, not an extra empty line. A buffer name that is not a
+        // readable file (e.g. a __europa_cell_*__ scratch) stays empty.
+        const name = [...this._bufnames].find(([, n]) => n === nr)?.[0];
+        if (name) {
+          try {
+            const content = Deno.readTextFileSync(name);
+            buf.lines = content.endsWith("\n")
+              ? content.slice(0, -1).split("\n")
+              : content.split("\n");
+            this.bufLines.set(nr, buf.lines);
+          } catch {
+            // not an on-disk file — leave the buffer empty
+          }
+        }
+      }
       if (buf) buf.loaded = true;
       return Promise.resolve(null);
     }
