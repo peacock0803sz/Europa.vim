@@ -44,13 +44,17 @@ export function distributeWriteBack(
     );
   }
 
-  // Re-scan live markers → blocks. Lines before the first marker (the
+  // Re-scan live markers → blocks. Only ids known to the build count as
+  // boundaries: a user-typed `# %% ...` line (e.g. a jupytext-style comment)
+  // must stay inside its cell, not open a phantom block that would silently
+  // swallow every following line. Lines before the first marker (the
   // suppression header) are dropped.
+  const knownCellIds = new Set(build.cellRegions.map((r) => r.cellId));
   const blocks: { cellId: string; lines: string[] }[] = [];
   let current: { cellId: string; lines: string[] } | undefined;
   for (const line of mirrorLines) {
     const marker = MARKER_RE.exec(line);
-    if (marker) {
+    if (marker && knownCellIds.has(marker[1])) {
       current = { cellId: marker[1], lines: [] };
       blocks.push(current);
     } else if (current) {

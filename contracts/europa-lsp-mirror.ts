@@ -202,11 +202,12 @@ export type MapCellLineToMirror = (
  * may NOT match `build`'s line counts, so the fixed `[startLine, endLine]`
  * offsets MUST NOT be used to slice it):
  *   1. Re-scan `mirrorLines` top-to-bottom for boundary markers
- *      (`# %% <cellId>`). Each marker opens a cell block running until the next
- *      marker (or EOF); lines above the first marker (the suppression header)
- *      are dropped. Deriving boundaries from the LIVE buffer means a formatter
- *      that adds/removes lines inside a cell still splits back to the right
- *      cell (FR-013).
+ *      (`# %% <cellId>`, counted ONLY when `<cellId>` is in the build's
+ *      `cellRegions` — a user-typed `# %% ...` line stays cell content). Each
+ *      marker opens a cell block running until the next marker (or EOF); lines
+ *      above the first marker (the suppression header) are dropped. Deriving
+ *      boundaries from the LIVE buffer means a formatter that adds/removes
+ *      lines inside a cell still splits back to the right cell (FR-013).
  *   2. Within each block, de-normalize each line: drop the marker; restore an
  *      untouched magic line to its `original` (matched against `build`'s magic
  *      provenance for that cell — positionally when the block's line count is

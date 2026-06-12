@@ -99,4 +99,24 @@ describe("distributeWriteBack", () => {
     assertEquals(out[0], { cellId: "c1", source: "a = 1" });
     assertEquals(out[1], { cellId: "c2", source: "b = 2" });
   });
+
+  it("(g) keeps a user-typed `# %% ...` line (unknown cellId) as cell content", () => {
+    // A jupytext-style comment inside a cell must NOT become a cell boundary —
+    // otherwise every line after it would be routed to a nonexistent cell and
+    // silently dropped. Only ids present in the build's cellRegions count.
+    const build = buildMirror(nb([code("c1", "a = 1"), code("c2", "b = 2")]));
+    const lines = build.text.split("\n");
+    lines.splice(
+      lines.indexOf("a = 1") + 1,
+      0,
+      "# %% my jupytext note",
+      "a2 = 2",
+    );
+    const out = distributeWriteBack(lines, build);
+    assertEquals(out[0], {
+      cellId: "c1",
+      source: "a = 1\n# %% my jupytext note\na2 = 2",
+    });
+    assertEquals(out[1], { cellId: "c2", source: "b = 2" });
+  });
 });
