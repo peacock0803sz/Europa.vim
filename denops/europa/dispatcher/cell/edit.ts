@@ -157,17 +157,21 @@ export function buildEditCellDispatcher(
         const perCell = distributeWriteBack(lines, mirror);
         // The hint must name a cell that actually changed — the registered
         // origin cell may be untouched when e.g. a formatter edited others.
+        // null = no cell changed: skip the undo entry so a no-op :w does not
+        // consume an undo_max_history slot.
         const hintCellId = pickMirrorSaveHintCell(
           perCell,
           session.notebook.cells,
           lookup.cellId,
         );
-        session.undoHistory.push({
-          opType: "saveCellEdit",
-          snapshot: takeStructuralSnapshot(session.notebook),
-          beforeHint: { kind: "single", cellId: hintCellId },
-          afterHint: { kind: "single", cellId: hintCellId },
-        });
+        if (hintCellId !== null) {
+          session.undoHistory.push({
+            opType: "saveCellEdit",
+            snapshot: takeStructuralSnapshot(session.notebook),
+            beforeHint: { kind: "single", cellId: hintCellId },
+            afterHint: { kind: "single", cellId: hintCellId },
+          });
+        }
         for (const { cellId, source } of perCell) {
           newNotebook = updateCellSource(newNotebook, cellId, source);
         }

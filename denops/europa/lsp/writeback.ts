@@ -81,7 +81,8 @@ export function distributeWriteBack(
  * (pure). A mirror `:w` can change several cells at once while the registered
  * edit-origin cell stays untouched (e.g. a formatter pass), so the hint must
  * name a cell that actually changed: the origin when it did, else the first
- * changed cell, else the origin (no-op save).
+ * changed cell, else `null` for a no-op save — the caller skips the undo
+ * entry so an unchanged `:w` does not consume an undo_max_history slot.
  *
  * @param perCell - `distributeWriteBack`'s result for this save.
  * @param cells - The pre-save notebook cells (`{ id, source }` is enough).
@@ -91,11 +92,11 @@ export function pickMirrorSaveHintCell(
   perCell: ReadonlyArray<{ cellId: string; source: string }>,
   cells: ReadonlyArray<{ id: string; source: string }>,
   originCellId: string,
-): string {
+): string | null {
   const sourceById = new Map(cells.map((c) => [c.id, c.source]));
   const changed = perCell
     .filter((p) => sourceById.get(p.cellId) !== p.source)
     .map((p) => p.cellId);
   if (changed.includes(originCellId)) return originCellId;
-  return changed[0] ?? originCellId;
+  return changed[0] ?? null;
 }

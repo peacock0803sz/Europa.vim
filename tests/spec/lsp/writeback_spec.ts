@@ -149,11 +149,13 @@ describe("pickMirrorSaveHintCell", () => {
     assertEquals(pickMirrorSaveHintCell(perCell, cells, "c1"), "c2");
   });
 
-  it("returns the origin for a no-op save (nothing changed)", () => {
+  it("returns null for a no-op save (nothing changed)", () => {
+    // The caller skips the undo entry on null — a no-op :w must not consume
+    // an undo_max_history slot.
     const perCell = [
       { cellId: "c1", source: "a = 1" },
       { cellId: "c2", source: "b = 2" },
     ];
-    assertEquals(pickMirrorSaveHintCell(perCell, cells, "c1"), "c1");
+    assertEquals(pickMirrorSaveHintCell(perCell, cells, "c1"), null);
   });
 });
