@@ -17,9 +17,9 @@
  * @module denops/europa/lsp/workspace
  */
 
-import { basename } from "@std/path/basename";
 import { dirname } from "@std/path/dirname";
 import { join } from "@std/path/join";
+import { relative } from "@std/path/relative";
 import { resolve } from "@std/path/resolve";
 import { ensureDir } from "@std/fs";
 import { exists } from "@std/fs/exists";
@@ -52,13 +52,21 @@ export async function resolveMirrorPlacement(
   notebookPath?: string,
 ): Promise<{ mirrorPath: string; workspaceRoot: string; mirrorDir: string }> {
   if (notebookPath && notebookPath !== "") {
-    const notebookDir = dirname(notebookPath);
+    const absNotebook = resolve(notebookPath);
+    const notebookDir = dirname(absNotebook);
     const workspaceRoot = (await findProjectRoot(notebookDir)) ??
-      resolve(notebookDir);
+      notebookDir;
     const mirrorDir = join(workspaceRoot, ".europa", "lsp");
-    const stem = basename(notebookPath).replace(/\.ipynb$/, "");
+    // Slug from the workspace-relative path so that same-stem notebooks in
+    // different subdirs (a/demo.ipynb vs b/demo.ipynb) never collide on one
+    // mirror file: `a/demo.ipynb` → `a__demo.py`.
+    const slug = relative(workspaceRoot, absNotebook)
+      .replace(/\.ipynb$/, "")
+      .replaceAll("\\", "/")
+      .split("/")
+      .join("__");
     return {
-      mirrorPath: join(mirrorDir, `${stem}.py`),
+      mirrorPath: join(mirrorDir, `${slug}.py`),
       workspaceRoot,
       mirrorDir,
     };

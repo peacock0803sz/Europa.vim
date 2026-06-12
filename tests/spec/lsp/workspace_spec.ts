@@ -10,7 +10,7 @@
 
 import { assert, assertEquals } from "@std/assert";
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
-import { dirname, join } from "@std/path";
+import { dirname, join, relative } from "@std/path";
 import {
   cleanupMirrorDir,
   cleanupMirrorFile,
@@ -43,7 +43,8 @@ describe("resolveMirrorPlacement + cleanup safety", () => {
 
     assertEquals(workspaceRoot, tmp); // climbed to the pyproject.toml root
     assertEquals(mirrorDir, join(tmp, ".europa", "lsp"));
-    assertEquals(mirrorPath, join(tmp, ".europa", "lsp", "demo.py"));
+    // Workspace-relative slug: nb/demo.ipynb → nb__demo.py (collision-free).
+    assertEquals(mirrorPath, join(tmp, ".europa", "lsp", "nb__demo.py"));
     // The mirror dir is strictly inside the workspace root (never equal to it).
     assert(mirrorDir !== workspaceRoot);
   });
@@ -55,7 +56,12 @@ describe("resolveMirrorPlacement + cleanup safety", () => {
         notebookPath,
       );
     assertEquals(mirrorDir, join(workspaceRoot, ".europa", "lsp"));
-    assertEquals(mirrorPath, join(mirrorDir, "loose.py"));
+    // The filename is the workspace-relative path slug (`/` → `__`).
+    const slug = relative(workspaceRoot, notebookPath)
+      .replace(/\.ipynb$/, "")
+      .split("/")
+      .join("__");
+    assertEquals(mirrorPath, join(mirrorDir, `${slug}.py`));
     // workspaceRoot is tmp or a marker-bearing ancestor (FR-003 root detection).
     assert(tmp === workspaceRoot || tmp.startsWith(`${workspaceRoot}/`));
   });
@@ -93,6 +99,25 @@ describe("resolveMirrorPlacement + cleanup safety", () => {
       await Deno.stat(workspaceRoot).then(() => true).catch(() => false),
       true,
     );
+  });
+
+  it("disambiguates same-stem notebooks in different subdirs (path slug)", async () => {
+    // a/demo.ipynb and b/demo.ipynb share a workspace root; their mirrors
+    // must not collide on <root>/.europa/lsp/demo.py.
+    await Deno.writeTextFile(join(tmp, "pyproject.toml"), "[project]\n");
+    await Deno.mkdir(join(tmp, "a"));
+    await Deno.mkdir(join(tmp, "b"));
+
+    const pa = await resolveMirrorPlacement(join(tmp, "a", "demo.ipynb"));
+    const pb = await resolveMirrorPlacement(join(tmp, "b", "demo.ipynb"));
+
+    assert(
+      pa.mirrorPath !== pb.mirrorPath,
+      "same-stem notebooks must get distinct mirror paths",
+    );
+    // Both still live in the single shared mirror dir.
+    assertEquals(pa.mirrorDir, join(tmp, ".europa", "lsp"));
+    assertEquals(pb.mirrorDir, pa.mirrorDir);
   });
 
   it("cleanup is idempotent (no throw when already gone)", async () => {
