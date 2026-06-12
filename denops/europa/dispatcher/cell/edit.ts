@@ -107,6 +107,14 @@ export function buildEditCellDispatcher(
           };
           sessionStore.update(bn, { lspMirror: mirror });
         }
+        if (mirror.bufferStale) {
+          // The buffer kept unsaved edits across a notebook mutation: its
+          // folds/cursor will misalign with the fresh regions and a :w will
+          // be refused — surface that before the user starts editing.
+          await denops.cmd(
+            "echohl WarningMsg | echom 'Europa: the mirror buffer is out of sync with the notebook — :edit! it to resync' | echohl None",
+          );
+        }
         // Reuse the bufnr tracked in state — bufnr("<path>") treats the name
         // as a file-pattern (wildcards, substring matches) and can resolve to
         // an unrelated buffer. openCellRegion re-validates it via bufexists.
