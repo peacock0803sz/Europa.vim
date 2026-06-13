@@ -21,6 +21,7 @@ export function buildCellDispatcher(
   | "changeCellType"
   | "saveCellEdit"
   | "closeCellEdit"
+  | "mirrorReloaded"
   | "lineToCellId"
 > {
   return {

@@ -274,6 +274,42 @@ describe("loadConfig — ts_highlight (europa.config.ts-highlight-default)", () 
   });
 });
 
+describe("loadConfig — lsp_enable (europa.config.lsp-enable-default)", () => {
+  /**
+   * @spec-id europa.config.lsp-enable-default
+   *
+   * g:europa_lsp_enable must default to "auto" and accept the literal union
+   * "auto" | true | false; any other value is rejected (FR-019 / FR-020).
+   */
+  const LSP_EXPR = `get(g:, 'europa_lsp_enable', "auto")`;
+
+  it("defaults to 'auto' when not set", async () => {
+    const denops = mockVim();
+    const config = await loadConfig(denops);
+    assertEquals(config.lsp_enable, "auto");
+  });
+
+  it("accepts true", async () => {
+    const denops = mockVim();
+    denops.setEval(LSP_EXPR, true);
+    const config = await loadConfig(denops);
+    assertEquals(config.lsp_enable, true);
+  });
+
+  it("accepts false", async () => {
+    const denops = mockVim();
+    denops.setEval(LSP_EXPR, false);
+    const config = await loadConfig(denops);
+    assertEquals(config.lsp_enable, false);
+  });
+
+  it("rejects an invalid value (FR-019)", async () => {
+    const denops = mockVim();
+    denops.setEval(LSP_EXPR, "yes");
+    await assertRejects(() => loadConfig(denops), EuropaConfigError);
+  });
+});
+
 describe("loadConfig — deprecated g:europa_use_default_mappings", () => {
   /**
    * @spec-id europa.config.deprecated-use-default-mappings

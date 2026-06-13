@@ -20,6 +20,8 @@
       "@std/path/join": ["./typings/std-path-join.d.ts"],
       "@std/path/is-absolute": ["./typings/std-path-is-absolute.d.ts"],
       "@std/path/resolve": ["./typings/std-path-resolve.d.ts"],
+      "@std/path/dirname": ["./typings/std-path-dirname.d.ts"],
+      "@std/path/relative": ["./typings/std-path-relative.d.ts"],
       "@std/fs": ["./typings/std-fs.d.ts"],
       "@std/fs/exists": ["./typings/std-fs-exists.d.ts"],
       "@std/cli/parse-args": ["./typings/std-cli-parse-args.d.ts"],

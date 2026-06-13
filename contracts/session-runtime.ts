@@ -11,7 +11,7 @@
  * @module contracts/session-runtime
  */
 
-import type { Session } from "../schema/session.ts";
+import type { LspMirrorState, Session } from "../schema/session.ts";
 import type { KernelRuntime } from "./kernel-client.ts";
 import type {
   NotebookStructuralSnapshot,
@@ -38,4 +38,17 @@ export type SessionRuntime = Session & {
    * @spec-id europa.session.state.last-saved-snapshot-init
    */
   lastSavedSnapshot?: NotebookStructuralSnapshot;
+  /**
+   * On-disk `.py` notebook mirror state for LSP enablement (Phase 3.9).
+   * Present only when g:europa_lsp_enable is active AND the notebook resolves
+   * to filetype "python" (FR-004); absent otherwise (= 004 acwrite scratch
+   * fallback, no mirror materialized). Materialized lazily at the first
+   * :EuropaEditCell (not at viewer open), regenerated wholesale after
+   * saveCellEdit / cell insert/delete/move/type-change, cleaned on BufWipeout
+   * (delete mirrorPath) + process exit (delete the file for a project mirror;
+   * remove the per-session cache mirrorDir for an unsaved notebook) — never
+   * workspaceRoot. NOT serialized (FR-016 / FR-017 / FR-018, research §8/§9).
+   * @spec-id europa.view.lsp.edit-cell-region
+   */
+  lspMirror?: LspMirrorState;
 };

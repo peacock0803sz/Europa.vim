@@ -207,4 +207,35 @@ g:europa_disable_default_mappings
 	  nmap <buffer><silent> <leader>r <Plug>(europa-redo)
 <
 
+					*g:europa_lsp_enable*
+g:europa_lsp_enable
+	Controls the LSP-ready notebook mirror used by |:EuropaEditCell|
+	(Phase 3.9).  When enabled for a python notebook, `:EuropaEditCell`
+	edits a single on-disk `.py` "notebook mirror" (all code cells
+	concatenated, one per `# %% <cellId>` region) instead of a per-cell
+	scratch buffer.  Your existing LSP client (pyright / ruff / ty) then
+	attaches to that real file, and symbols defined in an upper cell
+	resolve from a lower cell (cross-cell).
+
+	  "auto"    Enable only for python notebooks (default).
+	  v:true    Force-enable for python notebooks; a non-python notebook
+		    still falls back to the scratch buffer.
+	  v:false   Disable; use the classic per-cell scratch buffer.
+
+	Type: string|boolean  Default: `"auto"`
+
+	Europa is client-agnostic: it only provides the mirror file, a
+	workspace root, and `filetype=python`.  There is deliberately NO
+	client-selection option -- configure pyright / ruff / ty in your own
+	LSP client (vim-lsp, nvim-lspconfig, coc.nvim, or the Neovim built-in
+	client).  See |europa-setup-lsp| for client examples.
+
+	The mirror is written under `<workspace-root>/.europa/lsp/` (or a
+	per-session cache dir for unsaved notebooks) and removed when the
+	buffer is wiped.  Add `.europa/` to your project's `.gitignore`.
+
+	Example: >
+	  let g:europa_lsp_enable = v:false
+<
+
 vim:tw=78:ts=8:noet:ft=help:norl:

@@ -22,6 +22,8 @@ let host: MockHost;
 describe("lineToCellId internal RPC", () => {
   beforeEach(() => {
     host = mockVim();
+    // Exercise the 004 scratch fallback (Phase 3.9 mirror is opt-out here).
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
   });
 
   it("returns null when no session is registered for the bufnr", async () => {
@@ -51,6 +53,8 @@ describe("editCell dispatcher", () => {
 
   beforeEach(() => {
     host = mockVim();
+    // Exercise the 004 scratch fallback (Phase 3.9 mirror is opt-out here).
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
   });
 
   it("emits a warning when session is missing", async () => {
@@ -120,6 +124,8 @@ describe("saveCellEdit dispatcher", () => {
 
   beforeEach(() => {
     host = mockVim();
+    // Exercise the 004 scratch fallback (Phase 3.9 mirror is opt-out here).
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
   });
 
   it("is a no-op when scratchBufnr is not registered with any session", async () => {
@@ -230,6 +236,8 @@ describe("closeCellEdit dispatcher", () => {
 
   beforeEach(() => {
     host = mockVim();
+    // Exercise the 004 scratch fallback (Phase 3.9 mirror is opt-out here).
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
   });
 
   it("is a no-op when scratchBufnr is not registered", async () => {

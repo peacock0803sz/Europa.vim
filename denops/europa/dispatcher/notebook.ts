@@ -8,6 +8,7 @@ import { takeStructuralSnapshot } from "../notebook/structural-snapshot.ts";
 import { buildRenderPlan } from "../render/builder.ts";
 import { setupAutocmds } from "../session/events.ts";
 import { applyRenderPlan } from "../view/viewer.ts";
+import { cleanupMirrorOnExit } from "../lsp/workspace.ts";
 import { defineHighlights } from "../view/highlight.ts";
 import { registerTracebackPropTypes } from "../view/traceback-jump.ts";
 import {
@@ -23,6 +24,77 @@ export function buildNotebookDispatcher(
   ctx: DispatcherContext,
 ): Pick<EuropaDispatcher, "init" | "open" | "save" | "cleanup"> {
   const { denops, sessionStore } = ctx;
+
+  /**
+   * Tear down every resource an existing session holds (kernel, scratch
+   * buffers, mirror, highlighter) and drop it from the store. Shared by
+   * `cleanup` and `open`: `:e` on the viewer re-fires BufReadCmd → `open`,
+   * and replacing the session without this teardown would leak the kernel
+   * and the on-disk mirror, and leave an orphaned mirror buffer whose stale
+   * content could later be re-adopted with the stale guard unset.
+   */
+  async function teardownSession(viewerBufnr: number): Promise<void> {
+    const session = sessionStore.get(viewerBufnr);
+    if (!session) return;
+
+    const kernelShutdown = session.kernelRuntime
+      ? session.kernelRuntime.client.shutdown().catch(async (e) => {
+        const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
+        await echomError(
+          denops,
+          `cleanup: kernel shutdown failed${code}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      })
+      : Promise.resolve();
+
+    const scratchWipeout = (async () => {
+      for (
+        const [_cellId, scratchBufnr] of sessionStore.getAllScratchBufnrs(
+          viewerBufnr,
+        )
+      ) {
+        const exists = await denops.call("bufexists", scratchBufnr);
+        if (exists) {
+          await denops.cmd(`bwipeout! ${scratchBufnr}`);
+        }
+        const group = `europa_cell_edit_${scratchBufnr}`;
+        await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
+        await denops.cmd(`augroup! ${group}`);
+      }
+    })();
+
+    await Promise.all([kernelShutdown, scratchWipeout]);
+    // deleteCell / joinCell can drop the mirror's per-cell registrations, so
+    // the scratch loop above may miss the mirror buffer: wipe it explicitly,
+    // or a later re-open at the same path would re-adopt the stale loaded
+    // buffer via bufadd (bufload no-ops when already loaded) with the
+    // stale-save guard unset.
+    const mirrorBufnr = session.lspMirror?.mirrorBufnr;
+    if (mirrorBufnr !== undefined) {
+      const mirrorExists = await denops.call("bufexists", mirrorBufnr);
+      if (mirrorExists) {
+        await denops.cmd(`bwipeout! ${mirrorBufnr}`);
+      }
+      const group = `europa_cell_edit_${mirrorBufnr}`;
+      await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
+      await denops.cmd(`augroup! ${group}`);
+    }
+    // Phase 3.9: remove the notebook mirror if one was materialized
+    // (FR-018). cleanupMirrorOnExit removes only the mirror file for a
+    // project-placed mirror (the .europa/lsp dir may be shared) but the
+    // whole per-session cache dir for an unsaved notebook — the session is
+    // dropped below, so atexit could not clean that dir up later.
+    if (session.lspMirror) {
+      await cleanupMirrorOnExit(session.lspMirror).catch(() => {});
+    }
+    // Detach syntax highlighter before removing session (FR-003 cleanup)
+    const orc = getOrCreateOrchestrator(denops);
+    await orc.detach(denops, viewerBufnr).catch(() => {});
+    sessionStore.remove(viewerBufnr);
+  }
+
   return {
     // Phase 2: init - wires highlights, config, capabilities, autocmds.
     // registerTracebackPropTypes must run after defineHighlights — the
@@ -44,43 +116,7 @@ export function buildNotebookDispatcher(
      * @spec-id europa.dispatcher.cleanup-with-kernel
      */
     async cleanup(bufnr: unknown): Promise<void> {
-      const viewerBufnr = Number(bufnr);
-      const session = sessionStore.get(viewerBufnr);
-      if (!session) return;
-
-      const kernelShutdown = session.kernelRuntime
-        ? session.kernelRuntime.client.shutdown().catch(async (e) => {
-          const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
-          await echomError(
-            denops,
-            `cleanup: kernel shutdown failed${code}: ${
-              e instanceof Error ? e.message : String(e)
-            }`,
-          );
-        })
-        : Promise.resolve();
-
-      const scratchWipeout = (async () => {
-        for (
-          const [_cellId, scratchBufnr] of sessionStore.getAllScratchBufnrs(
-            viewerBufnr,
-          )
-        ) {
-          const exists = await denops.call("bufexists", scratchBufnr);
-          if (exists) {
-            await denops.cmd(`bwipeout! ${scratchBufnr}`);
-          }
-          const group = `europa_cell_edit_${scratchBufnr}`;
-          await denops.cmd(`augroup ${group} | autocmd! | augroup END`);
-          await denops.cmd(`augroup! ${group}`);
-        }
-      })();
-
-      await Promise.all([kernelShutdown, scratchWipeout]);
-      // Detach syntax highlighter before removing session (FR-003 cleanup)
-      const orc = getOrCreateOrchestrator(denops);
-      await orc.detach(denops, viewerBufnr).catch(() => {});
-      sessionStore.remove(viewerBufnr);
+      await teardownSession(Number(bufnr));
     },
 
     /**
@@ -92,6 +128,9 @@ export function buildNotebookDispatcher(
     async open(bufnr: unknown, path: unknown): Promise<void> {
       const bufnrNum = Number(bufnr);
       const pathStr = String(path);
+      // `:e` on the viewer re-fires BufReadCmd → open for an already-open
+      // session: tear the old one down first instead of leaking it.
+      await teardownSession(bufnrNum);
       const content = await Deno.readTextFile(pathStr);
       const notebook = await parseNotebook(content);
       const config = await loadConfig(denops);

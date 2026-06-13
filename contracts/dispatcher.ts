@@ -72,6 +72,11 @@ export type EuropaDispatcher = {
    */
   closeCellEdit(scratchBufnr: unknown): Promise<void>;
   /**
+   * Lift the stale-save guard after the mirror buffer is reloaded from disk.
+   * Phase 3.9 internal RPC; called from the `BufReadPost` autocmd on the mirror.
+   */
+  mirrorReloaded(mirrorBufnr: unknown): Promise<void>;
+  /**
    * Resolve a 1-origin viewer buffer line to the cell id that contains it.
    * Phase 3.1 internal RPC; called synchronously from `europa#current_cell_id()`
    * via `denops#request` to identify the cell at the cursor.

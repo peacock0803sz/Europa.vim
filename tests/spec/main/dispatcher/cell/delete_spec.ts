@@ -23,6 +23,7 @@ describe("deleteCell dispatcher", () => {
 
   beforeEach(() => {
     host = mockVim();
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
   });
 
   it("emits a warning and is a no-op when session is not found", async () => {

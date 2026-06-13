@@ -18,6 +18,7 @@ import type {
   SixelPlacement,
 } from "../../../schema/render-plan.ts";
 import type { Cell, Notebook } from "../../../schema/notebook.ts";
+import type { CellRegion } from "../../../schema/session.ts";
 import {
   applyMdDecorations,
   ensureMdOverlayBufferOptions,
@@ -474,6 +475,24 @@ export function resolveScratchFiletype(
 }
 
 /**
+ * Decide whether `:EuropaEditCell` should open the LSP-ready notebook mirror or
+ * fall back to the 004 acwrite scratch buffer, from `g:europa_lsp_enable`.
+ *
+ * Both `true` and `"auto"` require the cell to resolve to python — a non-python
+ * notebook always falls back, since the mirror's normalization and suppression
+ * header are Python-specific. `false` always falls back. Kernel state is never
+ * consulted (notebook-metadata-driven, FR-004 / FR-006 / research §11).
+ */
+export function resolveLspEnabled(
+  setting: "auto" | true | false,
+  notebook: Notebook,
+  cell: Cell,
+): boolean {
+  if (setting === false) return false;
+  return resolveScratchFiletype(notebook, cell) === "python";
+}
+
+/**
  * Open (or reuse) a scratch buffer for editing a single cell's source.
  *
  * Pure host I/O: this function never touches `SessionStore`. The dispatcher
@@ -561,6 +580,170 @@ export async function openCellEditBuffer(
 
   await denops.cmd(`split #${scratchBufnr}`);
   return scratchBufnr;
+}
+
+/**
+ * Reload an open mirror buffer with freshly regenerated mirror text, because
+ * regenerating only the on-disk file would leave the buffer stale: the next
+ * `:w` would distribute outdated lines and Vim would raise W11 (file changed
+ * on disk). Skips with a WarningMsg when the buffer holds unsaved edits —
+ * they must never be discarded — unless `force` is set, which the dispatcher
+ * uses right after the buffer's own `:w` (its content was just absorbed, so
+ * it is replaced by the re-normalized mirror).
+ *
+ * Returns whether the buffer now matches `mirrorLines`: `false` only for the
+ * skipped-because-modified case, which the caller records as `bufferStale`
+ * so a later `:w` from the stale buffer can be refused.
+ */
+export async function syncMirrorBuffer(
+  denops: Denops,
+  mirrorBufnr: number,
+  mirrorLines: readonly string[],
+  opts: { force?: boolean } = {},
+): Promise<boolean> {
+  // bufexists (not bufloaded) is sufficient: an existing-but-unloaded buffer
+  // has no in-memory lines to go stale — it reloads fresh from the (just
+  // regenerated) file when next displayed.
+  const exists = await denops.call("bufexists", mirrorBufnr) as number;
+  if (!exists) return true; // no buffer → nothing that could go stale
+  if (!opts.force) {
+    const modified = await denops.call(
+      "getbufvar",
+      mirrorBufnr,
+      "&modified",
+      0,
+    );
+    if (Number(modified) !== 0) {
+      await denops.cmd(
+        "echohl WarningMsg | echom 'Europa: notebook changed but the mirror buffer has unsaved edits — :edit! it to resync' | echohl None",
+      );
+      return false;
+    }
+  }
+  await denops.call("setbufline", mirrorBufnr, 1, [...mirrorLines]);
+  await denops.call("deletebufline", mirrorBufnr, mirrorLines.length + 1, "$");
+  await denops.call("setbufvar", mirrorBufnr, "&modified", 0);
+  return true;
+}
+
+/**
+ * Fold every non-target cell region and move the cursor to the target cell's
+ * first content line, giving per-cell focus while the LSP server still sees the
+ * whole mirror (host-agnostic: fold / setpos only, FR-005a / FR-025).
+ */
+async function focusCellRegion(
+  denops: Denops,
+  mirrorBufnr: number,
+  cellRegions: readonly CellRegion[],
+  cellId: string,
+): Promise<void> {
+  await denops.cmd("setlocal foldmethod=manual");
+  await denops.cmd("normal! zE"); // drop any existing folds
+  // The buffer can be SHORTER than the fresh regions when it kept unsaved
+  // edits across a notebook mutation (stale): an out-of-range fold raises
+  // E16 and aborts the whole editCell, so clamp to the actual line count.
+  const info = await denops.call(
+    "getbufinfo",
+    mirrorBufnr,
+  ) as { linecount: number }[];
+  const lineCount = info?.[0]?.linecount ?? Number.MAX_SAFE_INTEGER;
+  for (const region of cellRegions) {
+    if (region.cellId === cellId) continue;
+    // 0-based marker..endLine → 1-based inclusive fold range.
+    const start = region.markerLine + 1;
+    const end = Math.min(region.endLine + 1, lineCount);
+    if (start > end) continue;
+    await denops.cmd(`${start},${end}fold`);
+  }
+  const target = cellRegions.find((r) => r.cellId === cellId);
+  if (target && target.startLine + 1 <= lineCount) {
+    await denops.call("setpos", ".", [0, target.startLine + 1, 1, 0]);
+    await denops.cmd("normal! zz");
+  }
+}
+
+/**
+ * Open (or focus) the on-disk notebook mirror buffer and focus a cell's region
+ * (Phase 3.9 LSP path). Replaces {@link openCellEditBuffer} when LSP is enabled
+ * for a python notebook; the 004 acwrite scratch remains the fallback (FR-004).
+ *
+ * The mirror file at `opts.mirrorPath` must already be materialized on disk
+ * (the dispatcher does this); `bufload` reads it, then `&buftype=acwrite` routes
+ * `:w` through `saveCellEdit` exactly like the scratch path. All cells share one
+ * buffer so the LSP client sees a single Python module (cross-cell, FR-008).
+ *
+ * @spec-id europa.view.lsp.edit-cell-region
+ */
+export async function openCellRegion(
+  denops: Denops,
+  opts: {
+    mirrorPath: string;
+    viewerBufnr: number;
+    cellRegions: readonly CellRegion[];
+    cellId: string;
+    existingMirrorBufnr?: number;
+  },
+): Promise<number> {
+  if (opts.existingMirrorBufnr !== undefined) {
+    const exists = await denops.call("bufexists", opts.existingMirrorBufnr);
+    if (exists) {
+      const winids = await denops.call(
+        "win_findbuf",
+        opts.existingMirrorBufnr,
+      ) as number[];
+      if (winids.length > 0) {
+        await denops.call("win_gotoid", winids[0]);
+      } else {
+        await denops.cmd(`split #${opts.existingMirrorBufnr}`);
+      }
+      await focusCellRegion(
+        denops,
+        opts.existingMirrorBufnr,
+        opts.cellRegions,
+        opts.cellId,
+      );
+      return opts.existingMirrorBufnr;
+    }
+  }
+
+  const mirrorBufnr = await denops.call("bufadd", opts.mirrorPath) as number;
+  await denops.call("bufload", mirrorBufnr); // reads the materialized file
+
+  await denops.call("setbufvar", mirrorBufnr, "&buftype", "acwrite");
+  await denops.call("setbufvar", mirrorBufnr, "&swapfile", 0);
+  await denops.call("setbufvar", mirrorBufnr, "&bufhidden", "hide");
+  await denops.call("setbufvar", mirrorBufnr, "&buflisted", 0);
+  await denops.call("setbufvar", mirrorBufnr, "&filetype", "python");
+  await denops.call("setbufvar", mirrorBufnr, "&modified", 0);
+  await denops.call(
+    "setbufvar",
+    mirrorBufnr,
+    "europa_viewer_bufnr",
+    opts.viewerBufnr,
+  );
+
+  // Same group naming as the 004 scratch so the shared teardown paths
+  // (closeCellEditAutocmds, viewer cleanup) remove the mirror's group too.
+  const group = `europa_cell_edit_${mirrorBufnr}`;
+  await denops.cmd(`augroup ${group}`);
+  await denops.cmd("autocmd!");
+  // Synchronous request (see openCellEditBuffer) so :wq saves before wipeout.
+  await denops.cmd(
+    `autocmd BufWriteCmd <buffer=${mirrorBufnr}> call denops#request('europa', 'saveCellEdit', [${mirrorBufnr}])`,
+  );
+  await denops.cmd(
+    `autocmd BufWipeout <buffer=${mirrorBufnr}> call denops#notify('europa', 'closeCellEdit', [${mirrorBufnr}])`,
+  );
+  // A reload from disk (:e!) brings the buffer back in sync with the latest
+  // regenerated mirror, lifting the stale-save guard.
+  await denops.cmd(
+    `autocmd BufReadPost <buffer=${mirrorBufnr}> call denops#notify('europa', 'mirrorReloaded', [${mirrorBufnr}])`,
+  );
+  await denops.cmd("augroup END");
+
+  await denops.cmd(`split #${mirrorBufnr}`);
+  await focusCellRegion(denops, mirrorBufnr, opts.cellRegions, opts.cellId);
+  return mirrorBufnr;
 }
 
 /**

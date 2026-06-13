@@ -16,6 +16,7 @@ import {
   vimSingleQuote,
 } from "../context.ts";
 import { scheduleHighlightRefresh } from "../syntax-highlight.ts";
+import { refreshMirror } from "../_mirror.ts";
 
 export type MutationResult = {
   notebook: Notebook;
@@ -68,6 +69,9 @@ export async function operateCell(
     cellMap: plan.cellMap,
   });
   sessionStore.setRenderPlan(bufnr, plan);
+  // Structural cell op changed the notebook → regenerate the mirror so the
+  // line maps reflect the new cell order/set (FR-011 / research §8).
+  await refreshMirror(ctx, bufnr, mutation.notebook);
   try {
     await applyRenderPlan(denops, bufnr, plan);
     scheduleHighlightRefresh(ctx, bufnr); // FR-007: follow cell mutation
@@ -105,12 +109,16 @@ export async function refuseIfScratchDirty(
   if (!exists) return false;
   const modified = await denops.call("getbufvar", sbn, "&modified");
   if (modified !== 1 && modified !== "1") return false;
+  // The registered buffer may be the shared notebook mirror (LSP path) —
+  // pointing the user at a __europa_cell_*__ scratch that does not exist
+  // would be misleading.
+  const isMirror =
+    sbn === sessionStore.get(viewerBufnr)?.lspMirror?.mirrorBufnr;
+  const hint = isMirror
+    ? `Europa: cell ${cellId} has unsaved edits in the notebook mirror - :w or :edit! the mirror first`
+    : `Europa: cell ${cellId} has unsaved scratch edits - :write or :bdelete __europa_cell_${cellId}__ first`;
   await denops.cmd(
-    `echohl WarningMsg | echom ${
-      vimSingleQuote(
-        `Europa: cell ${cellId} has unsaved scratch edits - :write or :bdelete __europa_cell_${cellId}__ first`,
-      )
-    } | echohl None`,
+    `echohl WarningMsg | echom ${vimSingleQuote(hint)} | echohl None`,
   );
   return true;
 }

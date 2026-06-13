@@ -42,4 +42,40 @@ Check that `magick` (or `convert`) is on PATH: >
 	magick --version
 <
 
+==============================================================================
+LSP (PYRIGHT / RUFF / TY, OPTIONAL)~
+						*europa-setup-lsp*
+For *python* notebooks, |:EuropaEditCell| can open an LSP-ready mirror buffer
+so your own language servers attach (see |g:europa_lsp_enable|, default
+"auto").  Europa never starts a server itself; markdown / raw cells and
+non-python notebooks are not mirrored.
+
+Install a type checker plus ruff -- use pyright OR ty for type checking, and
+ruff for lint + format.  Running all three at once is fine: >
+	pip install pyright ruff ty       " or: npm install -g pyright
+<
+Configure your LSP client to attach on the `python` filetype; it will pick up
+the mirror file under `<workspace-root>/.europa/lsp/`.  Examples:
+
+nvim-lspconfig: >
+	require("lspconfig").pyright.setup({})
+	require("lspconfig").ruff.setup({})
+<
+vim-lsp: >
+	au User lsp_setup call lsp#register_server({
+	  \ 'name': 'pyright', 'cmd': {->['pyright-langserver','--stdio']},
+	  \ 'allowlist': ['python']})
+<
+coc.nvim: install `coc-pyright`, and register ruff as a separate server.
+
+Notes:
+- Add `.europa/` to your project `.gitignore` (the mirror lives there).
+- To format, run your client's formatter explicitly (e.g.
+  `:lua vim.lsp.buf.format()` or `:LspDocumentFormat`) and then `:w`;
+  Europa absorbs the formatted buffer.  `BufWritePre`-based format-on-save
+  does NOT fire on the mirror: its writes go through a `BufWriteCmd`
+  handler, which suppresses the `BufWritePre`/`BufWritePost` events.
+- All code cells share one mirror file, so diagnostics and go-to-definition
+  work across cells.
+
 vim:tw=78:ts=8:noet:ft=help:norl:

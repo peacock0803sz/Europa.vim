@@ -58,6 +58,10 @@ const AREA_ALLOWLIST = new Set([
   //   dispatcher.{runcell-batch-driven,runall-batch-driven,cellops-flush-on-entry}
   // Phase 009 (tree-sitter syntax highlight) additions:
   "ftplugin",
+  // Phase 3.9 (LSP notebook-mirror) additions:
+  //   lsp.mirror.{build,normalize,linemap,writeback} — pure mirror transforms
+  //   (view.lsp.edit-cell-region lives under the already-allowlisted "view")
+  "lsp",
   // Phase 008 (undo/redo) additions — all under existing top-level areas:
   //   session.undo-history.{push,pop-undo,pop-redo,clear-redo,fifo-overflow,enqueue-undo,enqueue-redo,
   //     queue-overflow,empty-stack,sequential-processing,set-processor,push-undo-front,push-redo-front,dispose}

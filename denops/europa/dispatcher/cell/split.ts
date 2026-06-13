@@ -109,7 +109,13 @@ export function buildSplitCellDispatcher(
       });
 
       const scratchBufnr = sessionStore.getScratchBufnr(viewerBufnr, cid);
-      if (scratchBufnr !== undefined) {
+      // Skip the SHARED mirror buffer (LSP path): replacing its content with
+      // only the upper cell's lines would clobber the regenerated mirror
+      // that operateCell's refreshMirror just synced (markers lost).
+      if (
+        scratchBufnr !== undefined &&
+        scratchBufnr !== sessionStore.get(viewerBufnr)?.lspMirror?.mirrorBufnr
+      ) {
         const exists = await denops.call("bufexists", scratchBufnr);
         if (exists) {
           const upperCell = newNotebook.cells.find((c) => c.id === cid);

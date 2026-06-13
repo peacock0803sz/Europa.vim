@@ -25,6 +25,7 @@ describe("joinCell dispatcher", () => {
 
   beforeEach(() => {
     host = mockVim();
+    host.setEval(`get(g:, 'europa_lsp_enable', "auto")`, false);
   });
 
   it("emits a warning when session is missing", async () => {

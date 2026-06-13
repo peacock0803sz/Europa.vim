@@ -160,6 +160,23 @@ export class MockHost implements Denops {
     if (augroupClear) {
       this._autocmdGroups.delete(augroupClear[1]);
     }
+    // bwipeout[!] <nr> — the :cmd form used by the teardown paths; mirror
+    // the call-form handling so wiped buffers actually disappear in tests.
+    const bwipe = command.match(/^bwipeout!?\s+(\d+)$/);
+    if (bwipe) {
+      const nr = parseInt(bwipe[1]);
+      const buf = this._buffers.get(nr);
+      if (buf) {
+        buf.exists = false;
+        buf.loaded = false;
+      }
+      for (const [name, n] of this._bufnames) {
+        if (n === nr) {
+          this._bufnames.delete(name);
+          break;
+        }
+      }
+    }
     return Promise.resolve();
   }
 
@@ -209,6 +226,23 @@ export class MockHost implements Denops {
     if (fn === "bufload") {
       const nr = args[0] as number;
       const buf = this._buffers.get(nr);
+      if (buf && !buf.loaded) {
+        // Mimic Vim's file-read semantics: a terminating "\n" is the last
+        // line's EOL, not an extra empty line. A buffer name that is not a
+        // readable file (e.g. a __europa_cell_*__ scratch) stays empty.
+        const name = [...this._bufnames].find(([, n]) => n === nr)?.[0];
+        if (name) {
+          try {
+            const content = Deno.readTextFileSync(name);
+            buf.lines = content.endsWith("\n")
+              ? content.slice(0, -1).split("\n")
+              : content.split("\n");
+            this.bufLines.set(nr, buf.lines);
+          } catch {
+            // not an on-disk file — leave the buffer empty
+          }
+        }
+      }
       if (buf) buf.loaded = true;
       return Promise.resolve(null);
     }
@@ -288,6 +322,13 @@ export class MockHost implements Denops {
         this.bufLines.set(nr, buf.lines);
       }
       return Promise.resolve(null);
+    }
+    if (fn === "getbufinfo") {
+      const nr = args[0] as number;
+      const buf = this._buffers.get(nr);
+      return Promise.resolve(
+        buf ? [{ bufnr: nr, linecount: buf.lines.length }] : [],
+      );
     }
     if (fn === "getbufvar") {
       const nr = args[0] as number;

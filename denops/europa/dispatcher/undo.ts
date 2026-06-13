@@ -18,6 +18,7 @@ import {
   vimSingleQuote,
 } from "./context.ts";
 import { scheduleHighlightRefresh } from "./syntax-highlight.ts";
+import { refreshMirror } from "./_mirror.ts";
 
 function resolveAffectedCellId(
   hint: UndoAffectedCellHint,
@@ -132,12 +133,22 @@ export async function processOne(
     sessionStore.update(bufnr, { cellMap: plan.cellMap });
     sessionStore.setRenderPlan(bufnr, plan);
 
+    // Phase 3.9: the restored notebook invalidates the mirror's line maps —
+    // regenerate like any other mutation path, or the next mirror :w would
+    // silently re-apply the undone change from the stale buffer/file.
+    await refreshMirror(ctx, bufnr, restoredNotebook);
+
     if (entry.scratchSync) {
       const scrBn = sessionStore.getScratchBufnr(
         bufnr,
         entry.scratchSync.cellId,
       );
-      if (scrBn !== undefined) {
+      // The cellId may have been re-registered to the SHARED mirror buffer
+      // since the entry was pushed; replaying one cell's preSource there
+      // would wipe the mirror refreshMirror just regenerated above.
+      const isMirror =
+        scrBn === sessionStore.get(bufnr)?.lspMirror?.mirrorBufnr;
+      if (scrBn !== undefined && !isMirror) {
         const newLines = entry.scratchSync.preSource.split("\n");
         await denops.call("setbufline", scrBn, 1, newLines);
         await denops.call("setbufvar", scrBn, "&modified", 0);
@@ -228,6 +239,9 @@ export async function processOne(
       sessionStore.setRenderPlan(bufnr, plan2);
       await applyRenderPlan(denops, bufnr, plan2);
       scheduleHighlightRefresh(ctx, bufnr); // FR-007: undo fallback follow-up
+      // The mirror may already have been regenerated for the restored
+      // notebook before the render failed — re-align it with the rollback.
+      await refreshMirror(ctx, bufnr, rolledBackSession.notebook);
     } catch {
       const verb = kind === "undo" ? "undo" : "redo";
       await denops.cmd(
