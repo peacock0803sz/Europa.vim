@@ -36,6 +36,10 @@ const WHITELIST = new Set([
   "denops/europa/kernel/watchdog.ts",
   "denops/europa/kernel/server-client.ts",
   "denops/europa/kernel/server-pool.ts",
+  // Phase 4.1: ZmqKernelClient uses internal helper type aliases (lazy-imported
+  // zeromq socket handles, correlation state) local to the implementation —
+  // not domain entities. Same precedent as server-client.ts.
+  "denops/europa/kernel/zmq-client.ts",
   // Phase 3.4: QueueEntry is an internal scheduler implementation detail
   // (KernelMessage + metadata) — not a domain entity and not exported.
   "denops/europa/render/iopub-batch.ts",
