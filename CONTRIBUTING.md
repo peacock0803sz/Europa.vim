@@ -53,6 +53,17 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 | `deno task test:spec` | Runs BDD specs under `tests/spec/`. | Phase 2+ |
 | `deno task test:golden` | Runs golden-file diffs for `.ipynb` fixtures and `doc/europa.txt`. | Phase 2+ |
 | `deno task test:conformance` | Runs end-to-end conformance tests under `tests/conformance/` against a real `jupyter server`. Requires `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`. Not included in `deno task check` (Q5 decision). | Phase 3.2+ |
+| `deno task test:conformance:zmq` | Runs the opt-in ZeroMQ attach e2e (`tests/conformance/zmq_attach_spec.ts`) against a real `jupyter kernel`. Gated by `EUROPA_ZMQ_E2E=1`, needs `--allow-ffi` and the built `zeromq` native binding (see below). ubuntu-only in CI; not included in `deno task check`. | Phase 4.1+ |
+
+## 5.1 ZeroMQ native binding (Phase 4.1+)
+
+`:EuropaAttach` lazy-imports `npm:zeromq` only inside the attach path, so the fast gate (`deno task check`) and `deno task test:spec` stay FFI-free through an in-memory transport double. To drive a real kernel over ZeroMQ — running `deno task test:conformance:zmq`, or attaching live — build the native binding once:
+
+```sh
+deno install --allow-scripts=npm:zeromq
+```
+
+Deno skips npm lifecycle scripts by default, so this step is required to compile the addon. Prebuilt binaries cover Windows, Linux x86-64 (glibc and musl), and macOS x86-64. Other targets such as ARM64 fall back to a source build that needs a C++17 toolchain, CMake, and Python 3 — none of which the `flake.nix` dev shell currently provides, so install them yourself on those platforms until the dev shell grows the toolchain.
 
 ## 6. Guide chapter editing rules
 
