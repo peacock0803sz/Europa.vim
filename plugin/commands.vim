@@ -36,6 +36,9 @@ command! -nargs=1 EuropaCellType
 command! -nargs=? EuropaStartKernel
       \ call europa#start_kernel(<q-args>)
 
+command! -nargs=1 -complete=file EuropaAttach
+      \ call europa#attach_kernel(<q-args>)
+
 command! -nargs=0 EuropaShutdownKernel
       \ call europa#shutdown_kernel()
 

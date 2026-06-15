@@ -40,11 +40,15 @@ import { SessionStore } from "./session/state.ts";
  * @spec-id europa.contract.dispatcher-phase3-1-alignment
  * @spec-id europa.contract.dispatcher-phase3-2-alignment
  */
-export function buildDispatcher(denops: Denops): EuropaDispatcher {
+export function buildDispatcher(
+  denops: Denops,
+  overrides?: Partial<DispatcherContext>,
+): EuropaDispatcher {
   const ctx: DispatcherContext = {
     denops,
     sessionStore: new SessionStore(),
     serverPool: new ServerPool(),
+    ...overrides,
   };
 
   return {

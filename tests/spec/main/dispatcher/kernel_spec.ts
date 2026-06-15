@@ -20,6 +20,11 @@ import {
   type MockKernelHandle,
 } from "../../../fixtures/mock-kernel.ts";
 import { EuropaKernelError } from "../../../../denops/europa/kernel/errors.ts";
+import { ZmqKernelClient } from "../../../../denops/europa/kernel/zmq-client.ts";
+import {
+  makeMockZmqKernel,
+  type MockZmqParams,
+} from "../../../fixtures/mock-zmq-kernel.ts";
 
 const FIXTURE_PATH = new URL(
   "../../../golden/ipynb/edit-target.ipynb",
@@ -415,5 +420,107 @@ describe(
         );
       },
     );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// attachKernel dispatcher (europa.dispatcher.attach-kernel)
+// ---------------------------------------------------------------------------
+
+describe(
+  "attachKernel dispatcher",
+  { sanitizeResources: false, sanitizeOps: false },
+  () => {
+    const BUFNR = 91;
+    const PARAMS: MockZmqParams = {
+      shell_port: 60101,
+      iopub_port: 60102,
+      stdin_port: 60103,
+      control_port: 60104,
+      hb_port: 60105,
+      ip: "127.0.0.1",
+      key: "attach-key",
+      signature_scheme: "hmac-sha256",
+    };
+    let host: MockHost;
+
+    beforeEach(() => {
+      host = mockVim();
+    });
+
+    async function writeConnFile(): Promise<string> {
+      const path = await Deno.makeTempFile({ suffix: ".json" });
+      await Deno.writeTextFile(
+        path,
+        JSON.stringify({ ...PARAMS, transport: "tcp", kernel_name: "python3" }),
+      );
+      return path;
+    }
+
+    function dispatcherWithMock(mockModule: unknown) {
+      return buildDispatcher(host, {
+        createZmqClient: (d, c, cf) =>
+          new ZmqKernelClient(d, c, cf, {
+            kernelInfoTimeoutMs: 2000,
+            importZmq: () =>
+              Promise.resolve(mockModule as typeof import("zeromq")),
+          }),
+      });
+    }
+
+    /** @spec-id europa.dispatcher.attach-kernel */
+    it("attaches and commits a zmq kernelRuntime with a success notification", async () => {
+      const path = await writeConnFile();
+      const mock = makeMockZmqKernel(PARAMS);
+      const dispatcher = dispatcherWithMock(mock.module);
+      await dispatcher.open(BUFNR, FIXTURE_PATH);
+      host.calls = [];
+
+      await dispatcher.attachKernel(BUFNR, path);
+
+      assertEquals(
+        host.cmdsMatching("echohl ErrorMsg").length,
+        0,
+        "no error must be emitted on a successful attach",
+      );
+      assertEquals(
+        host.cmdsMatching("Attached to kernel").length > 0,
+        true,
+        "a success notification must be emitted",
+      );
+      await dispatcher.shutdownKernel(BUFNR);
+    });
+
+    /** @spec-id europa.dispatcher.attach-kernel-reject-reattach */
+    it("refuses re-attach when the buffer already has a kernel", async () => {
+      const path = await writeConnFile();
+      const mock = makeMockZmqKernel(PARAMS);
+      const dispatcher = dispatcherWithMock(mock.module);
+      await dispatcher.open(BUFNR, FIXTURE_PATH);
+      await dispatcher.attachKernel(BUFNR, path); // first attach succeeds
+      host.calls = [];
+
+      await dispatcher.attachKernel(BUFNR, path); // second must be refused
+
+      const errs = host.cmdsMatching("echohl ErrorMsg");
+      assertEquals(errs.length > 0, true, "re-attach must emit an error");
+      assertStringIncludes(String(errs[0]?.args[0]), "ALREADY_ATTACHED");
+      await dispatcher.shutdownKernel(BUFNR);
+    });
+
+    it("rejects a missing session with INVALID_ARGS and no attach", async () => {
+      const path = await writeConnFile();
+      const mock = makeMockZmqKernel(PARAMS);
+      const dispatcher = dispatcherWithMock(mock.module);
+      // No dispatcher.open(): the buffer has no notebook session.
+      await dispatcher.attachKernel(BUFNR, path);
+
+      const errs = host.cmdsMatching("echohl ErrorMsg");
+      assertEquals(errs.length > 0, true);
+      assertStringIncludes(
+        String(errs[0]?.args[0]),
+        "no open notebook session",
+      );
+    });
   },
 );
