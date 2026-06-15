@@ -170,6 +170,7 @@ export class ZmqKernelClient implements KernelClient {
    * Never sends shutdown_request — Europa did not start this kernel (FR-010).
    *
    * @category Kernel
+   * @spec-id europa.kernel.zmq-client.shutdown-non-owned
    */
   shutdown(): Promise<void> {
     if (this.#closed) return Promise.resolve();
@@ -289,13 +290,18 @@ export class ZmqKernelClient implements KernelClient {
     msgId: string,
     signal?: AbortSignal,
   ): AsyncIterable<KernelMessage> {
+    // Combine the per-call signal with the client abort so shutdown() cancels an
+    // in-flight execute instead of leaving it hung after the sockets close (AC#3).
+    const abortSignal = signal
+      ? AbortSignal.any([signal, this.#abort.signal])
+      : this.#abort.signal;
     const buffer: KernelMessage[] = [];
     let resolveNext: ((msg: KernelMessage) => void) | null = null;
     let receivedReply = false;
     let receivedIdle = false;
 
     // Check before subscribing so an already-aborted signal cannot leak a handler.
-    signal?.throwIfAborted();
+    abortSignal.throwIfAborted();
 
     const unsubscribe = this.onMessage((msg) => {
       const ph = msg.parent_header as { msg_id?: string };
@@ -317,7 +323,7 @@ export class ZmqKernelClient implements KernelClient {
     try {
       await this.#zmq!.shell.send(encodeZmq(envelope, this.#key, this.#scheme));
       while (!receivedReply || !receivedIdle || buffer.length > 0) {
-        signal?.throwIfAborted();
+        abortSignal.throwIfAborted();
         const msg = buffer.shift() ??
           await new Promise<KernelMessage>((resolve, reject) => {
             const onAbort = () => {
@@ -325,10 +331,10 @@ export class ZmqKernelClient implements KernelClient {
               reject(new DOMException("Aborted", "AbortError"));
             };
             resolveNext = (m: KernelMessage) => {
-              signal?.removeEventListener("abort", onAbort);
+              abortSignal.removeEventListener("abort", onAbort);
               resolve(m);
             };
-            signal?.addEventListener("abort", onAbort, { once: true });
+            abortSignal.addEventListener("abort", onAbort, { once: true });
           });
         yield msg;
       }

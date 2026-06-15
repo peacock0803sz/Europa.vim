@@ -203,3 +203,35 @@ describe("ZmqKernelClient.execute", () => {
     }
   });
 });
+
+/** @spec-id europa.kernel.zmq-client.shutdown-non-owned */
+describe("ZmqKernelClient.shutdown — non-owned teardown", () => {
+  it("closes all 5 sockets and sends no shutdown_request", async () => {
+    const { client, mock } = await setup();
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    await client.shutdown();
+    assertEquals(mock.shutdownRequestSeen(), false);
+    assertEquals(mock.closedChannels().size, 5);
+  });
+
+  it("is idempotent (second shutdown is a no-op)", async () => {
+    const { client } = await setup();
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    await client.shutdown();
+    await client.shutdown();
+  });
+
+  it("cancels an in-flight execute on shutdown (US3 AC#3)", async () => {
+    // No iopub sequence -> execute hangs waiting for status:idle, so only the
+    // shutdown abort can terminate the stream.
+    const { client } = await setup({ scriptExecute: () => [] });
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    const drained = assertRejects(async () => {
+      for await (const _msg of client.execute("hang", { msgId: "h" })) {
+        // drain until shutdown aborts the stream
+      }
+    });
+    await client.shutdown();
+    await drained;
+  });
+});
