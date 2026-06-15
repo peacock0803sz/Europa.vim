@@ -522,5 +522,19 @@ describe(
         "no open notebook session",
       );
     });
+
+    /** @spec-id europa.dispatcher.kernel-status-zmq */
+    it("reports a zmq runtime as wsState NONE without touching kr.socket", async () => {
+      const path = await writeConnFile();
+      const mock = makeMockZmqKernel(PARAMS);
+      const dispatcher = dispatcherWithMock(mock.module);
+      await dispatcher.open(BUFNR, FIXTURE_PATH);
+      await dispatcher.attachKernel(BUFNR, path);
+
+      const report = await dispatcher.kernelStatus(BUFNR);
+      assertEquals(report.info?.connectionMode, "zmq");
+      assertEquals(report.wsState, "NONE");
+      await dispatcher.shutdownKernel(BUFNR);
+    });
   },
 );

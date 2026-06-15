@@ -123,6 +123,7 @@ export function buildKernelDispatcher(
      * given viewer buffer.
      *
      * @spec-id europa.dispatcher.kernel-status
+     * @spec-id europa.dispatcher.kernel-status-zmq
      */
     kernelStatus(bufnr: unknown): Promise<KernelStatusReport> {
       const bn = Number(bufnr);
@@ -131,6 +132,12 @@ export function buildKernelDispatcher(
 
       if (!kr) {
         return Promise.resolve({ info: null, wsState: "NONE" });
+      }
+
+      // D5: a ZMQ runtime has no WebSocket and is not in the ServerPool, so
+      // branch before any kr.socket / kr.serverKey deref (which assume WS).
+      if (kr.info.connectionMode === "zmq") {
+        return Promise.resolve({ info: kr.info, wsState: "NONE" });
       }
 
       const WS_STATE_NAMES = [
