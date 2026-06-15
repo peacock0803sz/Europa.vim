@@ -15,6 +15,19 @@ import {
 } from "../../fixtures/mock-zmq-kernel.ts";
 import type { Denops } from "@denops/std";
 import type { EuropaConfig } from "../../../schema/config.ts";
+import type { KernelMessage } from "../../../schema/message.ts";
+
+async function collect(
+  stream: AsyncIterable<KernelMessage>,
+): Promise<KernelMessage[]> {
+  const out: KernelMessage[] = [];
+  for await (const msg of stream) out.push(msg);
+  return out;
+}
+
+function parentId(msg: KernelMessage): string | undefined {
+  return (msg.parent_header as { msg_id?: string }).msg_id;
+}
 
 const PARAMS = {
   shell_port: 60001,
@@ -141,6 +154,50 @@ describe("ZmqKernelClient — KernelRuntime transport invariant", () => {
         (runtime.socket === undefined) !== (runtime.zmq === undefined),
         true,
       );
+    } finally {
+      await client.shutdown();
+    }
+  });
+});
+
+/** @spec-id europa.kernel.zmq-client.execute */
+describe("ZmqKernelClient.execute", () => {
+  it("yields the iopub sequence and reply correlated by msg_id", async () => {
+    const { client } = await setup();
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    try {
+      const msgs = await collect(
+        client.execute("print(1)", { msgId: "exec-1" }),
+      );
+      for (const m of msgs) assertEquals(parentId(m), "exec-1");
+      const types = msgs.map((m) => m.header.msg_type);
+      assertEquals(types.includes("execute_reply"), true);
+      assertEquals(types.includes("stream"), true);
+      assertEquals(
+        msgs.some((m) =>
+          m.header.msg_type === "status" &&
+          (m.content as { execution_state?: string }).execution_state === "idle"
+        ),
+        true,
+        "stream must terminate after status:idle",
+      );
+    } finally {
+      await client.shutdown();
+    }
+  });
+
+  it("does not mix concurrent cells (US2 AC#5)", async () => {
+    const { client } = await setup();
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    try {
+      const [a, b] = await Promise.all([
+        collect(client.execute("a", { msgId: "cell-a" })),
+        collect(client.execute("b", { msgId: "cell-b" })),
+      ]);
+      assertEquals(a.length > 0, true);
+      assertEquals(b.length > 0, true);
+      for (const m of a) assertEquals(parentId(m), "cell-a");
+      for (const m of b) assertEquals(parentId(m), "cell-b");
     } finally {
       await client.shutdown();
     }

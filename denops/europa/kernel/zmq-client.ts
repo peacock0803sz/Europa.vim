@@ -24,7 +24,7 @@ import type {
   KernelMessage,
 } from "../../../schema/message.ts";
 import { EuropaKernelError } from "./errors.ts";
-import { buildKernelMessage } from "./execute.ts";
+import { buildExecuteRequest, buildKernelMessage } from "./execute.ts";
 import { parseConnectionFile } from "./connection-file.ts";
 import { decodeZmq, encodeZmq } from "./wire/protocol-zmq.ts";
 
@@ -217,12 +217,28 @@ export class ZmqKernelClient implements KernelClient {
     return await replyPromise as KernelInfoReply;
   }
 
-  /** ZMQ execute lands in the US2 slice (T029). */
+  /**
+   * Execute code and yield each correlated iopub/shell message until idle+reply.
+   *
+   * Runs its own correlation loop (D2): execute.ts is WS-only, so it is not
+   * reused — but the envelope builders and completion logic mirror it so the
+   * output is identical to server mode (SC-002).
+   *
+   * @category Kernel
+   * @spec-id europa.kernel.zmq-client.execute
+   */
   execute(
-    _code: string,
-    _opts?: { signal?: AbortSignal; msgId?: string },
+    code: string,
+    opts?: { signal?: AbortSignal; msgId?: string },
   ): AsyncIterable<KernelMessage> {
-    throw new Error("ZmqKernelClient.execute is implemented in the US2 slice");
+    const msgId = opts?.msgId ?? crypto.randomUUID();
+    const envelope = buildKernelMessage(
+      "execute_request",
+      msgId,
+      this.#sessionId,
+      buildExecuteRequest(code) as unknown as Record<string, unknown>,
+    );
+    return this.#executeStream(envelope, msgId, opts?.signal);
   }
 
   /** ZMQ interrupt lands in the US4 slice (T035). */
@@ -265,6 +281,60 @@ export class ZmqKernelClient implements KernelClient {
         }
       });
     });
+  }
+
+  /** Correlation loop: yield messages parented by msgId until idle + reply. */
+  async *#executeStream(
+    envelope: KernelMessage,
+    msgId: string,
+    signal?: AbortSignal,
+  ): AsyncIterable<KernelMessage> {
+    const buffer: KernelMessage[] = [];
+    let resolveNext: ((msg: KernelMessage) => void) | null = null;
+    let receivedReply = false;
+    let receivedIdle = false;
+
+    // Check before subscribing so an already-aborted signal cannot leak a handler.
+    signal?.throwIfAborted();
+
+    const unsubscribe = this.onMessage((msg) => {
+      const ph = msg.parent_header as { msg_id?: string };
+      if (!ph || ph.msg_id !== msgId) return;
+      if (msg.header.msg_type === "execute_reply") receivedReply = true;
+      if (
+        msg.header.msg_type === "status" &&
+        (msg.content as { execution_state?: string }).execution_state === "idle"
+      ) receivedIdle = true;
+      if (resolveNext) {
+        const resolve = resolveNext;
+        resolveNext = null;
+        resolve(msg);
+      } else {
+        buffer.push(msg);
+      }
+    });
+
+    try {
+      await this.#zmq!.shell.send(encodeZmq(envelope, this.#key, this.#scheme));
+      while (!receivedReply || !receivedIdle || buffer.length > 0) {
+        signal?.throwIfAborted();
+        const msg = buffer.shift() ??
+          await new Promise<KernelMessage>((resolve, reject) => {
+            const onAbort = () => {
+              resolveNext = null;
+              reject(new DOMException("Aborted", "AbortError"));
+            };
+            resolveNext = (m: KernelMessage) => {
+              signal?.removeEventListener("abort", onAbort);
+              resolve(m);
+            };
+            signal?.addEventListener("abort", onAbort, { once: true });
+          });
+        yield msg;
+      }
+    } finally {
+      unsubscribe();
+    }
   }
 
   /** Per-socket receive loop: decode + HMAC-verify, drop+warn on mismatch. */
