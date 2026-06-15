@@ -10,7 +10,8 @@
     "test:golden": "deno test --allow-read 'tests/spec/notebook/serialize_spec.ts'",
     "bench": "deno bench --allow-read tests/bench/",
     "smoke:ipynb": "deno run --allow-read scripts/smoke-ipynb.ts tests/fixtures/hello.ipynb",
-    "test:conformance": "deno test --parallel --allow-run --allow-net --allow-read --allow-write --allow-env 'tests/conformance/**/*_spec.ts'"
+    "test:conformance": "deno test --parallel --allow-run --allow-net --allow-read --allow-write --allow-env 'tests/conformance/**/*_spec.ts'",
+    "test:conformance:zmq": "EUROPA_ZMQ_E2E=1 deno test --allow-ffi --allow-run --allow-net --allow-read --allow-write --allow-env tests/conformance/zmq_attach_spec.ts"
   },
   "imports": {
     "@denops/std": "jsr:@denops/std@^8.2.0",
@@ -29,7 +30,8 @@
     "marked": "npm:marked@^18.0.5",
     "typedoc": "npm:typedoc@^0.28.19",
     "typedoc-plugin-markdown": "npm:typedoc-plugin-markdown@^4.12.0",
-    "typescript": "npm:typescript@^6.0.3"
+    "typescript": "npm:typescript@^6.0.3",
+    "zeromq": "npm:zeromq@^6"
   },
   "nodeModulesDir": "auto",
   "fmt": {
