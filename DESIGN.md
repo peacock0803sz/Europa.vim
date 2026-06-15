@@ -796,7 +796,7 @@ export type EuropaDispatcher = {
   restartKernel(bufnr: unknown):                                            Promise<void>;
   interruptKernel(bufnr: unknown):                                          Promise<void>;
   // Phase 4 (ZMQ attach)
-  attachKernel(connectionFile: unknown):                                    Promise<void>;
+  attachKernel(bufnr: unknown, connectionFile: unknown):                    Promise<void>;
 };
 ```
 
@@ -1856,7 +1856,7 @@ ws.addEventListener("open", () => {
 :EuropaAttach /path/to/connection.json
 ```
 
-- Read `connection_file` (JSON) and bind 5 sockets
+- Read `connection_file` (JSON) and connect 5 sockets (the kernel binds; Europa connects)
 - Use npm:zeromq v6 via Deno's Node compatibility (`--allow-ffi`, `nodeModulesDir: "auto"`)
 - HMAC sha256 signature is computed via `node:crypto`'s `createHmac`
 - Message frame is `[identities..., "<IDS|MSG>", hmac, header, parent, metadata, content, buffers...]`

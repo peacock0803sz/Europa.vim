@@ -796,7 +796,7 @@ export type EuropaDispatcher = {
   restartKernel(bufnr: unknown):                                            Promise<void>;
   interruptKernel(bufnr: unknown):                                          Promise<void>;
   // Phase 4 (ZMQ attach)
-  attachKernel(connectionFile: unknown):                                    Promise<void>;
+  attachKernel(bufnr: unknown, connectionFile: unknown):                    Promise<void>;
 };
 ```
 
@@ -1856,7 +1856,7 @@ ws.addEventListener("open", () => {
 :EuropaAttach /path/to/connection.json
 ```
 
-- `connection_file` (JSON) を読んで 5 ソケット bind
+- `connection_file` (JSON) を読んで 5 ソケットを connect (kernel が bind 側、Europa が connect 側)
 - npm:zeromq v6 を Deno の Node 互換で利用 (`--allow-ffi`, `nodeModulesDir: "auto"`)
 - HMAC sha256 署名計算は `node:crypto` の `createHmac` で
 - メッセージ frame は `[identities..., "<IDS|MSG>", hmac, header, parent, metadata, content, buffers...]`
