@@ -12,7 +12,7 @@
  */
 
 /**
- * All valid kernel error codes (16 values; 11 Phase 3.2 + 5 Phase 3.3).
+ * All valid kernel error codes (23 values; 11 Phase 3.2 + 5 Phase 3.3 + 7 Phase 4.1).
  * @spec-id europa.kernel.errors.code-classification-phase3-3
  */
 export const KERNEL_ERROR_CODES = [
@@ -33,6 +33,14 @@ export const KERNEL_ERROR_CODES = [
   "INTERRUPT_REST_FAILED",
   "RESTART_REST_FAILED",
   "RESTART_HANDSHAKE_FAILED",
+  // Phase 4.1 additions (D4): direct ZeroMQ attach
+  "CONNECTION_FILE_INVALID",
+  "CONNECTION_FILE_UNSUPPORTED_TRANSPORT",
+  "CONNECTION_FILE_UNSUPPORTED_SCHEME",
+  "ZMQ_SIGNATURE_MISMATCH",
+  "ZMQ_BINDING_UNAVAILABLE",
+  "RESTART_UNSUPPORTED",
+  "ALREADY_ATTACHED",
 ] as const;
 
 export type KernelErrorCode = typeof KERNEL_ERROR_CODES[number];
