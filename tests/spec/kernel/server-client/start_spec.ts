@@ -74,7 +74,7 @@ describe("ServerKernelClient.start — normal attach mode (v1 subprotocol)", () 
       assertEquals(typeof runtime.info.kernelId, "string");
       assertEquals(runtime.info.kernelName, "python3");
       assertEquals(typeof runtime.socket, "object");
-      assertEquals(runtime.socket.readyState, WebSocket.OPEN);
+      assertEquals(runtime.socket!.readyState, WebSocket.OPEN);
       await client.shutdown();
     } finally {
       await mk.close();

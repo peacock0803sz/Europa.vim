@@ -139,7 +139,7 @@ export function buildKernelDispatcher(
         "CLOSING",
         "CLOSED",
       ] as const;
-      const wsState = WS_STATE_NAMES[kr.socket.readyState] ?? "CLOSED";
+      const wsState = WS_STATE_NAMES[kr.socket!.readyState] ?? "CLOSED";
 
       const handles = serverPool.snapshot();
       const poolHandle = handles.find((h) => h.serverKey === kr.serverKey);
