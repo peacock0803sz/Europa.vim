@@ -235,3 +235,46 @@ describe("ZmqKernelClient.shutdown — non-owned teardown", () => {
     await drained;
   });
 });
+
+/** @spec-id europa.kernel.zmq-client.interrupt-control */
+describe("ZmqKernelClient.interrupt — best-effort control", () => {
+  it("sends interrupt_request on control when the kernel answers", async () => {
+    const { client, mock } = await setup({ controlRespondsToInterrupt: true });
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    try {
+      await client.interrupt();
+      assertEquals(mock.interruptRequestSeen(), true);
+    } finally {
+      await client.shutdown();
+    }
+  });
+
+  it("does not error when the kernel never answers (signal-only)", async () => {
+    const { client, mock } = await setup({ controlRespondsToInterrupt: false });
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    try {
+      await client.interrupt(); // fire-and-forget, must not hang or throw
+      assertEquals(mock.interruptRequestSeen(), true);
+    } finally {
+      await client.shutdown();
+    }
+  });
+});
+
+/** @spec-id europa.kernel.zmq-client.restart-unsupported */
+describe("ZmqKernelClient.restart — refused", () => {
+  it("rejects with RESTART_UNSUPPORTED and no shutdown_request", async () => {
+    const { client, mock } = await setup();
+    await client.start({ kernelName: "", cwd: "/tmp" });
+    try {
+      const err = await assertRejects(
+        () => client.restart(),
+        EuropaKernelError,
+      );
+      assertEquals((err as EuropaKernelError).code, "RESTART_UNSUPPORTED");
+      assertEquals(mock.shutdownRequestSeen(), false);
+    } finally {
+      await client.shutdown();
+    }
+  });
+});

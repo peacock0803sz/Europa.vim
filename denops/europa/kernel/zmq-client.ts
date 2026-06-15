@@ -242,17 +242,44 @@ export class ZmqKernelClient implements KernelClient {
     return this.#executeStream(envelope, msgId, opts?.signal);
   }
 
-  /** ZMQ interrupt lands in the US4 slice (T035). */
-  interrupt(): Promise<void> {
-    return Promise.reject(
-      new Error("ZmqKernelClient.interrupt is implemented in the US4 slice"),
+  /**
+   * Best-effort interrupt: send interrupt_request on the control channel.
+   *
+   * Pure attach cannot detect interrupt_mode, so this always sends and returns
+   * without waiting for interrupt_reply (signal-only kernels never answer). A
+   * kernel honoring control interrupts is interrupted; others are not, and
+   * Europa cannot signal a process it does not own (FR-011).
+   *
+   * @category Kernel
+   * @spec-id europa.kernel.zmq-client.interrupt-control
+   */
+  async interrupt(): Promise<void> {
+    const msgId = crypto.randomUUID();
+    const req = buildKernelMessage(
+      "interrupt_request",
+      msgId,
+      this.#sessionId,
+      {},
     );
+    await this.#zmq!.control.send(encodeZmq(req, this.#key, this.#scheme));
   }
 
-  /** ZMQ restart lands in the US4 slice (T035). */
+  /**
+   * Refuse restart: pure ZMQ attach does not own the kernel process.
+   *
+   * Rejects immediately with no side effects — never sends a control
+   * shutdown_request(restart=true), which could kill the foreign kernel
+   * (FR-012). The existing connection is left intact.
+   *
+   * @category Kernel
+   * @spec-id europa.kernel.zmq-client.restart-unsupported
+   */
   restart(): Promise<void> {
     return Promise.reject(
-      new Error("ZmqKernelClient.restart is implemented in the US4 slice"),
+      new EuropaKernelError(
+        "RESTART_UNSUPPORTED",
+        "ZMQ attach does not own the kernel process; restart is unsupported",
+      ),
     );
   }
 
