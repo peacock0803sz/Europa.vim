@@ -5,6 +5,7 @@ on:
       - 'schema/message.ts'
       - 'schema/session.ts'
       - 'schema/config.ts'
+      - 'schema/connection-file.ts'
       - 'contracts/kernel-client.ts'
       - 'contracts/dispatcher.ts'
       - 'tests/pyproject.toml'
@@ -12,6 +13,8 @@ on:
       - 'tests/conformance/**'
       - 'tests/fixtures/mock-kernel.ts'
       - 'tests/fixtures/mock-host.ts'
+      - 'tests/fixtures/mock-zmq-kernel.ts'
+      - 'tests/fixtures/mock-zmq-codec.ts'
       - 'tests/spec/kernel/**'
       - 'denops/europa/main.ts'
       - 'denops/europa/session/state.ts'
@@ -68,5 +71,16 @@ jobs:
 
       - name: Run conformance tests
         run: deno task test:conformance --shuffle
+        env:
+          NO_COLOR: '1'
+
+      # ubuntu only: zeromq prebuilt binaries are reliable on Linux x86-64, but
+      # the native build is flaky on the macOS/Windows runners, so the ZMQ e2e
+      # runs on a single lane. The cross-OS step above stays FFI-free.
+      - name: Run ZMQ attach conformance (ubuntu only)
+        if: runner.os == 'Linux'
+        run: |
+          deno install --allow-scripts=npm:zeromq
+          deno task test:conformance:zmq
         env:
           NO_COLOR: '1'
