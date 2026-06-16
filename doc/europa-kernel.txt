@@ -116,7 +116,7 @@ CONFORMANCE TESTING (Q5)				*europa-kernel-conformance*
 `tests/conformance/` contains end-to-end tests that run against a real
 `jupyter server` installation.  They are excluded from `deno task check`
 (the fast main CI gate) and executed instead via `deno task test:conformance`
-or the `.github/workflows/e2e.yml` matrix workflow.
+or the `.github/workflows/conformance.yml` matrix workflow.
 
 Prerequisites: `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`
 
@@ -197,10 +197,24 @@ any pending partial render completes before the line buffer is mutated.  This
 prevents cell-marker offsets from drifting after the operation
 (Q-structural-conflict).
 
-FUTURE SCOPE						*europa-kernel-future*
+DIRECT ZEROMQ ATTACH (Phase 4.1)			*europa-kernel-zmq*
 
-The following features are planned for later phases and are not yet available:
+|:EuropaAttach| connects directly to an externally-started kernel over ZeroMQ,
+without a Jupyter server.  Europa reads the kernel's connection file, connects
+five sockets (shell / iopub / stdin / control / hb) to `tcp://{ip}:{port}`, and
+confirms readiness with a kernel_info handshake.  Messages are signed with
+HMAC-SHA256 using the connection file's `key` (an empty key means unsigned).
 
-  - ZMQ connection mode for low-latency local kernels (Phase 4).
+This phase supports `transport: tcp` and `signature_scheme: hmac-sha256` only.
+Europa does not own the attached kernel: shutdown closes the sockets but never
+terminates the external process, restart is refused, and interrupt is a
+best-effort `interrupt_request` on the control channel.
+
+The zeromq native binding loads lazily, only when |:EuropaAttach| runs, so
+server mode and the viewer are unaffected when it is absent.  Build it once with
+`deno install --allow-scripts=npm:zeromq` (see CONTRIBUTING.md).  The opt-in
+real-kernel test runs via `deno task test:conformance:zmq` on the ubuntu CI lane.
+
+See also: |:EuropaAttach|, |europa-commands|
 
 vim:tw=78:ts=8:noet:ft=help:norl:

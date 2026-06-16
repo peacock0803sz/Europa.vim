@@ -81,6 +81,15 @@ BEHAVIOUR OPTIONS~
 CONNECTION OPTIONS~
 					*europa-configuration-connection*
 
+Europa connects to a kernel two ways.  The options below configure server mode
+(a Jupyter server, reached via |:EuropaStartKernel|).  For a direct ZeroMQ attach
+to an externally-started kernel, use |:EuropaAttach| with the kernel's connection
+file; it needs no server and ignores the options below.
+
+|:EuropaAttach| is the only attach entrypoint in this phase.  Automatic routing
+via a `g:europa_connection_mode` heuristic is reserved for a later slice and is
+not implemented yet.
+
 *g:europa_use_subprocess*
 	Whether europa spawns a local Jupyter Server subprocess or connects
 	to an already-running server.

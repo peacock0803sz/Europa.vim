@@ -148,6 +148,37 @@ KERNEL COMMANDS~
 	See also: |g:europa_default_kernel|, |g:europa_jupyter_url|,
 	|g:europa_use_subprocess|
 
+							*:EuropaAttach*
+:EuropaAttach {connection.json}
+	Attach to an externally-started Jupyter kernel over a direct ZeroMQ
+	connection, using the kernel's connection file.
+
+	{connection.json} is the path to the standard Jupyter connection file
+	(written by `jupyter kernel` / ipykernel); tab-completion is enabled.
+	This phase supports `transport: tcp` with `signature_scheme:
+	hmac-sha256` only (an empty key means an unsigned kernel).  Other
+	transports or schemes are rejected with a clear message.
+
+	The command is asynchronous: the 5-socket connect and kernel_info
+	handshake run in the background.  On success Europa shows
+	`Europa: Attached to kernel (zmq, {name})` via |:messages|; a missing or
+	invalid file, an unsupported transport, a missing zeromq binding, or a
+	handshake timeout is reported there too.
+
+	Europa does not own an attached kernel: |:EuropaShutdownKernel| (and the
+	automatic cleanup paths) close the sockets but never terminate the
+	external kernel.  |:EuropaRestartKernel| is unsupported for an attached
+	kernel; |:EuropaInterrupt| is best-effort over the control channel.
+
+	One kernel per buffer: attaching onto a buffer that already has a kernel
+	is refused — shut it down first.
+
+	zeromq's native binding must be built once: >
+		deno install --allow-scripts=npm:zeromq
+<
+	See also: |:EuropaStartKernel|, |:EuropaShutdownKernel|,
+	|:EuropaInterrupt|, |:EuropaRestartKernel|
+
 							*:EuropaShutdownKernel*
 :EuropaShutdownKernel
 	Shut down the kernel attached to the current buffer and release its
