@@ -8,7 +8,7 @@ dependencies = [
     "notebook>=7.5.7",
     "numpy>=2.4.6",
     "pandas>=3.0.3",
-    "pyright>=1.1.400",
+    "pyright>=1.1.410",
     "ruff>=0.13.0",
     "ty>=0.0.1",
 ]
