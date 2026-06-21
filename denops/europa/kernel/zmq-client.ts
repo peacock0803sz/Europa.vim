@@ -60,7 +60,15 @@ export class ZmqKernelClient implements KernelClient {
     this.#config = config;
     this.#connectionFile = connectionFile;
     this.#kernelInfoTimeoutMs = opts?.kernelInfoTimeoutMs ?? 10_000;
-    this.#importZmq = opts?.importZmq ?? (() => import("zeromq"));
+    // Use a fully-qualified specifier, not the bare "zeromq", because denops
+    // rewrites only STATIC imports against its import map when it caches the
+    // plugin and leaves dynamic import() bare, so a bare specifier cannot resolve
+    // at runtime; npm:zeromq@^6 self-resolves with no import map. The specifier is
+    // widened to string to avoid TypeDoc/tsc statically resolving the npm: scheme
+    // (TS2307); deno resolves it at runtime.
+    this.#importZmq = opts?.importZmq ??
+      (() =>
+        import("npm:zeromq@^6" as string) as Promise<typeof import("zeromq")>);
   }
 
   /**
@@ -87,9 +95,14 @@ export class ZmqKernelClient implements KernelClient {
     try {
       zmq = await this.#importZmq();
     } catch (e) {
+      // Surface the real cause (missing libstdc++, unresolved specifier, ...)
+      // because the binding is often built but unloadable in the running process
+      // (Deno < 2.8.2, library path); a generic "rebuild it" message must not
+      // hide that and mislead.
+      const detail = e instanceof Error ? e.message : String(e);
       throw new EuropaKernelError(
         "ZMQ_BINDING_UNAVAILABLE",
-        "zeromq native binding is unavailable; build it with `deno install --allow-scripts=npm:zeromq`",
+        `zeromq native binding failed to load: ${detail} (needs Deno >= 2.8.2 and the binding built via \`deno install --allow-scripts=npm:zeromq\`)`,
         e,
       );
     }
