@@ -10,5 +10,5 @@ dependencies = [
     "pandas>=3.0.3",
     "pyright>=1.1.400",
     "ruff>=0.15.18",
-    "ty>=0.0.49",
+    "ty>=0.0.52",
 ]
