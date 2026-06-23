@@ -3,7 +3,7 @@ name = "europa-tests"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "jupyter-server>=2.19.0",
+    "jupyter-server>=2.20.0",
     "matplotlib>=3.11.0",
     "notebook>=7.5.7",
     "numpy>=2.5.0",
