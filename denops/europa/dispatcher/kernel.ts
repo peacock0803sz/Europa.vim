@@ -2,16 +2,16 @@ import type { EuropaDispatcher } from "../../../contracts/dispatcher.ts";
 import type { KernelStatusReport } from "../../../schema/session.ts";
 import { detectCapabilities } from "../capabilities.ts";
 import { loadConfig } from "../config.ts";
-import { createKernelClient } from "../kernel/client.ts";
+import { createKernelClient, createZmqKernelClient } from "../kernel/client.ts";
 import { EuropaKernelError } from "../kernel/errors.ts";
 import { createIopubBatchScheduler } from "../render/iopub-batch.ts";
 import { cleanupMirrorOnExit } from "../lsp/workspace.ts";
 import {
   type DispatcherContext,
   echomError,
+  echomInfo,
   renderPlanOpts,
 } from "./context.ts";
-import { UnimplementedError } from "./errors.ts";
 import { scheduleHighlightRefresh } from "./syntax-highlight.ts";
 
 export function buildKernelDispatcher(
@@ -123,6 +123,7 @@ export function buildKernelDispatcher(
      * given viewer buffer.
      *
      * @spec-id europa.dispatcher.kernel-status
+     * @spec-id europa.dispatcher.kernel-status-zmq
      */
     kernelStatus(bufnr: unknown): Promise<KernelStatusReport> {
       const bn = Number(bufnr);
@@ -133,13 +134,19 @@ export function buildKernelDispatcher(
         return Promise.resolve({ info: null, wsState: "NONE" });
       }
 
+      // D5: a ZMQ runtime has no WebSocket and is not in the ServerPool, so
+      // branch before any kr.socket / kr.serverKey deref (which assume WS).
+      if (kr.info.connectionMode === "zmq") {
+        return Promise.resolve({ info: kr.info, wsState: "NONE" });
+      }
+
       const WS_STATE_NAMES = [
         "CONNECTING",
         "OPEN",
         "CLOSING",
         "CLOSED",
       ] as const;
-      const wsState = WS_STATE_NAMES[kr.socket.readyState] ?? "CLOSED";
+      const wsState = WS_STATE_NAMES[kr.socket!.readyState] ?? "CLOSED";
 
       const handles = serverPool.snapshot();
       const poolHandle = handles.find((h) => h.serverKey === kr.serverKey);
@@ -182,9 +189,85 @@ export function buildKernelDispatcher(
       await serverPool.killAll();
     },
 
-    // Phase 4: ZMQ attach
-    attachKernel(_connectionFile: unknown): Promise<void> {
-      return Promise.reject(new UnimplementedError("attachKernel"));
+    /**
+     * Attach to an externally-started kernel via a Jupyter connection file (ZMQ).
+     *
+     * `:EuropaAttach` is the explicit trigger, so this calls createZmqKernelClient
+     * unconditionally (no connection_mode branch, D1). Refuses re-attach onto a
+     * buffer that already owns a kernel (server or zmq) to avoid a silent double
+     * connection (FR-017 / Q1).
+     *
+     * @spec-id europa.dispatcher.attach-kernel
+     * @spec-id europa.dispatcher.attach-kernel-reject-reattach
+     */
+    async attachKernel(bufnr: unknown, connectionFile: unknown): Promise<void> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 0) {
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `attachKernel: invalid bufnr '${bufnr}'`,
+        );
+      }
+      if (typeof connectionFile !== "string" || connectionFile.length === 0) {
+        throw new EuropaKernelError(
+          "INVALID_ARGS",
+          `attachKernel: connectionFile must be a non-empty path`,
+        );
+      }
+
+      // Policy rejections (no-session, re-attach) and start() failures all run
+      // inside the try so each EuropaKernelError surfaces via echomError; an
+      // uncaught throw would escape denops.dispatcher and never be shown
+      // (codex F001). The catch only echoes — it never touches an existing
+      // kernelRuntime, so a re-attach rejection leaves the live connection intact.
+      try {
+        const session = sessionStore.get(bn);
+        if (!session) {
+          throw new EuropaKernelError(
+            "INVALID_ARGS",
+            `attachKernel: bufnr ${bn} has no open notebook session`,
+          );
+        }
+        // FR-017 / Q1: refuse re-attach; keep the existing connection.
+        if (session.kernelRuntime) {
+          throw new EuropaKernelError(
+            "ALREADY_ATTACHED",
+            `attachKernel: buffer ${bn} already has a kernel; run :EuropaShutdownKernel first`,
+          );
+        }
+        const config = await loadConfig(denops);
+        const createZmq = ctx.createZmqClient ?? createZmqKernelClient;
+        const client = createZmq(denops, config, connectionFile);
+        // The foreign kernel's true cwd is unknown in pure attach; pass the
+        // viewer notebook dir as a best-effort base for traceback jumps (F005).
+        const cwd = await denops.call("expand", `#${bn}:p:h`) as string;
+        const runtime = await client.start({ kernelName: "", cwd });
+        const caps = await detectCapabilities(denops);
+        runtime.iopubBatchScheduler = createIopubBatchScheduler({
+          denops,
+          bufnr: bn,
+          getNotebook: () => sessionStore.get(bn)!.notebook,
+          caps,
+          renderOpts: renderPlanOpts(config),
+          onPlanApplied: (plan) => {
+            sessionStore.setRenderPlan(bn, plan);
+            scheduleHighlightRefresh(ctx, bn);
+          },
+        });
+        sessionStore.update(bn, { kernelRuntime: runtime });
+        await echomInfo(
+          denops,
+          `Attached to kernel (zmq, ${runtime.info.kernelName})`,
+        );
+      } catch (e) {
+        const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
+        await echomError(
+          denops,
+          `attachKernel failed${code}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      }
     },
   };
 }

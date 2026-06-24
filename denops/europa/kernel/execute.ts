@@ -139,7 +139,8 @@ export async function* execute(
     : encodeDefault(envelope);
 
   try {
-    runtime.socket.send(encoded);
+    // Server transport only: ZMQ runs its own execute loop (D2), so socket is set.
+    runtime.socket!.send(encoded);
     while (!receivedReply || !receivedIdle || buffer.length > 0) {
       opts?.signal?.throwIfAborted();
 

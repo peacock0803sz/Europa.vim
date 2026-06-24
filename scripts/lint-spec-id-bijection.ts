@@ -72,6 +72,17 @@ const AREA_ALLOWLIST = new Set([
   //     europa-undo-scratch-dirty-refuse,europa-undo-empty-stack-warn,europa-redo-invalidate-on-mutation,
   //     europa-undo-affected-cell-cursor,europa-undo-iopub-flush}
   //   config.{undo-max-history-default,undo-max-history-out-of-range,disable-default-mappings-default}
+  // Phase 4.1 (direct ZeroMQ attach) additions — all under existing top-level
+  // areas (kernel/contract/dispatcher/conformance already allowlisted); every
+  // id stays within the europa.<area>.<topic>(.<subtopic>)? 3-segment cap:
+  //   kernel.connection-file.{parse,tcp-only-reject,missing-key,unsupported-scheme}
+  //   kernel.wire-zmq.{encode,decode,hmac-sign,hmac-verify-reject,unsigned-empty-key,binary-buffers}
+  //   kernel.zmq-client.{start-attach,kernel-info-handshake,execute,shutdown-non-owned,
+  //     interrupt-control,restart-unsupported,slow-joiner-sync}
+  //   dispatcher.{attach-kernel,attach-kernel-reject-reattach,kernel-status-zmq}
+  //   contract.kernel-runtime-transport (impl tag lives in denops/europa/kernel/zmq-client.ts,
+  //     since IMPL_ROOTS scans denops/europa + scripts, not contracts/)
+  //   conformance.zmq-attach-e2e (non-bijected — tests/conformance is outside SPEC_ROOT)
 ]);
 
 type Occurrence = { id: string; file: string; line: number };

@@ -144,7 +144,7 @@ describe("ServerKernelClient.shutdown", () => {
       const denops = makeMockDenops({});
       const client = new ServerKernelClient(denops as never, config, pool);
       const runtime = await client.start({ kernelName: "python3" });
-      const socket = runtime.socket;
+      const socket = runtime.socket!; // server runtime always has a WebSocket
       await client.shutdown();
       // Give WS time to close
       await delay(50);

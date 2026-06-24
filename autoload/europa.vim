@@ -156,6 +156,14 @@ function! europa#start_kernel(name, ...) abort
         \ { -> denops#notify('europa', 'startKernel', [l:bufnr, l:name]) })
 endfunction
 
+" Attach to an externally-started kernel from a Jupyter connection file.
+" path: connection.json path passed to :EuropaAttach (required).
+function! europa#attach_kernel(path) abort
+  let l:bufnr = europa#current_viewer_bufnr()
+  call denops#plugin#wait_async('europa',
+        \ { -> denops#notify('europa', 'attachKernel', [l:bufnr, a:path]) })
+endfunction
+
 " Shut down the kernel attached to the current buffer.
 function! europa#shutdown_kernel() abort
   let l:bufnr = bufnr('%')

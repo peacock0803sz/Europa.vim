@@ -33,7 +33,13 @@ export const KernelInfoSchema = Type.Object({
     Type.Literal("zmq"),
   ]),
   state: KernelStateSchema,
-  subprotocol: Type.Union([Type.Literal("v1"), Type.Literal("default")]),
+  subprotocol: Type.Union([
+    Type.Literal("v1"),
+    Type.Literal("default"),
+    // ZMQ attach has no WebSocket subprotocol negotiation; transport dispatch
+    // keys off connectionMode === 'zmq', never off subprotocol (D3).
+    Type.Literal("none"),
+  ]),
   subprocessPid: Type.Optional(Type.Integer()),
   startedAt: Type.String(),
   languageInfo: Type.Optional(LanguageInfoSchema),

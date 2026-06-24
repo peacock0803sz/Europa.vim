@@ -88,8 +88,8 @@ describe("KernelErrorCode — Phase 3.2 codes (11 values)", () => {
     "INVALID_ARGS",
   ];
 
-  it("KERNEL_ERROR_CODES exports all 16 codes (11 Phase 3.2 + 5 Phase 3.3)", () => {
-    assertEquals(KERNEL_ERROR_CODES.length, 16);
+  it("KERNEL_ERROR_CODES exports all 23 codes (11 Phase 3.2 + 5 Phase 3.3 + 7 Phase 4.1)", () => {
+    assertEquals(KERNEL_ERROR_CODES.length, 23);
   });
 
   it("all 11 Phase 3.2 codes are present", () => {
@@ -115,7 +115,7 @@ describe("KernelErrorCode — Phase 3.2 codes (11 values)", () => {
 // @spec-id europa.kernel.errors.code-classification-phase3-3
 // ---------------------------------------------------------------------------
 
-describe("KernelErrorCode — Phase 3.3 additions (16 values total)", () => {
+describe("KernelErrorCode — Phase 3.3 additions (23 values total after Phase 4.1)", () => {
   const PHASE33_CODES: KernelErrorCode[] = [
     "EXECUTE_TIMEOUT",
     "EXECUTE_REENTRANT",
@@ -124,8 +124,8 @@ describe("KernelErrorCode — Phase 3.3 additions (16 values total)", () => {
     "RESTART_HANDSHAKE_FAILED",
   ];
 
-  it("KERNEL_ERROR_CODES exports all 16 codes after Phase 3.3", () => {
-    assertEquals(KERNEL_ERROR_CODES.length, 16);
+  it("KERNEL_ERROR_CODES exports 23 codes total (5 Phase 3.3 codes included)", () => {
+    assertEquals(KERNEL_ERROR_CODES.length, 23);
   });
 
   it("all Phase 3.3 codes are present in KERNEL_ERROR_CODES", () => {
@@ -183,5 +183,38 @@ describe("KernelErrorCode — Phase 3.3 additions (16 values total)", () => {
       timeout,
     );
     assertInstanceOf(err.cause, DOMException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4.1: 7 new error codes (direct ZeroMQ attach, D4)
+// ---------------------------------------------------------------------------
+
+describe("KernelErrorCode — Phase 4.1 additions (direct ZeroMQ attach)", () => {
+  const PHASE41_CODES: KernelErrorCode[] = [
+    "CONNECTION_FILE_INVALID",
+    "CONNECTION_FILE_UNSUPPORTED_TRANSPORT",
+    "CONNECTION_FILE_UNSUPPORTED_SCHEME",
+    "ZMQ_SIGNATURE_MISMATCH",
+    "ZMQ_BINDING_UNAVAILABLE",
+    "RESTART_UNSUPPORTED",
+    "ALREADY_ATTACHED",
+  ];
+
+  it("all 7 Phase 4.1 codes are present in KERNEL_ERROR_CODES", () => {
+    for (const code of PHASE41_CODES) {
+      assertEquals(
+        KERNEL_ERROR_CODES.includes(code),
+        true,
+        `Missing Phase 4.1 code: ${code}`,
+      );
+    }
+  });
+
+  it("each Phase 4.1 code can be used as EuropaKernelError.code", () => {
+    for (const code of PHASE41_CODES) {
+      const err = new EuropaKernelError(code, `test ${code}`);
+      assertEquals(err.code, code);
+    }
   });
 });

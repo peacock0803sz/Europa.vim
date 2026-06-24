@@ -200,8 +200,9 @@ export type EuropaDispatcher = {
    */
   onMdOverlayWipeout(bufnr: unknown): Promise<void>;
 
-  // Phase 4: ZMQ attach
-  attachKernel(connectionFile: unknown): Promise<void>;
+  // Phase 4.1: ZMQ attach. bufnr-first to match the other buffer-scoped kernel
+  // RPCs (startKernel/shutdownKernel); autoload resolves the viewer bufnr (D6).
+  attachKernel(bufnr: unknown, connectionFile: unknown): Promise<void>;
 
   // Phase 009: tree-sitter syntax highlight RPCs (FR-001/FR-007/FR-017)
   /**

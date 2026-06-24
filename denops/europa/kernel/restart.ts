@@ -161,9 +161,10 @@ export async function restart(
   }
   await resp.arrayBuffer().catch(() => {});
 
-  // (e) 200: close old WS, open new WS
-  if (runtime.socket.readyState === WebSocket.OPEN) {
-    runtime.socket.close(1000);
+  // (e) 200: close old WS, open new WS. socket is set here because ZMQ restart
+  // is rejected (RESTART_UNSUPPORTED, FR-012) before ever reaching this path.
+  if (runtime.socket!.readyState === WebSocket.OPEN) {
+    runtime.socket!.close(1000);
   }
 
   const newSocket = await _openWS(wsUrl, subprotocols, runtime.abort.signal);

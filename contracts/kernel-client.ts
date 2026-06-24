@@ -17,6 +17,34 @@ import type {
   PendingRequestEntry,
 } from "../schema/session.ts";
 import type { IopubBatchScheduler } from "./iopub-batch-scheduler.ts";
+// Type-only import: erased at runtime, so naming these socket classes never
+// loads the zeromq native binding (server / viewer stay FFI-free, FR-013).
+import type { Dealer, Request, Subscriber } from "zeromq";
+
+/**
+ * Live ZMQ socket bundle for one attached kernel (DESIGN.md §3.7.4).
+ *
+ * Hand-written because npm:zeromq socket instances are non-serializable runtime
+ * objects (same whitelist rationale as `socket: WebSocket` / `abort:
+ * AbortController`). Each socket connects to `tcp://{ip}:{port}` from the
+ * connection_file — the kernel binds and Europa connects (FR-003). Disposed by
+ * ZmqKernelClient.shutdown(), which close()s all five without sending a
+ * shutdown_request because attach is non-owning (FR-010).
+ *
+ * Roles: shell carries execute_request / kernel_info_request and their replies;
+ * iopub subscribes to status / stream / results / display_data / error; stdin
+ * is connected but unused (allow_stdin=false); control sends interrupt_request
+ * only, never shutdown; hb is connected but not monitored this slice (Q2).
+ *
+ * @category Kernel
+ */
+export interface ZmqSocketSet {
+  shell: Dealer;
+  iopub: Subscriber;
+  stdin: Dealer;
+  control: Dealer;
+  hb: Request;
+}
 
 /**
  * Runtime augment field bag returned by `KernelClient.start()`.
@@ -30,9 +58,17 @@ import type { IopubBatchScheduler } from "./iopub-batch-scheduler.ts";
  */
 export interface KernelRuntime {
   client: KernelClient;
+  /** Server pool key; a `'zmq'` sentinel for attach (not in the ServerPool). */
   serverKey: string;
   info: KernelInfo;
-  socket: WebSocket;
+  /**
+   * WebSocket transport, server mode only. Exactly one of `socket` / `zmq` is
+   * populated — invariant `(socket === undefined) !== (zmq === undefined)`.
+   * ZMQ attach leaves this undefined and fills `zmq` instead (D5, FR-008).
+   */
+  socket?: WebSocket;
+  /** Five live ZMQ sockets, attach mode only; see the invariant on `socket`. */
+  zmq?: ZmqSocketSet;
   abort: AbortController;
   reconnect?: { retry: number; max: number };
   // Phase 3.3 additions (data-model.md §2.4)
@@ -67,9 +103,12 @@ export interface KernelClient {
   /**
    * Establishes the kernel connection.
    *
-   * Subprocess mode: acquire server from ServerPool → POST /api/sessions
-   * → WebSocket open with subprotocol negotiation → kernel_info_request/reply (≤30s).
-   * Attach mode: skips ServerPool spawn; uses existing remote server.
+   * Transport-specific. ServerKernelClient — subprocess mode: acquire server
+   * from ServerPool → POST /api/sessions → WebSocket open with subprotocol
+   * negotiation → kernel_info_request/reply (≤30s); attach mode skips the
+   * ServerPool spawn and uses an existing remote server. ZmqKernelClient parses
+   * a connection_file and connects 5 ZMQ sockets instead (its own codes:
+   * CONNECTION_FILE_*, ZMQ_BINDING_UNAVAILABLE).
    *
    * @throws EuropaKernelError — codes: JUPYTER_NOT_FOUND, SPAWN_TIMEOUT,
    *   SUBPROTOCOL_REJECTED, KERNEL_INFO_TIMEOUT, KERNEL_INFO_FAILED,
@@ -85,8 +124,10 @@ export interface KernelClient {
   /**
    * Tears down the kernel connection.
    *
-   * Order: abort() → WebSocket close(1000) → DELETE /api/sessions →
-   * ServerPool.release() (refcount--; if 0 kills subprocess).
+   * Order (server): abort() → WebSocket close(1000) → DELETE /api/sessions →
+   * ServerPool.release() (refcount--; if 0 kills subprocess). ZmqKernelClient
+   * instead closes its 5 ZMQ sockets and sends no shutdown_request, because
+   * attach does not own the kernel process (FR-010).
    * Idempotent: second call is a no-op when state is 'disconnected'.
    *
    * @spec-id europa.kernel.server-client.shutdown
@@ -120,13 +161,17 @@ export interface KernelClient {
   kernelInfo(): Promise<KernelInfoReply>;
 
   /**
-   * Send REST POST /api/kernels/{kid}/interrupt to the Jupyter server.
+   * Request a kernel interrupt. Transport-specific: ServerKernelClient sends
+   * REST POST /api/kernels/{kid}/interrupt; ZmqKernelClient sends an
+   * interrupt_request on the control channel best-effort (FR-011).
    */
   interrupt(): Promise<void>;
 
   /**
-   * Restart kernel via REST POST /api/kernels/{kid}/restart,
-   * then re-open the WebSocket and re-handshake with kernelInfo().
+   * Restart the kernel. Transport-specific: ServerKernelClient uses REST POST
+   * /api/kernels/{kid}/restart then re-opens the WebSocket and re-handshakes
+   * with kernelInfo(); ZmqKernelClient rejects with RESTART_UNSUPPORTED because
+   * pure attach does not own the kernel process (FR-012).
    */
   restart(): Promise<void>;
 
