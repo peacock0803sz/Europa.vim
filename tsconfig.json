@@ -37,5 +37,29 @@
     "contracts/**/*.ts",
     "typings/**/*.d.ts"
   ],
-  "exclude": ["specs", ".specify", ".claude", "node_modules"]
+  "exclude": ["specs", ".specify", ".claude", "node_modules"],
+  "typedocOptions": {
+    "name": "Europa.vim",
+    "entryPoints": ["denops/europa", "schema", "contracts"],
+    "entryPointStrategy": "expand",
+    "plugin": ["typedoc-plugin-markdown"],
+    "readme": "none",
+    "excludePrivate": true,
+    "excludeInternal": true,
+    "blockTags": [
+      "@spec-id",
+      "@param",
+      "@returns",
+      "@throws",
+      "@example",
+      "@see",
+      "@deprecated",
+      "@since",
+      "@default",
+      "@remarks",
+      "@module",
+      "@category",
+      "@packageDocumentation"
+    ]
+  }
 }

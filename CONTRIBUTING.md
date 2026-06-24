@@ -108,7 +108,7 @@ Phase 3.8 introduces the following spec-ids covering the renderError parser exte
 ## 8. Commit and PR conventions
 
 - Documentation, in-code comments, and commit subjects are written in English.
-- Commit messages follow the `.gitmessage` template. Each subject opens with an emoji prefix and stays at or under 72 columns; the body explains the why.
+- Commit messages follow the `.github/.gitmessage` template. Each subject opens with an emoji prefix and stays at or under 72 columns; the body explains the why.
 - The PR body is paragraph-per-line; do not hard-wrap inside a paragraph, since GitHub renders the wraps as line breaks.
 
 ## 9. Debugging and reporting issues
