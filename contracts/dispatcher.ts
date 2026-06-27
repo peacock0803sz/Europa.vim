@@ -20,6 +20,24 @@
 import type { KernelStatusReport } from "../schema/session.ts";
 
 /**
+ * Phase 5.1: snapshot row consumed by `:EuropaCommStatus`.
+ *
+ * Hand-written because the dispatcher returns it as plain RPC payload —
+ * Vim layer reads `commId`, `targetName`, `opener`, `ageSeconds` directly.
+ * Lives here rather than in `schema/` because it is a derived projection
+ * over `CommEntry` (runtime object); strapping a TypeBox shape around a
+ * projection adds no validation value and would invite drift.
+ *
+ * @spec-id europa.dispatcher.comm-status
+ */
+export type CommStatusReport = {
+  commId: string;
+  targetName: string;
+  opener: "kernel" | "frontend";
+  ageSeconds: number;
+};
+
+/**
  * RPC interface registered as `denops.dispatcher` in `main.ts`.
  *
  * All arguments are `unknown` — internal validation uses TypeBox Value.Check.
@@ -202,6 +220,20 @@ export type EuropaDispatcher = {
 
   // Phase 4: ZMQ attach
   attachKernel(connectionFile: unknown): Promise<void>;
+
+  /**
+   * Phase 5.1: snapshot of open comms for the viewer buffer's attached kernel.
+   *
+   * Three-state return so the Vim layer can distinguish messages without a
+   * second RPC:
+   *   - `null`              — no kernel attached for this buffer
+   *   - `[]`                — kernel attached, zero open comms
+   *   - `CommStatusReport[]`— kernel attached, one or more comms (ascending openedAt)
+   *
+   * @param bufnr - viewer buffer number
+   * @spec-id europa.dispatcher.comm-status
+   */
+  commStatus(bufnr: unknown): Promise<CommStatusReport[] | null>;
 
   // Phase 009: tree-sitter syntax highlight RPCs (FR-001/FR-007/FR-017)
   /**

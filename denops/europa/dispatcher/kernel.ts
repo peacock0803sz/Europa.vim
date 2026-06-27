@@ -1,4 +1,7 @@
-import type { EuropaDispatcher } from "../../../contracts/dispatcher.ts";
+import type {
+  CommStatusReport,
+  EuropaDispatcher,
+} from "../../../contracts/dispatcher.ts";
 import type { KernelStatusReport } from "../../../schema/session.ts";
 import { detectCapabilities } from "../capabilities.ts";
 import { loadConfig } from "../config.ts";
@@ -23,6 +26,7 @@ export function buildKernelDispatcher(
   | "kernelStatus"
   | "atexit"
   | "attachKernel"
+  | "commStatus"
 > {
   const { denops, sessionStore, serverPool } = ctx;
   return {
@@ -185,6 +189,14 @@ export function buildKernelDispatcher(
     // Phase 4: ZMQ attach
     attachKernel(_connectionFile: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("attachKernel"));
+    },
+
+    // Phase 5.1: open-comm snapshot stub. Real impl wires through
+    // sessionStore.get(bufnr)?.kernelRuntime?.commService?.list() once the
+    // service factory is filled in. Returning null today matches the
+    // "no kernel attached" branch so the Vim command degrades gracefully.
+    commStatus(_bufnr: unknown): Promise<CommStatusReport[] | null> {
+      return Promise.resolve(null);
     },
   };
 }
