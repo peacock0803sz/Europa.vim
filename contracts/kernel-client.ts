@@ -10,6 +10,9 @@
  */
 
 import type {
+  CommCloseContent,
+  CommMsgContent,
+  CommOpenContent,
   Header,
   KernelInfoReply,
   KernelMessage,
@@ -148,10 +151,13 @@ export interface KernelClient {
   /**
    * Phase 5.1: send a comm_* message on the shell channel.
    *
-   * `verb` maps to msg_type literally: `'open' → 'comm_open'`, etc. The
-   * caller is responsible for assembling the content dict (CommService /
-   * CommHandle do this); sendComm pass-throughs it so framework-specific
-   * keys reach the kernel unchanged.
+   * Declared as three call-signature overloads so the `verb` discriminator
+   * is structurally tied to the `content` shape — a caller cannot pass an
+   * open-shaped content with verb='msg' (or vice versa) and have the type
+   * system accept it. The schemas in `schema/message.ts` are the single
+   * source of truth for each content shape; ipywidgets-style extra keys
+   * still pass through because the schemas use `Record<string, unknown>`
+   * for the `data` field rather than narrowing it.
    *
    * `parentHeader` is `{}` by default for frontend-initiated messages
    * (JupyterLab convention — ipykernel ignores parent on frontend-initiated
@@ -160,18 +166,33 @@ export interface KernelClient {
    * per Jupyter Client Messaging Spec §10.5.
    *
    * The reconnect gate (`runtime.info.state === 'reconnecting'`) lives at
-   * the first line of this method so every outbound comm path is covered
-   * by a single guard — silent buffering would let the kernel drift into
-   * 'unknown comm_id' once the socket comes back.
+   * the first line of the impl so every outbound comm path is covered by a
+   * single guard — silent buffering would let the kernel drift into
+   * 'unknown comm_id' once the socket comes back. A second gate rejects on
+   * `disconnected` / non-OPEN readyState because `WebSocket.send()` on a
+   * CLOSING/CLOSED socket silently discards the frame per the WHATWG spec.
    *
    * @throws EuropaKernelError code='KERNEL_RECONNECTING' while reconnecting
-   * @throws EuropaKernelError code='CONNECTION_REFUSED' on other send failures
+   * @throws EuropaKernelError code='CONNECTION_REFUSED' when the socket is
+   *   disconnected, not in OPEN readyState, or the underlying send fails
    * @spec-id europa.contract.kernel-client-send-comm
    * @spec-id europa.kernel.comm.send-during-reconnect
    */
   sendComm(
-    verb: "open" | "msg" | "close",
-    content: Record<string, unknown>,
+    verb: "open",
+    content: CommOpenContent,
+    buffers?: Uint8Array[],
+    parentHeader?: Header,
+  ): Promise<void>;
+  sendComm(
+    verb: "msg",
+    content: CommMsgContent,
+    buffers?: Uint8Array[],
+    parentHeader?: Header,
+  ): Promise<void>;
+  sendComm(
+    verb: "close",
+    content: CommCloseContent,
     buffers?: Uint8Array[],
     parentHeader?: Header,
   ): Promise<void>;

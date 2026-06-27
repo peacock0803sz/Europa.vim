@@ -20,7 +20,10 @@ import type {
   CommTargetHandler,
 } from "../../../../contracts/comm-service.ts";
 import type { KernelClient } from "../../../../contracts/kernel-client.ts";
-import type { KernelMessage } from "../../../../schema/message.ts";
+import type {
+  CommOpenContent,
+  KernelMessage,
+} from "../../../../schema/message.ts";
 import { createCommHandle } from "./handle.ts";
 import { createCommDispatcher } from "./dispatch.ts";
 import { createCommRegistry } from "./registry.ts";
@@ -89,14 +92,18 @@ export function createCommService(
       };
       registry.insert(entry);
       try {
-        const content: Record<string, unknown> = {
+        // CommOpenContent must be assembled as one literal because the
+        // discriminated `sendComm("open", …)` overload cannot accept a
+        // mutated `Record<string, unknown>`. The conditional spread
+        // prevents `target_module: undefined` from appearing on the wire.
+        const content: CommOpenContent = {
           comm_id: commId,
           target_name: opts.targetName,
           data: opts.data ?? {},
+          ...(opts.targetModule !== undefined
+            ? { target_module: opts.targetModule }
+            : {}),
         };
-        if (opts.targetModule !== undefined) {
-          content.target_module = opts.targetModule;
-        }
         await client.sendComm("open", content, opts.buffers ?? []);
       } catch (e) {
         // Must roll back the registry insertion because a failed sendComm
