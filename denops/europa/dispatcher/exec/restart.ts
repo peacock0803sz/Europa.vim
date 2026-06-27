@@ -20,6 +20,7 @@ export function buildRestartDispatcher(
     /**
      * @spec-id europa.dispatcher.restart-kernel
      * @spec-id europa.kernel.restart.exec-count-reset
+     * @spec-id europa.dispatcher.restart-comm-preserve-on-fail
      */
     async restartKernel(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
@@ -42,12 +43,17 @@ export function buildRestartDispatcher(
       kr.execState = "restarting";
 
       try {
-        // Fire synthetic frontend-restart close events to every registered
-        // comm handler before the wire restarts so widget code observes a
-        // single lifecycle terminator rather than seeing stale comm_ids
-        // surface after the kernel handshake.
-        await kr.commService?.closeAll("restart");
         await kr.client.restart();
+        // closeAll must run AFTER client.restart() resolves because
+        // RESTART_REST_FAILED preserves the old kernel and socket
+        // (kernel/restart.ts:149-160 — FR-013 fallback). Firing
+        // frontend-restart events before the restart commit would
+        // permanently desync the registry from the still-live kernel-side
+        // comm map: surviving comms would reject locally and inbound
+        // comm_msg / comm_close for kernel-side comms would hit an empty
+        // registry. Once client.restart() succeeds the kernel has wiped
+        // its comm state, so closing locally is sound.
+        await kr.commService?.closeAll("restart");
 
         for (const cell of session!.notebook.cells) {
           if (cell.cell_type === "code") {
