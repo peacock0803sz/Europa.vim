@@ -3,6 +3,7 @@
  *
  * @spec-id europa.kernel.comm.dispatch-open-accept
  * @spec-id europa.kernel.comm.dispatch-open-reject-duplicate
+ * @spec-id europa.kernel.comm.dispatch-open-reject-unknown
  * @spec-id europa.kernel.comm.dispatch-msg
  * @spec-id europa.kernel.comm.dispatch-close
  * @spec-id europa.kernel.comm.grace-queue-buffer
@@ -96,6 +97,66 @@ describe("CommDispatcher — comm_open accept", () => {
     }));
     assertEquals(invoked, true);
     assertEquals(svc.list().length, 1);
+  });
+});
+
+describe("CommDispatcher — comm_open reject (unknown target)", () => {
+  it("sends a parent-correlated comm_close and warns once per session", async () => {
+    const m = mockClient();
+    const warned: string[] = [];
+    const denops = {
+      cmd: (s: string) => {
+        warned.push(s);
+        return Promise.resolve();
+      },
+    } as never;
+    const svc = createCommService(m.client, denops);
+    const open1 = makeMsg("comm_open", {
+      comm_id: "c-unknown-1",
+      target_name: "unregistered.target",
+      data: {},
+    });
+    svc.handleInbound(open1);
+    await Promise.resolve();
+    const open2 = makeMsg("comm_open", {
+      comm_id: "c-unknown-2",
+      target_name: "unregistered.target",
+      data: {},
+    });
+    svc.handleInbound(open2);
+    await Promise.resolve();
+
+    const closeCalls = m.calls.filter((c) => c.verb === "close");
+    assertEquals(closeCalls.length, 2);
+    assertEquals(closeCalls[0].parentHeader?.msg_id, open1.header.msg_id);
+    assertEquals(closeCalls[1].parentHeader?.msg_id, open2.header.msg_id);
+    assertEquals(warned.length, 1);
+    assertEquals(svc.list().length, 0);
+  });
+
+  it("does NOT warn when a registered handler returns null (declined open)", async () => {
+    const m = mockClient();
+    const warned: string[] = [];
+    const denops = {
+      cmd: (s: string) => {
+        warned.push(s);
+        return Promise.resolve();
+      },
+    } as never;
+    const svc = createCommService(m.client, denops);
+    svc.registerHandler("europa.test.echo", () => null);
+    const open = makeMsg("comm_open", {
+      comm_id: "c-declined",
+      target_name: "europa.test.echo",
+      data: {},
+    });
+    svc.handleInbound(open);
+    await Promise.resolve();
+
+    const closeCall = m.calls.find((c) => c.verb === "close");
+    assertEquals(closeCall?.parentHeader?.msg_id, open.header.msg_id);
+    assertEquals(warned.length, 0);
+    assertEquals(svc.list().length, 0);
   });
 });
 

@@ -65,6 +65,7 @@ export interface CommDispatcherDeps {
  *
  * @spec-id europa.kernel.comm.dispatch-open-accept
  * @spec-id europa.kernel.comm.dispatch-open-reject-duplicate
+ * @spec-id europa.kernel.comm.dispatch-open-reject-unknown
  * @spec-id europa.kernel.comm.dispatch-msg
  * @spec-id europa.kernel.comm.dispatch-close
  * @spec-id europa.kernel.comm.grace-queue-buffer
