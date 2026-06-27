@@ -2,6 +2,7 @@ import type {
   CommStatusReport,
   EuropaDispatcher,
 } from "../../../contracts/dispatcher.ts";
+import type { KernelRuntime } from "../../../contracts/kernel-client.ts";
 import type { KernelStatusReport } from "../../../schema/session.ts";
 import { detectCapabilities } from "../capabilities.ts";
 import { loadConfig } from "../config.ts";
@@ -68,9 +69,10 @@ export function buildKernelDispatcher(
         : config.default_kernel;
 
       const client = createKernelClient(denops, config, serverPool);
+      let runtime: KernelRuntime | undefined;
       try {
         const cwd = await denops.call("expand", `#${bn}:p:h`) as string;
-        const runtime = await client.start({ kernelName: kn, cwd });
+        runtime = await client.start({ kernelName: kn, cwd });
         // Attach the Comm protocol service synchronously after start()
         // resolves and BEFORE any further awaits because the WebSocket is
         // already OPEN by this point: a kernel that runs init code
@@ -100,6 +102,24 @@ export function buildKernelDispatcher(
         });
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
+        // Tear down a partially-started runtime because client.start()
+        // already opened the WebSocket, registered a Jupyter session, and
+        // bumped the ServerPool refcount: bailing out without shutdown
+        // would leak a live kernel and a pinned server entry that no
+        // SessionStore record can address. Each teardown step is
+        // independently best-effort so one failure cannot mask the
+        // diagnostic for the original error.
+        if (runtime !== undefined) {
+          try {
+            await runtime.commService?.closeAll("shutdown");
+          } catch { /* best-effort */ }
+          try {
+            await runtime.iopubBatchScheduler?.dispose();
+          } catch { /* best-effort */ }
+          try {
+            await runtime.client.shutdown();
+          } catch { /* best-effort */ }
+        }
         const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
         await echomError(
           denops,
