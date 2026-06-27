@@ -196,6 +196,34 @@ function! s:show_kernel_status(bufnr) abort
   endfor
 endfunction
 
+" List open comms for the buffer's attached kernel.
+" Outputs a 4-column table via :echo (transient — not :messages).
+function! europa#comm_status(bufnr) abort
+  call denops#plugin#wait_async('europa', { ->
+        \ s:show_comm_status(a:bufnr) })
+endfunction
+
+function! s:show_comm_status(bufnr) abort
+  let l:reports = denops#request('europa', 'commStatus', [a:bufnr])
+  if l:reports is v:null
+    echo 'No kernel attached.'
+    return
+  endif
+  if empty(l:reports)
+    echo 'No open comms.'
+    return
+  endif
+  echo printf('%-9s  %-32s  %-9s  %8s',
+        \ 'COMM_ID', 'TARGET_NAME', 'OPENER', 'AGE(s)')
+  for l:r in l:reports
+    echo printf('%-9s  %-32s  %-9s  %8d',
+          \ l:r.commId[:7],
+          \ l:r.targetName,
+          \ l:r.opener,
+          \ l:r.ageSeconds)
+  endfor
+endfunction
+
 " Returns the cell id at the cursor.
 " In a scratch edit buffer, reads b:europa_cell_id directly.
 " Otherwise, makes a synchronous RPC to lineToCellId.

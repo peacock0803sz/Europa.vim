@@ -30,7 +30,10 @@ import {
   detectJupyterExecutable,
   spawnJupyterServer,
 } from "./server-process.ts";
-import { execute as executeImpl } from "./execute.ts";
+import { buildKernelMessage, execute as executeImpl } from "./execute.ts";
+import { v7 as uuidV7 } from "@std/uuid";
+import { encodeDefault } from "./wire/protocol-default.ts";
+import { encodeV1 } from "./wire/protocol-v1.ts";
 import { interrupt as interruptImpl } from "./interrupt.ts";
 import { restart as restartImpl } from "./restart.ts";
 import {
@@ -433,20 +436,58 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
 
   /**
    * Phase 5.1: send a comm_* message on the shell channel.
-   * Stub — the real envelope-build / encode / WS-send path lands later in
-   * the slice. Throws so the interface is satisfied without silently
-   * dropping outbound comm traffic before the wire impl exists.
+   *
+   * Builds a Jupyter envelope, attaches the supplied parent_header (or `{}`
+   * for frontend-initiated messages), encodes through the negotiated WS
+   * subprotocol codec (v1 binary or default text JSON), then writes to the
+   * live socket. The reconnect gate at the first line is the single site
+   * where Phase 5.1 enforces the FR-024 / SC-012 contract.
+   *
+   * @spec-id europa.contract.kernel-client-send-comm
    */
   sendComm(
     verb: "open" | "msg" | "close",
-    _content: Record<string, unknown>,
-    _buffers?: Uint8Array[],
-    _parentHeader?: Header,
+    content: Record<string, unknown>,
+    buffers: Uint8Array[] = [],
+    parentHeader?: Header,
   ): Promise<void> {
-    return Promise.reject(
-      new Error(
-        `sendComm: not yet implemented (verb=${verb}); will land later in Phase 5.1`,
-      ),
+    const runtime = this.wsRuntime;
+    if (!runtime) {
+      return Promise.reject(
+        new Error("sendComm: client not connected — call start() first"),
+      );
+    }
+    if (runtime.info.state === "reconnecting") {
+      return Promise.reject(
+        new EuropaKernelError(
+          "KERNEL_RECONNECTING",
+          `sendComm rejected: transport is reconnecting (verb=${verb})`,
+        ),
+      );
+    }
+    const envelope = buildKernelMessage(
+      `comm_${verb}`,
+      uuidV7.generate(),
+      runtime.info.sessionId,
+      content,
     );
+    envelope.parent_header = parentHeader ?? {};
+    envelope.buffers = buffers;
+    const subprotocol = runtime.info.subprotocol ?? this.wsSubprotocol;
+    const frame = subprotocol === "v1"
+      ? new Uint8Array(encodeV1(envelope))
+      : encodeDefault(envelope);
+    try {
+      runtime.socket.send(frame);
+      return Promise.resolve();
+    } catch (e) {
+      return Promise.reject(
+        new EuropaKernelError(
+          "CONNECTION_REFUSED",
+          `sendComm: socket send failed (verb=${verb})`,
+          e,
+        ),
+      );
+    }
   }
 }

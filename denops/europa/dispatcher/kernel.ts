@@ -6,6 +6,7 @@ import type { KernelStatusReport } from "../../../schema/session.ts";
 import { detectCapabilities } from "../capabilities.ts";
 import { loadConfig } from "../config.ts";
 import { createKernelClient } from "../kernel/client.ts";
+import { createCommService } from "../kernel/comm/service.ts";
 import { EuropaKernelError } from "../kernel/errors.ts";
 import { createIopubBatchScheduler } from "../render/iopub-batch.ts";
 import { cleanupMirrorOnExit } from "../lsp/workspace.ts";
@@ -85,6 +86,13 @@ export function buildKernelDispatcher(
             scheduleHighlightRefresh(ctx, bn);
           },
         });
+        // Attach the Comm protocol service right after start() returns so
+        // any kernel-initiated comm_open arriving immediately after the
+        // handshake routes through a dispatcher (lazy attach would lose
+        // the first iopub-delivered comm_open in a race).
+        const commService = createCommService(runtime.client, denops);
+        runtime.commService = commService;
+        runtime.client.onMessage((msg) => commService.handleInbound(msg));
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
         const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
@@ -106,7 +114,9 @@ export function buildKernelDispatcher(
       const bn = Number(bufnr);
       const session = sessionStore.get(bn);
       if (!session?.kernelRuntime) return;
-      const { client, iopubBatchScheduler } = session.kernelRuntime;
+      const { client, iopubBatchScheduler, commService } = session
+        .kernelRuntime;
+      await commService?.closeAll("shutdown");
       await iopubBatchScheduler?.dispose();
       try {
         await client.shutdown();
@@ -178,6 +188,7 @@ export function buildKernelDispatcher(
           .filter((s) => s.kernelRuntime != null)
           .map(async (s) => {
             try {
+              await s.kernelRuntime!.commService?.closeAll("shutdown");
               await s.kernelRuntime!.iopubBatchScheduler?.dispose();
               await s.kernelRuntime!.client.shutdown();
             } catch { /* shutdown errors during exit are best-effort */ }
@@ -191,12 +202,31 @@ export function buildKernelDispatcher(
       return Promise.reject(new UnimplementedError("attachKernel"));
     },
 
-    // Phase 5.1: open-comm snapshot stub. Real impl wires through
-    // sessionStore.get(bufnr)?.kernelRuntime?.commService?.list() once the
-    // service factory is filled in. Returning null today matches the
-    // "no kernel attached" branch so the Vim command degrades gracefully.
-    commStatus(_bufnr: unknown): Promise<CommStatusReport[] | null> {
-      return Promise.resolve(null);
+    /**
+     * Phase 5.1: snapshot of open comms for the viewer buffer.
+     * @spec-id europa.dispatcher.comm-status
+     */
+    commStatus(bufnr: unknown): Promise<CommStatusReport[] | null> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 0) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `commStatus: invalid bufnr '${bufnr}'`,
+          ),
+        );
+      }
+      const session = sessionStore.get(bn);
+      const service = session?.kernelRuntime?.commService;
+      if (!service) return Promise.resolve(null);
+      const now = Date.now();
+      const reports: CommStatusReport[] = service.list().map((entry) => ({
+        commId: entry.commId,
+        targetName: entry.targetName,
+        opener: entry.opener,
+        ageSeconds: Math.floor((now - entry.openedAt) / 1000),
+      }));
+      return Promise.resolve(reports);
     },
   };
 }

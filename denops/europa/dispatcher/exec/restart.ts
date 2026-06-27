@@ -42,6 +42,11 @@ export function buildRestartDispatcher(
       kr.execState = "restarting";
 
       try {
+        // Fire synthetic frontend-restart close events to every registered
+        // comm handler before the wire restarts so widget code observes a
+        // single lifecycle terminator rather than seeing stale comm_ids
+        // surface after the kernel handshake.
+        await kr.commService?.closeAll("restart");
         await kr.client.restart();
 
         for (const cell of session!.notebook.cells) {
