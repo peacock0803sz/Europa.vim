@@ -152,6 +152,49 @@ describe("restartKernel — preserves Comm state on RESTART_REST_FAILED, wipes o
     );
   });
 
+  it("preserves entries added BY THE NEW KERNEL during client.restart()", async () => {
+    const denops = {
+      cmd: (_s: string) => Promise.resolve(),
+    } as never;
+    // The CommService and the restart-impl reference each other: when
+    // client.restart() runs, it simulates the new kernel pushing a
+    // comm_open by calling commService.openComm. The pre-restart snapshot
+    // in restartKernel must close only "c-old" and leave "c-new" alive.
+    let commService: ReturnType<typeof createCommService> | null = null;
+    const client = silentClient(async () => {
+      await commService!.openComm({
+        commId: "c-new",
+        targetName: "europa.test.echo",
+      });
+    });
+    commService = createCommService(client, denops);
+    await commService.openComm({
+      commId: "c-old",
+      targetName: "europa.test.echo",
+    });
+
+    const runtime = makeKernelRuntime(client, commService);
+    const sessions = new Map([
+      [
+        9,
+        {
+          kernelRuntime: runtime,
+          notebook: { cells: [] },
+        },
+      ],
+    ]);
+    const ctx = makeCtx(sessions);
+    const dispatcher = buildRestartDispatcher(ctx);
+    await dispatcher.restartKernel(9);
+
+    const survivors = commService.list().map((e) => e.commId);
+    assertEquals(
+      survivors,
+      ["c-new"],
+      "the new kernel's freshly-opened comm must survive; the pre-restart comm is closed by the snapshot",
+    );
+  });
+
   it("DOES clear the CommRegistry when client.restart() rejects with RESTART_HANDSHAKE_FAILED", async () => {
     const denops = {
       cmd: (_s: string) => Promise.resolve(),

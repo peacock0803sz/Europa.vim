@@ -42,18 +42,29 @@ export function buildRestartDispatcher(
 
       kr.execState = "restarting";
 
+      // Snapshot the pre-restart comm entries because client.restart()
+      // reopens the WebSocket and reattaches message dispatch internally,
+      // so the restarted kernel can push comm_open into the registry
+      // during the restart. closeAll on the live registry afterwards
+      // would wipe those just-arrived post-restart entries together with
+      // the pre-restart ones — the snapshot lets us close only the
+      // entries that existed before the kernel-side reset.
+      const preRestartEntries = kr.commService?.list().slice() ?? [];
+      const fireFrontendRestart = (): void => {
+        for (const entry of preRestartEntries) {
+          try {
+            entry.handle._fireOnClose({}, [], "frontend-restart");
+          } catch { /* best-effort */ }
+        }
+      };
+
       try {
         await kr.client.restart();
-        // closeAll must run AFTER client.restart() resolves because
-        // RESTART_REST_FAILED preserves the old kernel and socket
-        // (kernel/restart.ts:149-160 — FR-013 fallback). Firing
-        // frontend-restart events before the restart commit would
-        // permanently desync the registry from the still-live kernel-side
-        // comm map: surviving comms would reject locally and inbound
-        // comm_msg / comm_close for kernel-side comms would hit an empty
-        // registry. Once client.restart() succeeds the kernel has wiped
-        // its comm state, so closing locally is sound.
-        await kr.commService?.closeAll("restart");
+        // Success path: the kernel has wiped its comm state, so close
+        // every pre-restart handle. Post-restart entries that the new
+        // kernel may have opened during the restart survive because they
+        // are not in the snapshot.
+        fireFrontendRestart();
 
         for (const cell of session!.notebook.cells) {
           if (cell.cell_type === "code") {
@@ -83,19 +94,18 @@ export function buildRestartDispatcher(
         if (kr.execState === "restarting") kr.execState = "idle";
         // RESTART_HANDSHAKE_FAILED means client.restart() got past REST
         // 200 (kernel-side comm map already wiped) but the new WebSocket
-        // open or kernel_info handshake failed afterwards. Leaving the
-        // local CommRegistry intact would diverge from the empty
-        // kernel-side state: send() would target comm_ids the kernel has
-        // forgotten, and inbound comm_msg for old ids could never arrive.
+        // open or kernel_info handshake failed afterwards. The pre-restart
+        // snapshot must be closed because the kernel forgot those comms;
+        // post-restart entries (if any reached the registry before the
+        // handshake failed) are preserved by the same snapshot logic.
         // RESTART_REST_FAILED is the opposite case where the old kernel
-        // survives, so the registry must be preserved exactly as it was.
+        // survives, so the snapshot is NOT touched and every pre-restart
+        // comm stays live.
         if (
           e instanceof EuropaKernelError &&
           e.code === "RESTART_HANDSHAKE_FAILED"
         ) {
-          try {
-            await kr.commService?.closeAll("restart");
-          } catch { /* best-effort */ }
+          fireFrontendRestart();
         }
         const msg = e instanceof EuropaKernelError ? e.message : String(e);
         await denops.cmd(
