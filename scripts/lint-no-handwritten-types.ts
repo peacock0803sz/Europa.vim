@@ -27,6 +27,11 @@ const WHITELIST = new Set([
   "contracts/syntax-highlighter.ts",
   "contracts/kernel-client.ts",
   "contracts/session-runtime.ts",
+  // CommService and friends hold live closures, AsyncEventEmitter-like
+  // subscriber sets, and Maps — runtime objects TypeBox cannot represent.
+  // The contract surface must therefore be hand-written; the lint allowance
+  // mirrors the Phase 4.1 precedent for ZmqSocketSet in kernel-client.ts.
+  "contracts/comm-service.ts",
   // MagickConverter is a DI callback type for testability — not a domain type
   "denops/europa/view/viewer.ts",
   // Phase 3.2 kernel implementation files use internal helper type aliases
