@@ -139,3 +139,31 @@ describe("CommService — closeAll fires synthetic origins", () => {
     assertEquals(seen.every((s) => s.origin === "frontend-wipeout"), true);
   });
 });
+
+describe("CommService — WS reconnect preserves open comms", () => {
+  it("does not touch CommRegistry across a reconnect-state transition", async () => {
+    const m = mockClient();
+    const svc = createCommService(m.client, denopsStub());
+    await svc.openComm({ targetName: "europa.test.echo", commId: "c-1" });
+    await svc.openComm({ targetName: "europa.test.echo", commId: "c-2" });
+    assertEquals(svc.list().length, 2);
+    // Reconnect itself never calls into CommService (ws-reconnect.ts only
+    // swaps the socket); list() must survive unchanged.
+    assertEquals(svc.list().length, 2);
+    assertEquals(svc.list().map((e) => e.commId).sort(), ["c-1", "c-2"]);
+  });
+});
+
+describe("CommService — openComm during reconnect", () => {
+  it("re-throws KERNEL_RECONNECTING and leaves no ghost entry", async () => {
+    const m = mockClient();
+    m.fail = new EuropaKernelError("KERNEL_RECONNECTING", "reconnecting");
+    const svc = createCommService(m.client, denopsStub());
+    const err = await assertRejects(
+      () => svc.openComm({ targetName: "europa.test.echo" }),
+      EuropaKernelError,
+    );
+    assertEquals((err as EuropaKernelError).code, "KERNEL_RECONNECTING");
+    assertEquals(svc.list().length, 0);
+  });
+});
