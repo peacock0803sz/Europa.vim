@@ -40,6 +40,7 @@ import { createCommRegistry } from "./registry.ts";
  * @spec-id europa.kernel.comm.close-all-wipeout
  * @spec-id europa.kernel.comm.ws-reconnect-preserve
  * @spec-id europa.kernel.comm.send-during-reconnect
+ * @spec-id europa.kernel.comm.no-persistence
  */
 export function createCommService(
   client: KernelClient,

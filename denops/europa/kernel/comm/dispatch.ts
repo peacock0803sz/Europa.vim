@@ -71,6 +71,7 @@ export interface CommDispatcherDeps {
  * @spec-id europa.kernel.comm.grace-queue-buffer
  * @spec-id europa.kernel.comm.grace-queue-flush
  * @spec-id europa.kernel.comm.grace-queue-timeout
+ * @spec-id europa.kernel.comm.comm-info-bypass
  */
 export function createCommDispatcher(
   deps: CommDispatcherDeps,
