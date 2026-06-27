@@ -483,6 +483,22 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
         ),
       );
     }
+    const subprotocol = runtime.info.subprotocol ?? this.wsSubprotocol;
+    // The default (text JSON) codec cannot carry binary buffers — encodeDefault
+    // drops them with a console.warn, which would let sendComm resolve as
+    // success while the kernel never received the binary payload. ipywidgets
+    // and similar frameworks attach buffers on comm_msg, so silently dropping
+    // them would corrupt user-visible state. Reject explicitly here because
+    // the contract must surface the codec mismatch to the caller rather than
+    // hide it behind a transport-level warning.
+    if (subprotocol !== "v1" && buffers.length > 0) {
+      return Promise.reject(
+        new EuropaKernelError(
+          "INVALID_ARGS",
+          `sendComm rejected: cannot send ${buffers.length} buffer(s) on the default subprotocol (verb=${verb}); negotiate the v1 binary subprotocol to carry buffers`,
+        ),
+      );
+    }
     const envelope = buildKernelMessage(
       `comm_${verb}`,
       uuidV7.generate(),
@@ -491,7 +507,6 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
     );
     envelope.parent_header = parentHeader ?? {};
     envelope.buffers = buffers;
-    const subprotocol = runtime.info.subprotocol ?? this.wsSubprotocol;
     const frame = subprotocol === "v1"
       ? new Uint8Array(encodeV1(envelope))
       : encodeDefault(envelope);

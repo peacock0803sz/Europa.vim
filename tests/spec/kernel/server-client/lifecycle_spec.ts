@@ -339,6 +339,41 @@ describe("ServerKernelClient.sendComm", () => {
     }
   });
 
+  it("rejects with INVALID_ARGS when buffers are passed on the default subprotocol", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      // Force the default codec because the default subprotocol cannot
+      // carry binary buffers — encodeDefault drops them silently.
+      runtime.info.subprotocol = "default";
+      const err = await assertRejects(
+        () =>
+          client.sendComm(
+            "msg",
+            { comm_id: "c-1", data: { kind: "widget" } },
+            [new Uint8Array([1, 2, 3])],
+          ),
+        EuropaKernelError,
+      );
+      assertEquals(
+        (err as EuropaKernelError).code,
+        "INVALID_ARGS",
+        "default subprotocol with non-empty buffers must reject rather than silently drop",
+      );
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
   it("throws CONNECTION_REFUSED when the socket readyState is not OPEN", async () => {
     const mk = makeMockKernel();
     try {
