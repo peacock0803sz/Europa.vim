@@ -81,6 +81,22 @@ export function buildRestartDispatcher(
         );
       } catch (e) {
         if (kr.execState === "restarting") kr.execState = "idle";
+        // RESTART_HANDSHAKE_FAILED means client.restart() got past REST
+        // 200 (kernel-side comm map already wiped) but the new WebSocket
+        // open or kernel_info handshake failed afterwards. Leaving the
+        // local CommRegistry intact would diverge from the empty
+        // kernel-side state: send() would target comm_ids the kernel has
+        // forgotten, and inbound comm_msg for old ids could never arrive.
+        // RESTART_REST_FAILED is the opposite case where the old kernel
+        // survives, so the registry must be preserved exactly as it was.
+        if (
+          e instanceof EuropaKernelError &&
+          e.code === "RESTART_HANDSHAKE_FAILED"
+        ) {
+          try {
+            await kr.commService?.closeAll("restart");
+          } catch { /* best-effort */ }
+        }
         const msg = e instanceof EuropaKernelError ? e.message : String(e);
         await denops.cmd(
           `echom ${vimSingleQuote(`Europa: Kernel restart failed: ${msg}`)}`,

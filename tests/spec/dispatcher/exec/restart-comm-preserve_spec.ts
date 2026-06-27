@@ -85,7 +85,7 @@ function makeCtx(
   } as DispatcherContext;
 }
 
-describe("restartKernel — preserves Comm state on RESTART_REST_FAILED", () => {
+describe("restartKernel — preserves Comm state on RESTART_REST_FAILED, wipes on RESTART_HANDSHAKE_FAILED", () => {
   it("does NOT clear the CommRegistry when client.restart() rejects with RESTART_REST_FAILED", async () => {
     const denops = {
       cmd: (_s: string) => Promise.resolve(),
@@ -149,6 +149,62 @@ describe("restartKernel — preserves Comm state on RESTART_REST_FAILED", () => 
       cmdSink.some((s) => s.includes("Kernel restart failed")),
       true,
       "user-visible failure message must be emitted",
+    );
+  });
+
+  it("DOES clear the CommRegistry when client.restart() rejects with RESTART_HANDSHAKE_FAILED", async () => {
+    const denops = {
+      cmd: (_s: string) => Promise.resolve(),
+    } as never;
+    const commService = createCommService(
+      silentClient(() =>
+        Promise.reject(
+          new EuropaKernelError(
+            "RESTART_HANDSHAKE_FAILED",
+            "restart handshake timed out after WebSocket reconnect",
+          ),
+        )
+      ),
+      denops,
+    );
+    await commService.openComm({
+      commId: "c-wipe",
+      targetName: "europa.test.echo",
+    });
+
+    const client = silentClient(() =>
+      Promise.reject(
+        new EuropaKernelError(
+          "RESTART_HANDSHAKE_FAILED",
+          "restart handshake timed out after WebSocket reconnect",
+        ),
+      )
+    );
+    const runtime = makeKernelRuntime(client, commService);
+    const sessions = new Map([
+      [
+        8,
+        {
+          kernelRuntime: runtime,
+          notebook: { cells: [] },
+        },
+      ],
+    ]);
+    const cmdSink: string[] = [];
+    const ctx = makeCtx(sessions, cmdSink);
+
+    const dispatcher = buildRestartDispatcher(ctx);
+    await dispatcher.restartKernel(8);
+
+    assertEquals(
+      commService.list().length,
+      0,
+      "the open comm must be cleared because RESTART_HANDSHAKE_FAILED means the kernel-side comm map is already wiped (REST 200 succeeded)",
+    );
+    assertEquals(
+      runtime.execState,
+      "idle",
+      "execState must be restored to idle on restart failure",
     );
   });
 });
