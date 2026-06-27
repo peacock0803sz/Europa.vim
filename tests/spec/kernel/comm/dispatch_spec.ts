@@ -158,6 +158,33 @@ describe("CommDispatcher — comm_open reject (unknown target)", () => {
     assertEquals(warned.length, 0);
     assertEquals(svc.list().length, 0);
   });
+
+  it("treats a thrown registered handler as an implicit decline and sends a reject comm_close", async () => {
+    const m = mockClient();
+    const svc = createCommService(m.client, denopsStub());
+    svc.registerHandler("europa.test.echo", () => {
+      throw new Error("handler boom");
+    });
+    const open = makeMsg("comm_open", {
+      comm_id: "c-throw",
+      target_name: "europa.test.echo",
+      data: {},
+    });
+    svc.handleInbound(open);
+    await Promise.resolve();
+
+    const closeCall = m.calls.find((c) => c.verb === "close");
+    assertEquals(
+      closeCall?.parentHeader?.msg_id,
+      open.header.msg_id,
+      "reject comm_close must carry the open's header as parent",
+    );
+    assertEquals(
+      svc.list().length,
+      0,
+      "registry must not retain an entry for a handler that threw",
+    );
+  });
 });
 
 describe("CommDispatcher — comm_open reject (duplicate)", () => {

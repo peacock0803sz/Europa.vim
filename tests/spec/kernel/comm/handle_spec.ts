@@ -191,6 +191,55 @@ describe("CommHandle — subscriber lifecycle", () => {
     assertEquals(events, ["frontend-shutdown"]);
     assertEquals(removed, true);
   });
+
+  it("_fireOnMessage isolates subscriber throws so siblings keep receiving", () => {
+    const ctx = recordingClient();
+    const h = createCommHandle({
+      commId: "c-1",
+      targetName: "europa.test.echo",
+      client: ctx.client,
+      onCloseRegistryRemove: () => {},
+    });
+    const seen: number[] = [];
+    h.onMessage(() => {
+      throw new Error("subscriber boom");
+    });
+    h.onMessage((data) => {
+      seen.push(data.k as number);
+    });
+    h._fireOnMessage({ k: 1 }, []);
+    h._fireOnMessage({ k: 2 }, []);
+    assertEquals(seen, [1, 2]);
+  });
+
+  it("_fireOnClose isolates subscriber throws and still removes from registry", () => {
+    const ctx = recordingClient();
+    let removed = false;
+    const h = createCommHandle({
+      commId: "c-1",
+      targetName: "europa.test.echo",
+      client: ctx.client,
+      onCloseRegistryRemove: () => {
+        removed = true;
+      },
+    });
+    const seen: string[] = [];
+    h.onClose(() => {
+      throw new Error("subscriber boom");
+    });
+    h.onClose((_d, _b, origin) => seen.push(origin));
+    h._fireOnClose({}, [], "frontend-restart");
+    assertEquals(
+      seen,
+      ["frontend-restart"],
+      "sibling subscriber must still be called past the throwing one",
+    );
+    assertEquals(
+      removed,
+      true,
+      "registry removal must run despite a throwing subscriber",
+    );
+  });
 });
 
 describe("CommHandle — close() race with kernel-initiated _fireOnClose", () => {

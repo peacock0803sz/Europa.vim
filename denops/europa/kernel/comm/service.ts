@@ -144,10 +144,18 @@ export function createCommService(
     ): Promise<void> {
       const origin = `frontend-${reason}` as const;
       // Snapshot before iterating because _fireOnClose mutates the registry
-      // via the onCloseRegistryRemove callback.
+      // via the onCloseRegistryRemove callback. Per-entry try/catch must
+      // isolate handle-level failures because closeAll is best-effort: a
+      // throwing close handler on one comm cannot skip teardown of the
+      // remaining comms (the lifecycle terminator must fire for every entry
+      // or the kernel-side cleanup invariant is broken).
       const snapshot = registry.list().slice();
       for (const entry of snapshot) {
-        entry.handle._fireOnClose({}, [], origin);
+        try {
+          entry.handle._fireOnClose({}, [], origin);
+        } catch {
+          // Swallow because every other entry must still see its terminator.
+        }
       }
       registry.clear();
       dispatcher.cancelAllGrace();

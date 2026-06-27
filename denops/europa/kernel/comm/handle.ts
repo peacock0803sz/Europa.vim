@@ -108,7 +108,13 @@ export function createCommHandle(deps: CreateCommHandleDeps): CommHandle {
       // (with origin="kernel") and the registry was removed.
       if (state === "closing") {
         state = "closed";
-        for (const h of closeHandlers) h(data, buffers, "frontend-explicit");
+        for (const h of closeHandlers) {
+          try {
+            h(data, buffers, "frontend-explicit");
+          } catch {
+            // Swallow; diagnostic is the subscriber's responsibility.
+          }
+        }
         deps.onCloseRegistryRemove();
       }
     },
@@ -131,7 +137,17 @@ export function createCommHandle(deps: CreateCommHandleDeps): CommHandle {
       data: Record<string, unknown>,
       buffers: Uint8Array[],
     ): void {
-      for (const h of messageHandlers) h(data, buffers);
+      // Per-handler try/catch must isolate subscriber failures because this
+      // method is driven from the WS message-dispatch loop; a throw would
+      // unwind through `state.wsMessageHandlers` iteration and silently
+      // starve sibling subscribers (iopubBatchScheduler, pendingRequests).
+      for (const h of messageHandlers) {
+        try {
+          h(data, buffers);
+        } catch {
+          // Swallow; diagnostic is the subscriber's responsibility.
+        }
+      }
     },
 
     _fireOnClose(
@@ -147,8 +163,17 @@ export function createCommHandle(deps: CreateCommHandleDeps): CommHandle {
       // this on resume and skip its own subscriber fire to avoid
       // double-delivery.
       state = "closed";
-      for (const h of closeHandlers) h(data, buffers, origin);
-      deps.onCloseRegistryRemove();
+      try {
+        for (const h of closeHandlers) {
+          try {
+            h(data, buffers, origin);
+          } catch {
+            // Swallow; closeAll / dispatch must continue past one bad handler.
+          }
+        }
+      } finally {
+        deps.onCloseRegistryRemove();
+      }
     },
   };
 

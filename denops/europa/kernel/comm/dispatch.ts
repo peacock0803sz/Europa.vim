@@ -18,6 +18,7 @@
 import { Value } from "@sinclair/typebox/value";
 import type {
   CommEntry,
+  CommHandle,
   CommService,
 } from "../../../../contracts/comm-service.ts";
 import type { KernelClient } from "../../../../contracts/kernel-client.ts";
@@ -152,13 +153,23 @@ export function createCommDispatcher(
       onCloseRegistryRemove: () => deps.registry.remove(comm_id),
     });
 
-    const accepted = handler({
-      commId: comm_id,
-      targetModule: target_module,
-      data,
-      buffers: msg.buffers,
-      handle: handleCandidate,
-    });
+    // A throwing handler must collapse to the explicit-decline path because
+    // otherwise the kernel never receives a reject `comm_close` and keeps an
+    // orphan comm forever. The throw must also stay caught here so it does
+    // not escape into the wsMessageHandlers iteration and starve sibling
+    // subscribers (iopubBatchScheduler, pendingRequests).
+    let accepted: CommHandle | null;
+    try {
+      accepted = handler({
+        commId: comm_id,
+        targetModule: target_module,
+        data,
+        buffers: msg.buffers,
+        handle: handleCandidate,
+      });
+    } catch {
+      accepted = null;
+    }
 
     if (accepted === null) {
       deps.client

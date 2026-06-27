@@ -138,6 +138,38 @@ describe("CommService — closeAll fires synthetic origins", () => {
     await svc.closeAll("wipeout");
     assertEquals(seen.every((s) => s.origin === "frontend-wipeout"), true);
   });
+
+  it("closeAll continues past a throwing close subscriber and clears every entry", async () => {
+    const m = mockClient();
+    const svc = createCommService(m.client, denopsStub());
+    const seen: string[] = [];
+    for (const id of ["a", "b", "c"]) {
+      const h = await svc.openComm({
+        commId: id,
+        targetName: "europa.test.echo",
+      });
+      if (id === "b") {
+        h.onClose(() => {
+          throw new Error("close handler boom");
+        });
+      } else {
+        h.onClose(() => {
+          seen.push(h.commId);
+        });
+      }
+    }
+    await svc.closeAll("shutdown");
+    assertEquals(
+      seen.sort(),
+      ["a", "c"],
+      "sibling handlers must still fire when one comm's handler throws",
+    );
+    assertEquals(
+      svc.list().length,
+      0,
+      "registry must be cleared even if a close handler threw mid-loop",
+    );
+  });
 });
 
 describe("CommService — WS reconnect preserves open comms", () => {
