@@ -465,6 +465,24 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
         ),
       );
     }
+    // WebSocket.send() on a CLOSING/CLOSED socket silently discards the
+    // frame per the WHATWG spec — only CONNECTING raises InvalidStateError
+    // synchronously. Without this gate, sendComm would resolve as success
+    // while the kernel never receives the frame, leaving ghost comms and
+    // post-shutdown messages dropped without diagnostic. CONNECTION_REFUSED
+    // is the appropriate code because the transport is terminated and the
+    // caller cannot recover via the KERNEL_RECONNECTING retry contract.
+    if (
+      runtime.info.state === "disconnected" ||
+      runtime.socket.readyState !== WebSocket.OPEN
+    ) {
+      return Promise.reject(
+        new EuropaKernelError(
+          "CONNECTION_REFUSED",
+          `sendComm rejected: socket not OPEN (verb=${verb}, state=${runtime.info.state}, readyState=${runtime.socket.readyState})`,
+        ),
+      );
+    }
     const envelope = buildKernelMessage(
       `comm_${verb}`,
       uuidV7.generate(),

@@ -309,6 +309,68 @@ describe("ServerKernelClient.sendComm", () => {
       await mk.close();
     }
   });
+
+  it("throws CONNECTION_REFUSED when runtime.info.state is disconnected (post-exhaust)", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      runtime.info.state = "disconnected";
+      const err = await assertRejects(
+        () => client.sendComm("msg", { comm_id: "c-1", data: {} }),
+        EuropaKernelError,
+      );
+      assertEquals(
+        (err as EuropaKernelError).code,
+        "CONNECTION_REFUSED",
+        "disconnected state must surface as CONNECTION_REFUSED so callers do not retry under the KERNEL_RECONNECTING contract",
+      );
+      runtime.info.state = "idle";
+      await client.shutdown();
+    } finally {
+      await mk.close();
+    }
+  });
+
+  it("throws CONNECTION_REFUSED when the socket readyState is not OPEN", async () => {
+    const mk = makeMockKernel();
+    try {
+      const pool = new ServerPool();
+      const config = {
+        ...BASE_CONFIG,
+        jupyter_url: mk.url,
+        jupyter_token: mk.token,
+      };
+      const denops = makeMockDenops({});
+      const client = new ServerKernelClient(denops as never, config, pool);
+      const runtime = await client.start({ kernelName: "python3" });
+      // Close the socket out from under the runtime while leaving info.state
+      // alone so we exercise the readyState branch independently from the
+      // state-based reject. The wsReconnect loop is fire-and-forget; the
+      // readyState gate must catch this race.
+      runtime.socket.close(1000, "test-close");
+      await delay(50);
+      const err = await assertRejects(
+        () => client.sendComm("msg", { comm_id: "c-1", data: {} }),
+        EuropaKernelError,
+      );
+      assertEquals(
+        (err as EuropaKernelError).code,
+        "CONNECTION_REFUSED",
+        "non-OPEN readyState must reject because WebSocket.send() would silently drop the frame",
+      );
+      await client.shutdown().catch(() => {});
+    } finally {
+      await mk.close();
+    }
+  });
 });
 
 describe("ServerKernelClient.reconnection — option 3 cases", () => {
