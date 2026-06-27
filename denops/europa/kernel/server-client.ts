@@ -18,6 +18,7 @@ import type {
 import type { EuropaConfig } from "../../../schema/config.ts";
 import type { KernelInfo, KernelState } from "../../../schema/session.ts";
 import type {
+  Header,
   KernelInfoReply,
   KernelMessage,
 } from "../../../schema/message.ts";
@@ -427,6 +428,25 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
         attachMessageListener(this, socket);
         this._reattachReconnect(socket);
       },
+    );
+  }
+
+  /**
+   * Phase 5.1: send a comm_* message on the shell channel.
+   * Stub — the real envelope-build / encode / WS-send path lands later in
+   * the slice. Throws so the interface is satisfied without silently
+   * dropping outbound comm traffic before the wire impl exists.
+   */
+  sendComm(
+    verb: "open" | "msg" | "close",
+    _content: Record<string, unknown>,
+    _buffers?: Uint8Array[],
+    _parentHeader?: Header,
+  ): Promise<void> {
+    return Promise.reject(
+      new Error(
+        `sendComm: not yet implemented (verb=${verb}); will land later in Phase 5.1`,
+      ),
     );
   }
 }
