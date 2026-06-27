@@ -21,10 +21,17 @@ import type { Header, KernelMessage } from "../schema/message.ts";
 
 /**
  * Synthetic origin tag carried by `CommHandle.onClose` events so handlers can
- * tell kernel-initiated close from a frontend lifecycle terminator.
+ * tell apart four cases. `"kernel"` is the kernel-initiated `comm_close` path
+ * (also used when a kernel-side decline arrives). `"frontend-explicit"` is
+ * the direct `handle.close()` path — distinct from `"kernel"` because the
+ * docstring contract promises handlers can tell who initiated the close, and
+ * a frontend-initiated close must not be observable as a kernel one.
+ * `"frontend-shutdown" / "frontend-restart" / "frontend-wipeout"` cover the
+ * three lifecycle terminators driven by `CommService.closeAll(reason)`.
  */
 export type CommCloseOrigin =
   | "kernel"
+  | "frontend-explicit"
   | "frontend-shutdown"
   | "frontend-restart"
   | "frontend-wipeout";
