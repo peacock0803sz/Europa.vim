@@ -71,6 +71,18 @@ export function buildKernelDispatcher(
       try {
         const cwd = await denops.call("expand", `#${bn}:p:h`) as string;
         const runtime = await client.start({ kernelName: kn, cwd });
+        // Attach the Comm protocol service synchronously after start()
+        // resolves and BEFORE any further awaits because the WebSocket is
+        // already OPEN by this point: a kernel that runs init code
+        // immediately after the kernel_info handshake can push comm_open
+        // / comm_msg into the wsMessageHandlers loop before the next
+        // microtask hop. Subscribing later (after `await
+        // detectCapabilities`, for example) would silently drop those
+        // early frames since the dispatcher has no other subscriber for
+        // comm_* msg_types.
+        const commService = createCommService(runtime.client, denops);
+        runtime.commService = commService;
+        runtime.client.onMessage((msg) => commService.handleInbound(msg));
         const caps = await detectCapabilities(denops);
         runtime.iopubBatchScheduler = createIopubBatchScheduler({
           denops,
@@ -78,21 +90,14 @@ export function buildKernelDispatcher(
           getNotebook: () => sessionStore.get(bn)!.notebook,
           caps,
           renderOpts: renderPlanOpts(config),
-          // Keep the cached RenderPlan in sync with the streaming flush so
-          // tree-sitter cellSourceRanges do not drift after every cell run.
-          // Covered by europa.render.iopub-batch.plan-applied-callback.
+          // The cached RenderPlan must stay in sync with the streaming
+          // flush so that tree-sitter cellSourceRanges do not drift after
+          // every cell run. Covered by europa.render.iopub-batch.plan-applied-callback.
           onPlanApplied: (plan) => {
             sessionStore.setRenderPlan(bn, plan);
             scheduleHighlightRefresh(ctx, bn);
           },
         });
-        // Attach the Comm protocol service right after start() returns so
-        // any kernel-initiated comm_open arriving immediately after the
-        // handshake routes through a dispatcher (lazy attach would lose
-        // the first iopub-delivered comm_open in a race).
-        const commService = createCommService(runtime.client, denops);
-        runtime.commService = commService;
-        runtime.client.onMessage((msg) => commService.handleInbound(msg));
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
         const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
