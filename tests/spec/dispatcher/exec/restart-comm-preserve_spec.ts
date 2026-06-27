@@ -195,34 +195,32 @@ describe("restartKernel — preserves Comm state on RESTART_REST_FAILED, wipes o
     );
   });
 
-  it("DOES clear the CommRegistry when client.restart() rejects with RESTART_HANDSHAKE_FAILED", async () => {
+  it("DOES clear ALL Comm entries (pre + post-restart) on RESTART_HANDSHAKE_FAILED", async () => {
     const denops = {
       cmd: (_s: string) => Promise.resolve(),
     } as never;
-    const commService = createCommService(
-      silentClient(() =>
-        Promise.reject(
-          new EuropaKernelError(
-            "RESTART_HANDSHAKE_FAILED",
-            "restart handshake timed out after WebSocket reconnect",
-          ),
-        )
-      ),
-      denops,
-    );
+    // The post-restart entry simulates the new kernel pushing a
+    // comm_open between WS reopen and the failing kernelInfo handshake.
+    // ws-reconnect skips reconnect on close code 1000 — which is what
+    // kernel/restart.ts uses on handshake failure — so the new socket is
+    // dead and the post-restart entry can never talk to the kernel.
+    let commService: ReturnType<typeof createCommService> | null = null;
+    const client = silentClient(async () => {
+      await commService!.openComm({
+        commId: "c-postrestart",
+        targetName: "europa.test.echo",
+      });
+      throw new EuropaKernelError(
+        "RESTART_HANDSHAKE_FAILED",
+        "restart handshake timed out after WebSocket reconnect",
+      );
+    });
+    commService = createCommService(client, denops);
     await commService.openComm({
-      commId: "c-wipe",
+      commId: "c-prerestart",
       targetName: "europa.test.echo",
     });
 
-    const client = silentClient(() =>
-      Promise.reject(
-        new EuropaKernelError(
-          "RESTART_HANDSHAKE_FAILED",
-          "restart handshake timed out after WebSocket reconnect",
-        ),
-      )
-    );
     const runtime = makeKernelRuntime(client, commService);
     const sessions = new Map([
       [
@@ -242,7 +240,7 @@ describe("restartKernel — preserves Comm state on RESTART_REST_FAILED, wipes o
     assertEquals(
       commService.list().length,
       0,
-      "the open comm must be cleared because RESTART_HANDSHAKE_FAILED means the kernel-side comm map is already wiped (REST 200 succeeded)",
+      "both pre-restart (kernel forgot) and post-restart (socket closed with 1000, no reconnect) entries must be wiped",
     );
     assertEquals(
       runtime.execState,
