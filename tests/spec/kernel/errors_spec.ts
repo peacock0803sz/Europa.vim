@@ -88,8 +88,8 @@ describe("KernelErrorCode — Phase 3.2 codes (11 values)", () => {
     "INVALID_ARGS",
   ];
 
-  it("KERNEL_ERROR_CODES exports all 16 codes (11 Phase 3.2 + 5 Phase 3.3)", () => {
-    assertEquals(KERNEL_ERROR_CODES.length, 16);
+  it("KERNEL_ERROR_CODES exports all 17 codes (11 Phase 3.2 + 5 Phase 3.3 + 1 Phase 5.1)", () => {
+    assertEquals(KERNEL_ERROR_CODES.length, 17);
   });
 
   it("all 11 Phase 3.2 codes are present", () => {
@@ -124,8 +124,8 @@ describe("KernelErrorCode — Phase 3.3 additions (16 values total)", () => {
     "RESTART_HANDSHAKE_FAILED",
   ];
 
-  it("KERNEL_ERROR_CODES exports all 16 codes after Phase 3.3", () => {
-    assertEquals(KERNEL_ERROR_CODES.length, 16);
+  it("KERNEL_ERROR_CODES exports all 17 codes after Phase 5.1", () => {
+    assertEquals(KERNEL_ERROR_CODES.length, 17);
   });
 
   it("all Phase 3.3 codes are present in KERNEL_ERROR_CODES", () => {
@@ -183,5 +183,25 @@ describe("KernelErrorCode — Phase 3.3 additions (16 values total)", () => {
       timeout,
     );
     assertInstanceOf(err.cause, DOMException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5.1: KERNEL_RECONNECTING gate code (single-site sendComm guard).
+// Reuses the existing code-classification-phase3-3 spec-id by referencing
+// it from KERNEL_ERROR_CODES; this block is an additive presence-check.
+// ---------------------------------------------------------------------------
+
+describe("KernelErrorCode — Phase 5.1 addition (KERNEL_RECONNECTING)", () => {
+  it("KERNEL_RECONNECTING is present in KERNEL_ERROR_CODES", () => {
+    assertEquals(KERNEL_ERROR_CODES.includes("KERNEL_RECONNECTING"), true);
+  });
+
+  it("KERNEL_RECONNECTING can be used as EuropaKernelError.code", () => {
+    const err = new EuropaKernelError(
+      "KERNEL_RECONNECTING",
+      "sendComm rejected: reconnecting",
+    );
+    assertEquals(err.code, "KERNEL_RECONNECTING");
   });
 });

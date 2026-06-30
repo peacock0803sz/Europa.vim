@@ -9,13 +9,21 @@
  * @spec-id europa.contract.kernel-client-interface
  */
 
-import type { KernelInfoReply, KernelMessage } from "../schema/message.ts";
+import type {
+  CommCloseContent,
+  CommMsgContent,
+  CommOpenContent,
+  Header,
+  KernelInfoReply,
+  KernelMessage,
+} from "../schema/message.ts";
 import type {
   CellExecState,
   KernelExecState,
   KernelInfo,
   PendingRequestEntry,
 } from "../schema/session.ts";
+import type { CommService } from "./comm-service.ts";
 import type { IopubBatchScheduler } from "./iopub-batch-scheduler.ts";
 
 /**
@@ -43,6 +51,16 @@ export interface KernelRuntime {
   // immediately after start() returns; undefined only between start() and the
   // first createIopubBatchScheduler() call inside startKernel().
   iopubBatchScheduler?: IopubBatchScheduler;
+  /**
+   * Phase 5.1: per-runtime Jupyter Comm protocol service. Attached in the
+   * dispatcher right after `start()` returns (same pattern as
+   * `iopubBatchScheduler`); undefined only between `start()` and the
+   * `createCommService` call inside `startKernel`. Disposed when the
+   * runtime is shut down.
+   *
+   * @spec-id europa.contract.comm-service
+   */
+  commService?: CommService;
   /**
    * Kernel working directory captured at spawn time. Preserved across
    * `restart()` (the kernel re-spawns inside the same process tree, so cwd
@@ -129,6 +147,55 @@ export interface KernelClient {
    * then re-open the WebSocket and re-handshake with kernelInfo().
    */
   restart(): Promise<void>;
+
+  /**
+   * Phase 5.1: send a comm_* message on the shell channel.
+   *
+   * Declared as three call-signature overloads so the `verb` discriminator
+   * is structurally tied to the `content` shape — a caller cannot pass an
+   * open-shaped content with verb='msg' (or vice versa) and have the type
+   * system accept it. The schemas in `schema/message.ts` are the single
+   * source of truth for each content shape; ipywidgets-style extra keys
+   * still pass through because the schemas use `Record<string, unknown>`
+   * for the `data` field rather than narrowing it.
+   *
+   * `parentHeader` is `{}` by default for frontend-initiated messages
+   * (JupyterLab convention — ipykernel ignores parent on frontend-initiated
+   * comms). The dispatcher passes the received `comm_open.header` when
+   * sending a reject `comm_close` so the kernel can correlate the reply,
+   * per Jupyter Client Messaging Spec §10.5.
+   *
+   * The reconnect gate (`runtime.info.state === 'reconnecting'`) lives at
+   * the first line of the impl so every outbound comm path is covered by a
+   * single guard — silent buffering would let the kernel drift into
+   * 'unknown comm_id' once the socket comes back. A second gate rejects on
+   * `disconnected` / non-OPEN readyState because `WebSocket.send()` on a
+   * CLOSING/CLOSED socket silently discards the frame per the WHATWG spec.
+   *
+   * @throws EuropaKernelError code='KERNEL_RECONNECTING' while reconnecting
+   * @throws EuropaKernelError code='CONNECTION_REFUSED' when the socket is
+   *   disconnected, not in OPEN readyState, or the underlying send fails
+   * @spec-id europa.contract.kernel-client-send-comm
+   * @spec-id europa.kernel.comm.send-during-reconnect
+   */
+  sendComm(
+    verb: "open",
+    content: CommOpenContent,
+    buffers?: Uint8Array[],
+    parentHeader?: Header,
+  ): Promise<void>;
+  sendComm(
+    verb: "msg",
+    content: CommMsgContent,
+    buffers?: Uint8Array[],
+    parentHeader?: Header,
+  ): Promise<void>;
+  sendComm(
+    verb: "close",
+    content: CommCloseContent,
+    buffers?: Uint8Array[],
+    parentHeader?: Header,
+  ): Promise<void>;
 
   // Phase 4+ reserved (not in Phase 3.3 interface):
   // complete(code: string, cursorPos: number): Promise<CompleteReply>

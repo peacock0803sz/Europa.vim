@@ -197,10 +197,44 @@ any pending partial render completes before the line buffer is mutated.  This
 prevents cell-marker offsets from drifting after the operation
 (Q-structural-conflict).
 
+COMM PROTOCOL TRANSPORT (PHASE 5.1)		*europa-kernel-comm*
+
+Europa carries Jupyter's `comm_open` / `comm_msg` / `comm_close` traffic over
+the same WebSocket the kernel uses for `execute_request`. Comm messages route
+to a per-runtime CommService that maintains a registry of open comms and
+dispatches inbound messages to handlers registered against a `target_name`.
+
+Phase 5.1 ships transport-only. The library does not register any handler at
+startup; built-in widget rendering (ipywidgets) is the responsibility of a
+later phase. The `europa.test.echo` target is used by the test fixtures only.
+
+Lifecycle rules:
+
+  - On `:EuropaShutdownKernel`, `:EuropaRestartKernel`, and `:bwipeout` of a
+    notebook buffer, every open comm receives a synthetic close event
+    (origin `frontend-shutdown`, `frontend-restart`, or `frontend-wipeout`).
+  - During a WebSocket reconnect, the CommRegistry is preserved unchanged so
+    handler subscribers survive transient network blips.
+  - `sendComm` raises a `KERNEL_RECONNECTING` error while the transport is
+    mid-reconnect. Callers must retry after the runtime returns to
+    `connected`; Europa never silently buffers comm traffic across a gap.
+
+Binary buffers travel byte-for-byte through both wire codecs (v1 binary
+offset-table and default text JSON); the Comm layer never base64-encodes or
+JSON-stringifies a buffer mid-flight.
+
+When multiple notebook buffers attach to the same kernel (only meaningful in
+ZMQ-attach mode), each buffer holds its own CommRegistry and its own
+target-handler Map. A kernel-initiated `comm_open` broadcast on iopub reaches
+all attached frontends; their handlers (if registered) run independently and
+keep distinct entries.
+
 FUTURE SCOPE						*europa-kernel-future*
 
 The following features are planned for later phases and are not yet available:
 
   - ZMQ connection mode for low-latency local kernels (Phase 4).
+  - ipywidgets / `jupyter.widget` target handler and widget rendering
+    (Phase 5 item 2).
 
 vim:tw=78:ts=8:noet:ft=help:norl:

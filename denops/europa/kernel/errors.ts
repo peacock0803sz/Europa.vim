@@ -12,7 +12,7 @@
  */
 
 /**
- * All valid kernel error codes (16 values; 11 Phase 3.2 + 5 Phase 3.3).
+ * All valid kernel error codes (17 values; 11 Phase 3.2 + 5 Phase 3.3 + 1 Phase 5.1).
  * @spec-id europa.kernel.errors.code-classification-phase3-3
  */
 export const KERNEL_ERROR_CODES = [
@@ -33,6 +33,10 @@ export const KERNEL_ERROR_CODES = [
   "INTERRUPT_REST_FAILED",
   "RESTART_REST_FAILED",
   "RESTART_HANDSHAKE_FAILED",
+  // Phase 5.1: single-site gate that sendComm must raise during reconnect
+  // because silent buffering would let the kernel drift into 'unknown
+  // comm_id'. Callers must retry once runtime state returns to 'connected'.
+  "KERNEL_RECONNECTING",
 ] as const;
 
 export type KernelErrorCode = typeof KERNEL_ERROR_CODES[number];

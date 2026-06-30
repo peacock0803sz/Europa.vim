@@ -1,8 +1,13 @@
-import type { EuropaDispatcher } from "../../../contracts/dispatcher.ts";
+import type {
+  CommStatusReport,
+  EuropaDispatcher,
+} from "../../../contracts/dispatcher.ts";
+import type { KernelRuntime } from "../../../contracts/kernel-client.ts";
 import type { KernelStatusReport } from "../../../schema/session.ts";
 import { detectCapabilities } from "../capabilities.ts";
 import { loadConfig } from "../config.ts";
 import { createKernelClient } from "../kernel/client.ts";
+import { createCommService } from "../kernel/comm/service.ts";
 import { EuropaKernelError } from "../kernel/errors.ts";
 import { createIopubBatchScheduler } from "../render/iopub-batch.ts";
 import { cleanupMirrorOnExit } from "../lsp/workspace.ts";
@@ -23,6 +28,7 @@ export function buildKernelDispatcher(
   | "kernelStatus"
   | "atexit"
   | "attachKernel"
+  | "commStatus"
 > {
   const { denops, sessionStore, serverPool } = ctx;
   return {
@@ -63,9 +69,22 @@ export function buildKernelDispatcher(
         : config.default_kernel;
 
       const client = createKernelClient(denops, config, serverPool);
+      let runtime: KernelRuntime | undefined;
       try {
         const cwd = await denops.call("expand", `#${bn}:p:h`) as string;
-        const runtime = await client.start({ kernelName: kn, cwd });
+        runtime = await client.start({ kernelName: kn, cwd });
+        // Attach the Comm protocol service synchronously after start()
+        // resolves and BEFORE any further awaits because the WebSocket is
+        // already OPEN by this point: a kernel that runs init code
+        // immediately after the kernel_info handshake can push comm_open
+        // / comm_msg into the wsMessageHandlers loop before the next
+        // microtask hop. Subscribing later (after `await
+        // detectCapabilities`, for example) would silently drop those
+        // early frames since the dispatcher has no other subscriber for
+        // comm_* msg_types.
+        const commService = createCommService(runtime.client, denops);
+        runtime.commService = commService;
+        runtime.client.onMessage((msg) => commService.handleInbound(msg));
         const caps = await detectCapabilities(denops);
         runtime.iopubBatchScheduler = createIopubBatchScheduler({
           denops,
@@ -73,9 +92,9 @@ export function buildKernelDispatcher(
           getNotebook: () => sessionStore.get(bn)!.notebook,
           caps,
           renderOpts: renderPlanOpts(config),
-          // Keep the cached RenderPlan in sync with the streaming flush so
-          // tree-sitter cellSourceRanges do not drift after every cell run.
-          // Covered by europa.render.iopub-batch.plan-applied-callback.
+          // The cached RenderPlan must stay in sync with the streaming
+          // flush so that tree-sitter cellSourceRanges do not drift after
+          // every cell run. Covered by europa.render.iopub-batch.plan-applied-callback.
           onPlanApplied: (plan) => {
             sessionStore.setRenderPlan(bn, plan);
             scheduleHighlightRefresh(ctx, bn);
@@ -83,6 +102,24 @@ export function buildKernelDispatcher(
         });
         sessionStore.update(bn, { kernelRuntime: runtime });
       } catch (e) {
+        // Tear down a partially-started runtime because client.start()
+        // already opened the WebSocket, registered a Jupyter session, and
+        // bumped the ServerPool refcount: bailing out without shutdown
+        // would leak a live kernel and a pinned server entry that no
+        // SessionStore record can address. Each teardown step is
+        // independently best-effort so one failure cannot mask the
+        // diagnostic for the original error.
+        if (runtime !== undefined) {
+          try {
+            await runtime.commService?.closeAll("shutdown");
+          } catch { /* best-effort */ }
+          try {
+            await runtime.iopubBatchScheduler?.dispose();
+          } catch { /* best-effort */ }
+          try {
+            await runtime.client.shutdown();
+          } catch { /* best-effort */ }
+        }
         const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
         await echomError(
           denops,
@@ -102,7 +139,9 @@ export function buildKernelDispatcher(
       const bn = Number(bufnr);
       const session = sessionStore.get(bn);
       if (!session?.kernelRuntime) return;
-      const { client, iopubBatchScheduler } = session.kernelRuntime;
+      const { client, iopubBatchScheduler, commService } = session
+        .kernelRuntime;
+      await commService?.closeAll("shutdown");
       await iopubBatchScheduler?.dispose();
       try {
         await client.shutdown();
@@ -174,6 +213,7 @@ export function buildKernelDispatcher(
           .filter((s) => s.kernelRuntime != null)
           .map(async (s) => {
             try {
+              await s.kernelRuntime!.commService?.closeAll("shutdown");
               await s.kernelRuntime!.iopubBatchScheduler?.dispose();
               await s.kernelRuntime!.client.shutdown();
             } catch { /* shutdown errors during exit are best-effort */ }
@@ -185,6 +225,33 @@ export function buildKernelDispatcher(
     // Phase 4: ZMQ attach
     attachKernel(_connectionFile: unknown): Promise<void> {
       return Promise.reject(new UnimplementedError("attachKernel"));
+    },
+
+    /**
+     * Phase 5.1: snapshot of open comms for the viewer buffer.
+     * @spec-id europa.dispatcher.comm-status
+     */
+    commStatus(bufnr: unknown): Promise<CommStatusReport[] | null> {
+      const bn = Number(bufnr);
+      if (!Number.isInteger(bn) || bn < 0) {
+        return Promise.reject(
+          new EuropaKernelError(
+            "INVALID_ARGS",
+            `commStatus: invalid bufnr '${bufnr}'`,
+          ),
+        );
+      }
+      const session = sessionStore.get(bn);
+      const service = session?.kernelRuntime?.commService;
+      if (!service) return Promise.resolve(null);
+      const now = Date.now();
+      const reports: CommStatusReport[] = service.list().map((entry) => ({
+        commId: entry.commId,
+        targetName: entry.targetName,
+        opener: entry.opener,
+        ageSeconds: Math.floor((now - entry.openedAt) / 1000),
+      }));
+      return Promise.resolve(reports);
     },
   };
 }

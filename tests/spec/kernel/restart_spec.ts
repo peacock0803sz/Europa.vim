@@ -67,6 +67,7 @@ function makeClient(
     kernelInfo: kernelInfoFn ?? (() => Promise.resolve(MOCK_REPLY)),
     interrupt: () => Promise.reject(new Error("not in test")),
     restart: () => Promise.reject(new Error("not in test")),
+    sendComm: () => Promise.reject(new Error("not in test")),
   };
 }
 

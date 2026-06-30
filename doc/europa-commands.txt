@@ -192,6 +192,32 @@ KERNEL COMMANDS~
 
 	See also: |:EuropaStartKernel|, |:EuropaShutdownKernel|
 
+							*:EuropaCommStatus*
+:EuropaCommStatus
+	List every open Jupyter comm for the kernel attached to the current
+	buffer. The output is a four-column table written with `:echo` (it does
+	not persist into |:messages| because the snapshot is transient debug
+	output, not a status report).
+
+	Output columns:
+	  - COMM_ID — first 8 characters of the UUID-shaped identifier
+	  - TARGET_NAME — protocol identifier (`jupyter.widget`,
+	    `europa.test.echo`, etc.)
+	  - OPENER — `kernel` if the kernel initiated the open,
+	    `frontend` if Europa called the openComm API
+	  - AGE(s) — integer seconds since the comm was opened
+
+	When the buffer has no kernel attached, prints `No kernel attached.`
+	When a kernel is attached but no comm is open, prints `No open comms.`
+
+	Intended as a Phase 5.1 debug aid before higher-level widget UIs land.
+	Sample output: >
+	    COMM_ID    TARGET_NAME                       OPENER      AGE(s)
+	    3f7a8b2c   europa.test.echo                  kernel          12
+	    9d1e2f4a   jupyter.widget                    frontend         3
+<
+	See also: |europa-kernel-comm|
+
 KERNEL EXECUTION COMMANDS~
 					*europa-commands-execution*
 

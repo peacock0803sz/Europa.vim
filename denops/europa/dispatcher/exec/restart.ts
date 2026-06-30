@@ -20,6 +20,7 @@ export function buildRestartDispatcher(
     /**
      * @spec-id europa.dispatcher.restart-kernel
      * @spec-id europa.kernel.restart.exec-count-reset
+     * @spec-id europa.dispatcher.restart-comm-preserve-on-fail
      */
     async restartKernel(_bufnr: unknown): Promise<void> {
       const bn = Number(_bufnr);
@@ -41,8 +42,29 @@ export function buildRestartDispatcher(
 
       kr.execState = "restarting";
 
+      // Snapshot the pre-restart comm entries because client.restart()
+      // reopens the WebSocket and reattaches message dispatch internally,
+      // so the restarted kernel can push comm_open into the registry
+      // during the restart. closeAll on the live registry afterwards
+      // would wipe those just-arrived post-restart entries together with
+      // the pre-restart ones — the snapshot lets us close only the
+      // entries that existed before the kernel-side reset.
+      const preRestartEntries = kr.commService?.list().slice() ?? [];
+      const fireFrontendRestart = (): void => {
+        for (const entry of preRestartEntries) {
+          try {
+            entry.handle._fireOnClose({}, [], "frontend-restart");
+          } catch { /* best-effort */ }
+        }
+      };
+
       try {
         await kr.client.restart();
+        // Success path: the kernel has wiped its comm state, so close
+        // every pre-restart handle. Post-restart entries that the new
+        // kernel may have opened during the restart survive because they
+        // are not in the snapshot.
+        fireFrontendRestart();
 
         for (const cell of session!.notebook.cells) {
           if (cell.cell_type === "code") {
@@ -70,6 +92,27 @@ export function buildRestartDispatcher(
         );
       } catch (e) {
         if (kr.execState === "restarting") kr.execState = "idle";
+        // RESTART_HANDSHAKE_FAILED means client.restart() got past REST
+        // 200 (kernel-side comm map already wiped) but the new WebSocket
+        // open or kernel_info handshake failed afterwards. Both classes
+        // of registry entry must be torn down: pre-restart entries point
+        // at comms the kernel has forgotten, and post-restart entries
+        // (the new kernel can push comm_open between the WS reopen and
+        // the kernel_info failure) are stranded because kernel/restart.ts
+        // closes the new socket with code 1000 — ws-reconnect.ts skips
+        // reconnect on 1000, so those entries can never talk to the
+        // kernel again. closeAll sweeps the live registry which already
+        // contains both classes. RESTART_REST_FAILED is the opposite
+        // case where the old kernel survives, so the registry is NOT
+        // touched and every pre-restart comm stays live.
+        if (
+          e instanceof EuropaKernelError &&
+          e.code === "RESTART_HANDSHAKE_FAILED"
+        ) {
+          try {
+            await kr.commService?.closeAll("restart");
+          } catch { /* best-effort */ }
+        }
         const msg = e instanceof EuropaKernelError ? e.message : String(e);
         await denops.cmd(
           `echom ${vimSingleQuote(`Europa: Kernel restart failed: ${msg}`)}`,

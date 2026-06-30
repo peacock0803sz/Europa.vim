@@ -98,7 +98,11 @@ function renderMimeData(
       return imgResult.fragment;
     }
 
-    // Unsupported MIME (FR-025)
+    // Unsupported MIME (FR-025). application/vnd.jupyter.widget-view+json
+    // must still land here in Phase 5.1 because actual widget rendering
+    // belongs to Phase 5 item 2; upgrading early would silently expand
+    // scope of the transport slice.
+    // @spec-id europa.kernel.comm.widget-view-placeholder-unchanged
     return renderText(`[unsupported MIME: ${mime}]`);
   }
 

@@ -38,15 +38,22 @@ export function buildNotebookDispatcher(
     if (!session) return;
 
     const kernelShutdown = session.kernelRuntime
-      ? session.kernelRuntime.client.shutdown().catch(async (e) => {
-        const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
-        await echomError(
-          denops,
-          `cleanup: kernel shutdown failed${code}: ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        );
-      })
+      ? (async () => {
+        // BufWipeout teardown emits frontend-wipeout to comm handlers so
+        // widget code can run buffer-bound cleanup before the kernel
+        // shuts down. Must precede shutdown() because that disposes the
+        // runtime entirely.
+        await session.kernelRuntime!.commService?.closeAll("wipeout");
+        return session.kernelRuntime!.client.shutdown().catch(async (e) => {
+          const code = (e instanceof EuropaKernelError) ? ` [${e.code}]` : "";
+          await echomError(
+            denops,
+            `cleanup: kernel shutdown failed${code}: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        });
+      })()
       : Promise.resolve();
 
     const scratchWipeout = (async () => {

@@ -141,3 +141,34 @@ export const ErrorContentSchema = Type.Object({
   traceback: Type.Array(Type.String()),
 });
 export type ErrorContent = Static<typeof ErrorContentSchema>;
+
+/**
+ * comm_open content schema.
+ *
+ * Lenient validation: additionalProperties pass through unchanged so that
+ * framework-specific keys such as ipywidgets' `state` / `buffer_paths` reach
+ * the registered handler untouched. Strict validation would break interop
+ * with widget frameworks whose payload shape sits outside Europa's
+ * protocol-transport responsibility.
+ */
+export const CommOpenContentSchema = Type.Object({
+  comm_id: Type.String({ minLength: 1 }),
+  target_name: Type.String({ minLength: 1 }),
+  target_module: Type.Optional(Type.String({ minLength: 1 })),
+  data: Type.Record(Type.String(), Type.Unknown()),
+});
+export type CommOpenContent = Static<typeof CommOpenContentSchema>;
+
+/** comm_msg content schema (lenient — see CommOpenContentSchema rationale). */
+export const CommMsgContentSchema = Type.Object({
+  comm_id: Type.String({ minLength: 1 }),
+  data: Type.Record(Type.String(), Type.Unknown()),
+});
+export type CommMsgContent = Static<typeof CommMsgContentSchema>;
+
+/** comm_close content schema. Empty `data: {}` is allowed (Jupyter Client Messaging Spec §10.3). */
+export const CommCloseContentSchema = Type.Object({
+  comm_id: Type.String({ minLength: 1 }),
+  data: Type.Record(Type.String(), Type.Unknown()),
+});
+export type CommCloseContent = Static<typeof CommCloseContentSchema>;

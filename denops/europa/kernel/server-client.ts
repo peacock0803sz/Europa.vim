@@ -18,6 +18,7 @@ import type {
 import type { EuropaConfig } from "../../../schema/config.ts";
 import type { KernelInfo, KernelState } from "../../../schema/session.ts";
 import type {
+  Header,
   KernelInfoReply,
   KernelMessage,
 } from "../../../schema/message.ts";
@@ -29,7 +30,10 @@ import {
   detectJupyterExecutable,
   spawnJupyterServer,
 } from "./server-process.ts";
-import { execute as executeImpl } from "./execute.ts";
+import { buildKernelMessage, execute as executeImpl } from "./execute.ts";
+import { v7 as uuidV7 } from "@std/uuid";
+import { encodeDefault } from "./wire/protocol-default.ts";
+import { encodeV1 } from "./wire/protocol-v1.ts";
 import { interrupt as interruptImpl } from "./interrupt.ts";
 import { restart as restartImpl } from "./restart.ts";
 import {
@@ -428,5 +432,95 @@ export class ServerKernelClient implements KernelClient, WSConnectionState {
         this._reattachReconnect(socket);
       },
     );
+  }
+
+  /**
+   * Phase 5.1: send a comm_* message on the shell channel.
+   *
+   * Builds a Jupyter envelope, attaches the supplied parent_header (or `{}`
+   * for frontend-initiated messages), encodes through the negotiated WS
+   * subprotocol codec (v1 binary or default text JSON), then writes to the
+   * live socket. The reconnect gate at the first line is the single site
+   * where Phase 5.1 enforces the FR-024 / SC-012 contract.
+   *
+   * @spec-id europa.contract.kernel-client-send-comm
+   */
+  sendComm(
+    verb: "open" | "msg" | "close",
+    content: Record<string, unknown>,
+    buffers: Uint8Array[] = [],
+    parentHeader?: Header,
+  ): Promise<void> {
+    const runtime = this.wsRuntime;
+    if (!runtime) {
+      return Promise.reject(
+        new Error("sendComm: client not connected — call start() first"),
+      );
+    }
+    if (runtime.info.state === "reconnecting") {
+      return Promise.reject(
+        new EuropaKernelError(
+          "KERNEL_RECONNECTING",
+          `sendComm rejected: transport is reconnecting (verb=${verb})`,
+        ),
+      );
+    }
+    // WebSocket.send() on a CLOSING/CLOSED socket silently discards the
+    // frame per the WHATWG spec — only CONNECTING raises InvalidStateError
+    // synchronously. Without this gate, sendComm would resolve as success
+    // while the kernel never receives the frame, leaving ghost comms and
+    // post-shutdown messages dropped without diagnostic. CONNECTION_REFUSED
+    // is the appropriate code because the transport is terminated and the
+    // caller cannot recover via the KERNEL_RECONNECTING retry contract.
+    if (
+      runtime.info.state === "disconnected" ||
+      runtime.socket.readyState !== WebSocket.OPEN
+    ) {
+      return Promise.reject(
+        new EuropaKernelError(
+          "CONNECTION_REFUSED",
+          `sendComm rejected: socket not OPEN (verb=${verb}, state=${runtime.info.state}, readyState=${runtime.socket.readyState})`,
+        ),
+      );
+    }
+    const subprotocol = runtime.info.subprotocol ?? this.wsSubprotocol;
+    // The default (text JSON) codec cannot carry binary buffers — encodeDefault
+    // drops them with a console.warn, which would let sendComm resolve as
+    // success while the kernel never received the binary payload. ipywidgets
+    // and similar frameworks attach buffers on comm_msg, so silently dropping
+    // them would corrupt user-visible state. Reject explicitly here because
+    // the contract must surface the codec mismatch to the caller rather than
+    // hide it behind a transport-level warning.
+    if (subprotocol !== "v1" && buffers.length > 0) {
+      return Promise.reject(
+        new EuropaKernelError(
+          "INVALID_ARGS",
+          `sendComm rejected: cannot send ${buffers.length} buffer(s) on the default subprotocol (verb=${verb}); negotiate the v1 binary subprotocol to carry buffers`,
+        ),
+      );
+    }
+    const envelope = buildKernelMessage(
+      `comm_${verb}`,
+      uuidV7.generate(),
+      runtime.info.sessionId,
+      content,
+    );
+    envelope.parent_header = parentHeader ?? {};
+    envelope.buffers = buffers;
+    const frame = subprotocol === "v1"
+      ? new Uint8Array(encodeV1(envelope))
+      : encodeDefault(envelope);
+    try {
+      runtime.socket.send(frame);
+      return Promise.resolve();
+    } catch (e) {
+      return Promise.reject(
+        new EuropaKernelError(
+          "CONNECTION_REFUSED",
+          `sendComm: socket send failed (verb=${verb})`,
+          e,
+        ),
+      );
+    }
   }
 }

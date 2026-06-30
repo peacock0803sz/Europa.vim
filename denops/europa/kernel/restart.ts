@@ -180,6 +180,19 @@ export async function restart(
     reply = await runtime.client.kernelInfo();
   } catch (e) {
     runtime.execState = "idle";
+    // newSocket has been installed on runtime.socket and the persistent
+    // message listener is attached, but kernel_info never completed. The
+    // dispatcher's catch leaves runtime.info.state as "disconnected" so
+    // sendComm and execute would already reject — but the socket itself
+    // would stay open and the wsMessageHandlers loop would keep firing
+    // into a runtime no caller can reach. Close it explicitly because
+    // the WHATWG spec makes message listeners inert on close and the
+    // next restart attempt reattaches via onSocketReopen anyway.
+    if (newSocket.readyState === WebSocket.OPEN) {
+      try {
+        newSocket.close(1000, "restart handshake failed");
+      } catch { /* already closing */ }
+    }
     if (e instanceof EuropaKernelError && e.code === "KERNEL_INFO_TIMEOUT") {
       throw new EuropaKernelError(
         "RESTART_HANDSHAKE_FAILED",
