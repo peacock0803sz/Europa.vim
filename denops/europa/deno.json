@@ -6,7 +6,7 @@
     "@sinclair/typebox/": "npm:/@sinclair/typebox@^0.34.49/",
     "@std/async": "jsr:@std/async@^1.4.0",
     "@std/cache": "jsr:@std/cache@^0.2.3",
-    "@std/cli": "jsr:@std/cli@^1.0.30",
+    "@std/cli": "jsr:@std/cli@^1.0.32",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
     "@std/fs": "jsr:@std/fs@^1.0.24",
     "@std/path": "jsr:@std/path@^1.1.5",
