@@ -24,7 +24,7 @@
     "@std/encoding": "jsr:@std/encoding@^1.0.11",
     "@std/fs": "jsr:@std/fs@^1.0.24",
     "@std/path": "jsr:@std/path@^1.1.6",
-    "@std/testing": "jsr:@std/testing@^1.0.19",
+    "@std/testing": "jsr:@std/testing@^1.0.20",
     "@std/uuid": "jsr:@std/uuid@^1.1.1",
     "marked": "npm:marked@^18.0.6",
     "typedoc": "npm:typedoc@^0.28.19",
