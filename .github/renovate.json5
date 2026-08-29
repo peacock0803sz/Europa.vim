@@ -1,42 +1,20 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":dependencyDashboard"
-  ],
-  "enabledManagers": [
-    "deno"
-  ],
-  "rangeStrategy": "bump",
-  "commitMessagePrefix": ":arrow_up:",
-  "commitMessageAction": "Bump",
+  "extends": ["github>peacock0803sz/renovate-config"],
   "packageRules": [
     {
+      // 生成物 (doc/europa-api.txt) に影響するため minor / patch でも automerge しない。
       "groupName": "vimdoc-toolchain",
-      "matchPackageNames": [
-        "typedoc",
-        "typedoc-plugin-markdown",
-        "@sinclair/typebox"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "automerge": false
+      "matchPackageNames": ["typedoc", "typedoc-plugin-markdown", "@sinclair/typebox"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": false,
     },
     {
+      // major は preset 側で automerge 無効 + needs-manual-review ラベルが付く。
+      // ここでは group 化のみ担当する。
       "groupName": "vimdoc-toolchain-major",
-      "matchPackageNames": [
-        "typedoc",
-        "typedoc-plugin-markdown"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false,
-      "addLabels": [
-        "needs-manual-review"
-      ]
-    }
-  ]
+      "matchPackageNames": ["typedoc", "typedoc-plugin-markdown"],
+      "matchUpdateTypes": ["major"],
+    },
+  ],
 }
