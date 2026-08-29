@@ -61,7 +61,7 @@ graph TD
 3. Comments should only contain why and the API specification. TSDoc tags such as `@param`, `@returns`, `@example`, and `@throws` are kept as the SoT for the API specification. Other in-code comments are limited to "why" for complex logic.
 4. Hand-written documentation is placed only at the repository root (`README.md`, `DESIGN.md`, `CONTRIBUTING.md`), the vim help index `doc/europa.txt`, and the vim help guide chapters `doc/europa-<slug>.txt`. Hand-written md and txt files outside of these locations are forbidden. The API reference is auto-generated from TSDoc into `doc/europa-api.txt`. Denops itself also hand-writes `doc/denops.txt`. We separate the readers into two: a hand-written user-facing guide aligned with vim culture, and an auto-generated developer-facing API from TSDoc.
 5. Generated artifacts are committed to git, and CI enforces the diff. The only generated vimdoc artifact is `doc/europa-api.txt`, and CI runs `deno task gen:vimdoc && git diff --exit-code doc/europa-api.txt`. PRs whose generated artifact has drifted are failed.
-6. Dependency updates are operated assuming renovate/dependabot. typedoc, typedoc-plugin-markdown, and TypeBox have pinned versions. Minor and patch updates are bundled by groupName for automatic PRs, while majors are reviewed manually. The impact of bumps is detected by golden file tests for generated artifacts.
+6. Dependency updates are operated assuming renovate. typedoc, typedoc-plugin-markdown, and TypeBox have pinned versions. Minor and patch updates are bundled by groupName for automatic PRs, while majors are reviewed manually. The impact of bumps is detected by golden file tests for generated artifacts.
 
 #### Implementation Policy
 
@@ -579,7 +579,7 @@ jobs:
       - run: deno task check
 ```
 
-#### Coordination with renovate / dependabot
+#### Coordination with renovate
 
 When a bot PR for dependency updates arrives:
 

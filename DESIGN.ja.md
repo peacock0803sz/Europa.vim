@@ -61,7 +61,7 @@ graph TD
 3. コメントは why と API 仕様だけにする。TSDoc の `@param`、`@returns`、`@example`、`@throws` は API 仕様の SoT として残す。それ以外のコード内コメントは複雑なロジックの why に限る。
 4. 手書きドキュメントはルート直下の `README.md`、`DESIGN.md`、`CONTRIBUTING.md` と、vim help の索引 `doc/europa-api.txt`、ガイド章 `doc/europa-<slug>.txt` だけに置く。これ以外の場所への手書き md と txt は禁止する。API リファレンスは TSDoc から `doc/europa-api.txt` に自動生成する。Denops 本家も `doc/denops.txt` を手書きしている。ユーザー向けガイドは vim 文化に沿った手書き、開発者向け API は TSDoc 自動生成、という二系統で読者を分けたいから。
 5. 生成物は git commit して、CI で diff を強制する。生成 vimdoc 物は `doc/europa-api.txt` のみで、CI で `deno task gen:vimdoc && git diff --exit-code doc/europa-api.txt` を実行する。生成物がズレた PR は fail させる。
-6. 依存更新は renovate/dependabot 前提で運用する。typedoc、typedoc-plugin-markdown、TypeBox は version を pin する。minor と patch は groupName でまとめて自動 PR、major は手動 review。bump の影響は生成物 golden ファイルテストで検出する。
+6. 依存更新は renovate 前提で運用する。typedoc、typedoc-plugin-markdown、TypeBox は version を pin する。minor と patch は groupName でまとめて自動 PR、major は手動 review。bump の影響は生成物 golden ファイルテストで検出する。
 
 #### 実装上の方針
 
@@ -579,7 +579,7 @@ jobs:
       - run: deno task check
 ```
 
-#### renovate / dependabot との連携
+#### renovate との連携
 
 依存更新の bot PR が来たとき:
 
