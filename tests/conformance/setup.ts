@@ -168,6 +168,16 @@ interface StderrCapture {
    */
   tail(): string;
   dump(reason: string): void;
+  /**
+   * Give the drain loop up to `ms` to catch up with the pipe, so a `tail()`
+   * taken right after sees everything the child has written.
+   *
+   * The bound is not optional. ipykernel grandchildren inherit the write end,
+   * so the pipe need never reach EOF on its own and an unbounded wait would
+   * hang — the same reason `close()` cancels the reader instead of waiting for
+   * it. A possibly-short tail beats a dump that never prints.
+   */
+  flush(ms: number): Promise<void>;
   /** Stop draining and release the pipe. Safe to call more than once. */
   close(): Promise<void>;
 }
@@ -244,6 +254,20 @@ function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
         return;
       }
       console.error(body === "" ? "  <empty>" : body);
+    },
+    async flush(ms: number): Promise<void> {
+      // `drain` swallows its own errors, so this race can only ever resolve.
+      // Clear the timer on the way out: a pending setTimeout would trip the
+      // `deno test` async-op sanitizer once the drain wins the race.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const bound = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms);
+      });
+      try {
+        await Promise.race([drain, bound]);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
     },
     async close(): Promise<void> {
       if (closed) return;
