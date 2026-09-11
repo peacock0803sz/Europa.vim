@@ -64,6 +64,14 @@ async function readApiReference(): Promise<string> {
 /**
  * Run typedoc to populate `tmp/typedoc/` for the API reference.
  *
+ * Invoked through `deno task typedoc` rather than `deno run -A npm:typedoc` so
+ * the generator is pinned to the typedoc version declared in `deno.json`. A
+ * bare `npm:typedoc` specifier carries no version range, so it resolves to
+ * whatever is latest on the registry and ignores the import map entirely — the
+ * generated doc would then track release timing instead of the range we review.
+ * `deno task` resolves `typedoc` from `node_modules/.bin/` first, which
+ * `nodeModulesDir: "auto"` materialises from that same declared range.
+ *
  * Returns `true` on success and `false` when typedoc exits non-zero. The
  * caller is responsible for translating a `false` result into a non-zero task
  * exit so CI catches the regression.
@@ -71,15 +79,7 @@ async function readApiReference(): Promise<string> {
 async function runTypedoc(): Promise<boolean> {
   await Deno.remove("tmp/typedoc", { recursive: true }).catch(() => {});
   const cmd = new Deno.Command(Deno.execPath(), {
-    args: [
-      "run",
-      "-A",
-      "npm:typedoc",
-      "--tsconfig",
-      "tsconfig.json",
-      "--out",
-      "tmp/typedoc",
-    ],
+    args: ["task", "typedoc"],
     stdout: "inherit",
     stderr: "inherit",
   });
