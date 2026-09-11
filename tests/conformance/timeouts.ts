@@ -28,9 +28,13 @@ const SCALE_ENV = "EUROPA_CONFORMANCE_TIMEOUT_SCALE";
 /**
  * Parse the scale factor, rejecting anything that is not a sane multiplier.
  *
- * Falling back to a default on a malformed value would be worse than failing:
- * a typo in CI would silently relax (or with 0, disable) every budget in the
- * suite, and the flake this scaling exists to absorb would come back invisible.
+ * Falling back to a default on a malformed value would be worse than failing.
+ * CI asks for 4, so a typo there would quietly run the whole suite at 1 —
+ * every budget four times tighter than intended, under an environment variable
+ * that still looks set, and the flake this scaling exists to absorb back with
+ * no explanation. A value at or below 0 is refused for the same reason: a
+ * fraction only tightens, and 0 leaves every budget unsatisfiable rather than
+ * switching the checks off.
  */
 function parseScale(raw: string | undefined): number {
   if (raw === undefined || raw === "") return 1;
@@ -98,7 +102,10 @@ export const RESTART_BUDGET_MS = scaleMs(10_000);
 /** SC-010a: an abort must unwind the in-flight operation this quickly. */
 export const ABORT_PROPAGATION_BUDGET_MS = scaleMs(100);
 
-/** Upper bound on the poll loop that waits for a reconnect to be observable. */
+/**
+ * Upper bound on the poll loop that waits for an abort to reach the runtime,
+ * i.e. for `runtime.info.state` to become `"disconnected"`.
+ */
 export const ABORT_POLL_LIMIT_MS = scaleMs(1_000);
 
 /** SC-010a: `start()` followed immediately by `abort()` settles this quickly. */
@@ -106,7 +113,9 @@ export const START_ABORT_BUDGET_MS = scaleMs(5_000);
 
 /**
  * SC-001: gap between consecutive IOPub stream messages. The kernel emits them
- * 500 ms apart, so this is 4x slack before we call the kernel frozen.
+ * 500 ms apart, so this is 4x slack at scale 1 before we call the kernel
+ * frozen. The `time.sleep(0.5)` driving them is a Python literal and does not
+ * scale, so the CI scale of 4 makes the real slack 16x.
  */
 export const STREAM_GAP_BUDGET_MS = scaleMs(2_000);
 
