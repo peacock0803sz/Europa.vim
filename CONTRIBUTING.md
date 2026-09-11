@@ -56,7 +56,7 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 
 ### Conformance environment knobs
 
-Every budget the conformance specs assert against, and every deadline they wait on, lives in `tests/conformance/timeouts.ts`. A few fixed waits stay at their call sites because nothing asserts on them: the `/api` readiness probe and its backoff in `setup.ts`, the default `wsReconnectInitialIntervalMs` in `client.ts`, and the polling delays and the fake parent's lifetime in `orphan_prevention_spec.ts`. These environment variables tune the suite without editing the constants.
+Every budget the conformance specs assert against, and every deadline they wait on, lives in `tests/conformance/timeouts.ts`. A few fixed waits stay at their call sites because nothing asserts on them: the `/api` readiness probe, its backoff and the stderr flush grace in `setup.ts`, and the polling delays and the fake parent's lifetime in `orphan_prevention_spec.ts`. The default `wsReconnectInitialIntervalMs` in `client.ts` is not one of them — `kernel_lifecycle_spec.ts` asserts SC-020 against it — but it is a config default rather than a wall-clock budget, so it stays with the config it belongs to. These environment variables tune the suite without editing the constants.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|

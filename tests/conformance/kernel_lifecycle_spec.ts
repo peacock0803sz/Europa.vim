@@ -137,9 +137,9 @@ describe("conformance: kernel lifecycle (shared server)", () => {
       const runtime = await startConformanceKernel(client, server);
 
       // Read the values off the client, not off a second config object built
-      // for the assertion: the client builds its own config internally, so a
-      // separately built one proves nothing about what the client is using.
-      // These are the defaults per DESIGN.md §9.1.
+      // for the assertion: the factory builds the client's config internally,
+      // so a separately built one proves nothing about what the client is
+      // using. These are the defaults per DESIGN.md §9.1.
       assertEquals(client.wsReconnectMaxRetries, 5);
       assertEquals(client.wsReconnectInitialIntervalMs, 1000);
       assertEquals(client.wsReconnectMultiplier, 2.0);
