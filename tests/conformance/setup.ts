@@ -51,36 +51,52 @@ export interface ConformanceServer {
 export async function clearAllSessions(
   server: ConformanceServer,
 ): Promise<void> {
-  const headers = { Authorization: `token ${server.token}` };
-  const resp = await fetch(`${server.url}/api/sessions`, { headers });
-  if (!resp.ok) {
-    // Returning quietly here used to make a 403 or a 5xx look like "no sessions
-    // to clean up", while every kernel the tests started stayed alive on the
-    // shared server — the CPU starvation DENO_JOBS was lowered to avoid.
-    const body = (await resp.text()).trim().slice(0, 200);
-    console.error(
-      `[europa.conformance] session sweep failed: GET /api/sessions -> ` +
-        `${resp.status} ${resp.statusText}${body === "" ? "" : ` ${body}`}`,
+  try {
+    const headers = { Authorization: `token ${server.token}` };
+    const resp = await fetch(`${server.url}/api/sessions`, { headers });
+    if (!resp.ok) {
+      // Returning quietly here used to make a 403 or a 5xx look like "no
+      // sessions to clean up", while every kernel the tests started stayed
+      // alive on the shared server — the CPU starvation DENO_JOBS was lowered
+      // to avoid.
+      const body = (await resp.text()).trim().slice(0, 200);
+      console.error(
+        `[europa.conformance] session sweep failed: GET /api/sessions -> ` +
+          `${resp.status} ${resp.statusText}${body === "" ? "" : ` ${body}`}`,
+      );
+      return;
+    }
+    const sessions = (await resp.json()) as Array<{ id: string }>;
+    // allSettled, not all: one rejected DELETE must not abandon the sessions
+    // whose DELETE would have succeeded.
+    const outcomes = await Promise.allSettled(
+      sessions.map(async (s) => {
+        const r = await fetch(`${server.url}/api/sessions/${s.id}`, {
+          method: "DELETE",
+          headers,
+        });
+        await r.body?.cancel();
+        return r.ok ? "" : `${s.id} (${r.status})`;
+      }),
     );
-    return;
-  }
-  const sessions = (await resp.json()) as Array<{ id: string }>;
-  const survivors = await Promise.all(
-    sessions.map(async (s) => {
-      const r = await fetch(`${server.url}/api/sessions/${s.id}`, {
-        method: "DELETE",
-        headers,
-      });
-      await r.body?.cancel();
-      return r.ok ? "" : `${s.id} (${r.status})`;
-    }),
-  );
-  const failed = survivors.filter((s) => s !== "");
-  if (failed.length > 0) {
-    console.error(
-      `[europa.conformance] session sweep could not delete ${failed.length} of ` +
-        `${sessions.length} sessions: ${failed.join(", ")}`,
-    );
+    const failed = outcomes
+      .map((o, i) =>
+        o.status === "fulfilled" ? o.value : `${sessions[i].id} (${o.reason})`
+      )
+      .filter((s) => s !== "");
+    if (failed.length > 0) {
+      console.error(
+        `[europa.conformance] session sweep could not delete ${failed.length} ` +
+          `of ${sessions.length} sessions: ${failed.join(", ")}`,
+      );
+    }
+  } catch (e) {
+    // Every step above talks to a jupyter that may be wedged or being reaped:
+    // fetch() rejects on a refused or reset connection, and resp.text() and
+    // resp.json() reject when the socket drops mid-body. Letting any of that
+    // escape would make `deno test` report this instead of the assertion the
+    // test was failing on — precisely when that assertion matters most.
+    console.error(`[europa.conformance] session sweep failed: ${e}`);
   }
 }
 
