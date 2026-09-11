@@ -25,9 +25,10 @@ export interface ConformanceServer {
   stop(): Promise<void>;
   /**
    * Print the stderr tail to the test log, tagged with `reason` and numbered so
-   * several dumps from one server stay attributable. A dump whose body is
-   * byte-identical to the previous one is skipped, which suppresses the `stop()`
-   * echo of a failure dump without silencing the second and later failures on a
+   * several dumps from one server stay attributable. The header always prints;
+   * a body byte-identical to the previous dump's is replaced by an
+   * `<unchanged since #N>` back-reference, which keeps the `stop()` echo of a
+   * failure dump short without silencing the second and later failures on a
    * shared `beforeAll` server.
    */
   dumpStderr(reason: string): void;
@@ -221,16 +222,27 @@ function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
     tail,
     dump(reason: string): void {
       // A beforeAll server outlives many tests, so dumping only once per server
-      // would leave every failure after the first with no log at all. Dedupe on
-      // the body instead: the repeat worth suppressing is a `stop()` echo of a
+      // would leave every failure after the first with no log at all. Only the
+      // body is deduped: the repeat worth suppressing is a `stop()` echo of a
       // dump nothing has been appended to since.
+      //
+      // The header always prints. `reason` carries which call failed and how,
+      // which is never a duplicate — two start() failures on one server can
+      // report different errors with nothing logged by jupyter in between,
+      // because the client never reached it. Advancing the counter every time
+      // also keeps the sequence contiguous, so a missing number means a failure
+      // path that did not dump rather than one that was suppressed.
       const body = tail();
-      if (body === lastDump) return;
+      const unchangedSince = body === lastDump ? dumpCount : undefined;
       lastDump = body;
       dumpCount++;
       console.error(
         `[europa.conformance] jupyter stderr #${dumpCount} (${reason}):`,
       );
+      if (unchangedSince !== undefined) {
+        console.error(`  <unchanged since #${unchangedSince}>`);
+        return;
+      }
       console.error(body === "" ? "  <empty>" : body);
     },
     async close(): Promise<void> {
