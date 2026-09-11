@@ -20,6 +20,10 @@ import { assert } from "@std/assert";
 import { delay } from "@std/async/delay";
 import { join } from "@std/path/join";
 import { ensureJupyter, JupyterMissingError } from "./setup.ts";
+import {
+  WATCHDOG_KILL_BUDGET_MS,
+  WATCHDOG_STARTUP_TIMEOUT_MS,
+} from "./timeouts.ts";
 
 let jupyterExec = "";
 let jupyterPresent = true;
@@ -122,7 +126,7 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
     let jupyterStarted = false;
 
     const ac = new AbortController();
-    const tid = setTimeout(() => ac.abort(), 30_000);
+    const tid = setTimeout(() => ac.abort(), WATCHDOG_STARTUP_TIMEOUT_MS);
     try {
       while (!ac.signal.aborted) {
         let chunk: ReadableStreamReadResult<Uint8Array>;
@@ -171,7 +175,7 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
     await fakeParent.status;
 
     // SC-005a: watchdog must clean up within 15 seconds.
-    const gone = await waitUntilGone(watchdogPid, 15_000);
+    const gone = await waitUntilGone(watchdogPid, WATCHDOG_KILL_BUDGET_MS);
 
     assert(
       gone,

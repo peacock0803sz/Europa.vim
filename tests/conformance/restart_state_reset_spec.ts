@@ -11,11 +11,11 @@
 
 import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertExists } from "@std/assert";
-import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import { applyMessageToCell } from "../../denops/europa/kernel/execute.ts";
-import type { EuropaConfig } from "../../schema/config.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
+import { createConformanceClient, startConformanceKernel } from "./client.ts";
+import { assertWithinBudget, RESTART_BUDGET_MS } from "./timeouts.ts";
 import {
   type ConformanceServer,
   ensureJupyter,
@@ -35,40 +35,6 @@ try {
   }
 }
 
-function makeMockDenops() {
-  return { eval: (_expr: string): Promise<unknown> => Promise.resolve("") };
-}
-
-function attachConfig(url: string, token: string): EuropaConfig {
-  return {
-    connection_mode: "server",
-    jupyter_url: url,
-    jupyter_token: token,
-    jupyter_ws_subprotocol: "auto",
-    default_kernel: "python3",
-    auto_start_kernel: false,
-    jupyter_executable: "",
-    python_env_detect: "auto",
-    image_backend: "auto",
-    mime_priority: ["image/png", "text/plain"],
-    max_output_lines: 100,
-    cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
-    cell_border_padding: 4,
-    cell_border_align: "left" as const,
-    lazy_padding: 10,
-    auto_save: false,
-    use_subprocess: false,
-    wsReconnectMaxRetries: 5,
-    wsReconnectInitialIntervalMs: 1000,
-    wsReconnectMultiplier: 2.0,
-    kernelInfoTimeoutMs: 10000,
-    undo_max_history: 100,
-    disable_default_mappings: false,
-    ts_highlight: "auto",
-    lsp_enable: "auto",
-  };
-}
-
 function makeCodeCell(source: string): CodeCell {
   return {
     id: crypto.randomUUID(),
@@ -85,7 +51,7 @@ describe("conformance: restart — variable-space reset (SC-004)", () => {
 
   beforeAll(async () => {
     if (!jupyterPresent) return;
-    server = await spawnConformanceServer({ timeoutMs: 30_000 });
+    server = await spawnConformanceServer();
   });
 
   afterAll(async () => {
@@ -96,13 +62,8 @@ describe("conformance: restart — variable-space reset (SC-004)", () => {
   it("restart clears variable state: NameError after defining a=42 and restarting", async () => {
     if (!jupyterPresent) return;
     const pool = new ServerPool();
-    const config = attachConfig(server.url, server.token);
-    const client = new ServerKernelClient(
-      makeMockDenops() as never,
-      config,
-      pool,
-    );
-    await client.start({ kernelName: "python3" });
+    const client = createConformanceClient(server, pool);
+    await startConformanceKernel(client, server);
 
     // Define a = 42 in the kernel.
     const cell1 = makeCodeCell("a = 42");
@@ -118,7 +79,7 @@ describe("conformance: restart — variable-space reset (SC-004)", () => {
     const t0 = Date.now();
     await client.restart();
     const elapsed = Date.now() - t0;
-    assert(elapsed < 10_000, `restart took ${elapsed}ms, expected < 10000ms`);
+    assertWithinBudget("restart", elapsed, RESTART_BUDGET_MS);
 
     // After restart, `a` should not exist.
     const cell2 = makeCodeCell("print(a)");
@@ -142,13 +103,8 @@ describe("conformance: restart — variable-space reset (SC-004)", () => {
   it("restart updates languageInfo via kernelInfo re-handshake (US5)", async () => {
     if (!jupyterPresent) return;
     const pool = new ServerPool();
-    const config = attachConfig(server.url, server.token);
-    const client = new ServerKernelClient(
-      makeMockDenops() as never,
-      config,
-      pool,
-    );
-    const runtime = await client.start({ kernelName: "python3" });
+    const client = createConformanceClient(server, pool);
+    const runtime = await startConformanceKernel(client, server);
 
     const langBefore = runtime.info.languageInfo?.name;
     assertExists(langBefore, "Expected languageInfo before restart");

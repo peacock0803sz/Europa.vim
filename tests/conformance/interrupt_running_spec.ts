@@ -11,11 +11,11 @@
 
 import { describe, it } from "@std/testing/bdd";
 import { assert, assertExists } from "@std/assert";
-import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import { applyMessageToCell } from "../../denops/europa/kernel/execute.ts";
-import type { EuropaConfig } from "../../schema/config.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
+import { createConformanceClient, startConformanceKernel } from "./client.ts";
+import { assertWithinBudget, INTERRUPT_BUDGET_MS } from "./timeouts.ts";
 import {
   ensureJupyter,
   JupyterMissingError,
@@ -34,40 +34,6 @@ try {
   }
 }
 
-function makeMockDenops() {
-  return { eval: (_expr: string): Promise<unknown> => Promise.resolve("") };
-}
-
-function attachConfig(url: string, token: string): EuropaConfig {
-  return {
-    connection_mode: "server",
-    jupyter_url: url,
-    jupyter_token: token,
-    jupyter_ws_subprotocol: "auto",
-    default_kernel: "python3",
-    auto_start_kernel: false,
-    jupyter_executable: "",
-    python_env_detect: "auto",
-    image_backend: "auto",
-    mime_priority: ["image/png", "text/plain"],
-    max_output_lines: 100,
-    cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
-    cell_border_padding: 4,
-    cell_border_align: "left" as const,
-    lazy_padding: 10,
-    auto_save: false,
-    use_subprocess: false,
-    wsReconnectMaxRetries: 5,
-    wsReconnectInitialIntervalMs: 1000,
-    wsReconnectMultiplier: 2.0,
-    kernelInfoTimeoutMs: 10000,
-    undo_max_history: 100,
-    disable_default_mappings: false,
-    ts_highlight: "auto",
-    lsp_enable: "auto",
-  };
-}
-
 function makeCodeCell(source: string): CodeCell {
   return {
     id: crypto.randomUUID(),
@@ -82,16 +48,11 @@ function makeCodeCell(source: string): CodeCell {
 describe("conformance: interrupt running cell (SC-003)", () => {
   it("interrupt time.sleep(30) yields KeyboardInterrupt traceback within 2s", async () => {
     if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
+    const server = await spawnConformanceServer();
     try {
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
-      await client.start({ kernelName: "python3" });
+      const client = createConformanceClient(server, pool);
+      await startConformanceKernel(client, server);
 
       const cell = makeCodeCell("import time; time.sleep(30)");
 
@@ -128,10 +89,7 @@ describe("conformance: interrupt running cell (SC-003)", () => {
       const elapsed = Date.now() - t0;
 
       // SC-003: interrupt must produce idle within 2 s.
-      assert(
-        elapsed < 2_000,
-        `interrupt→idle took ${elapsed}ms, expected < 2000ms`,
-      );
+      assertWithinBudget("interrupt→idle", elapsed, INTERRUPT_BUDGET_MS);
 
       // The cell must have a KeyboardInterrupt error output.
       const errorOut = cell.outputs.find((o) => o.output_type === "error");

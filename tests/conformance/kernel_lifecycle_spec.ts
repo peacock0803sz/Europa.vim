@@ -14,15 +14,23 @@
 
 import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals, assertExists } from "@std/assert";
-import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
-import type { EuropaConfig } from "../../schema/config.ts";
 import {
   type ConformanceServer,
   ensureJupyter,
   JupyterMissingError,
   spawnConformanceServer,
 } from "./setup.ts";
+import {
+  conformanceConfig,
+  createConformanceClient,
+  startConformanceKernel,
+} from "./client.ts";
+import {
+  assertWithinBudget,
+  KERNEL_SHUTDOWN_BUDGET_MS,
+  KERNEL_START_BUDGET_MS,
+} from "./timeouts.ts";
 
 // Shared jupyter binary check; skip all tests if absent.
 let jupyterPresent = true;
@@ -37,48 +45,12 @@ try {
   }
 }
 
-function makeMockDenops() {
-  return {
-    eval: (_expr: string): Promise<unknown> => Promise.resolve(""),
-  };
-}
-
-function attachConfig(url: string, token: string): EuropaConfig {
-  return {
-    connection_mode: "server",
-    jupyter_url: url,
-    jupyter_token: token,
-    jupyter_ws_subprotocol: "auto",
-    default_kernel: "python3",
-    auto_start_kernel: false,
-    jupyter_executable: "",
-    python_env_detect: "auto",
-    image_backend: "auto",
-    mime_priority: ["image/png", "text/plain"],
-    max_output_lines: 100,
-    cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
-    cell_border_padding: 4,
-    cell_border_align: "left" as const,
-    lazy_padding: 10,
-    auto_save: false,
-    use_subprocess: false,
-    wsReconnectMaxRetries: 5,
-    wsReconnectInitialIntervalMs: 1000,
-    wsReconnectMultiplier: 2.0,
-    kernelInfoTimeoutMs: 10000,
-    undo_max_history: 100,
-    disable_default_mappings: false,
-    ts_highlight: "auto",
-    lsp_enable: "auto",
-  };
-}
-
 describe("conformance: kernel lifecycle (shared server)", () => {
   let server: ConformanceServer;
 
   beforeAll(async () => {
     if (!jupyterPresent) return;
-    server = await spawnConformanceServer({ timeoutMs: 30_000 });
+    server = await spawnConformanceServer();
   });
 
   afterAll(async () => {
@@ -90,17 +62,12 @@ describe("conformance: kernel lifecycle (shared server)", () => {
     it("start() completes within 5s and returns a connected KernelRuntime", async () => {
       if (!jupyterPresent) return;
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
+      const client = createConformanceClient(server, pool);
       const startMs = Date.now();
-      const runtime = await client.start({ kernelName: "python3" });
+      const runtime = await startConformanceKernel(client, server);
       const elapsed = Date.now() - startMs;
       // SC-002: start must finish within 5 s on a local jupyter server.
-      assert(elapsed < 5_000, `start() took ${elapsed}ms, expected < 5000ms`);
+      assertWithinBudget("start()", elapsed, KERNEL_START_BUDGET_MS);
       assertExists(runtime.info.kernelId);
       assertEquals(runtime.info.kernelName, "python3");
       assertEquals(runtime.socket.readyState, WebSocket.OPEN);
@@ -110,13 +77,8 @@ describe("conformance: kernel lifecycle (shared server)", () => {
     it("start() receives kernel_info_reply and populates languageInfo (SC-003)", async () => {
       if (!jupyterPresent) return;
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
-      const runtime = await client.start({ kernelName: "python3" });
+      const client = createConformanceClient(server, pool);
+      const runtime = await startConformanceKernel(client, server);
       // SC-003: kernel_info_reply must include language_info.
       assertExists(runtime.info.languageInfo);
       assertEquals(runtime.info.languageInfo?.name, "python");
@@ -126,23 +88,15 @@ describe("conformance: kernel lifecycle (shared server)", () => {
     it("shutdown() tears down session within 5s and leaves no leaked connections (SC-004, SC-006)", async () => {
       if (!jupyterPresent) return;
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
-      const runtime = await client.start({ kernelName: "python3" });
+      const client = createConformanceClient(server, pool);
+      const runtime = await startConformanceKernel(client, server);
       assert(runtime.socket.readyState === WebSocket.OPEN);
 
       const shutdownMs = Date.now();
       await client.shutdown();
       const elapsed = Date.now() - shutdownMs;
       // SC-004: shutdown must complete within 5 s.
-      assert(
-        elapsed < 5_000,
-        `shutdown() took ${elapsed}ms, expected < 5000ms`,
-      );
+      assertWithinBudget("shutdown()", elapsed, KERNEL_SHUTDOWN_BUDGET_MS);
       // After shutdown the socket is no longer OPEN.
       assert(runtime.socket.readyState !== WebSocket.OPEN);
     });
@@ -156,14 +110,12 @@ describe("conformance: kernel lifecycle (shared server)", () => {
       // attach-mode integration check below still validates distinct kernel IDs.
       // Shared pool is the Q1 mechanism: same pool instance → same server handle.
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const denops = makeMockDenops() as never;
-      const client1 = new ServerKernelClient(denops, config, pool);
-      const client2 = new ServerKernelClient(denops, config, pool);
+      const client1 = createConformanceClient(server, pool);
+      const client2 = createConformanceClient(server, pool);
 
       const [rt1, rt2] = await Promise.all([
-        client1.start({ kernelName: "python3" }),
-        client2.start({ kernelName: "python3" }),
+        startConformanceKernel(client1, server),
+        startConformanceKernel(client2, server),
       ]);
 
       // Both must land on the same server key (Q1 server singleton).
@@ -185,13 +137,9 @@ describe("conformance: kernel lifecycle (shared server)", () => {
       // backoff sequence.  We inspect the runtime abort signal — no actual
       // disconnect is triggered here (that path is covered by abort_race_spec).
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
-      const runtime = await client.start({ kernelName: "python3" });
+      const config = conformanceConfig(server);
+      const client = createConformanceClient(server, pool);
+      const runtime = await startConformanceKernel(client, server);
 
       // Default reconnect options exposed via config — validate they are
       // the expected defaults per DESIGN.md §9.1.

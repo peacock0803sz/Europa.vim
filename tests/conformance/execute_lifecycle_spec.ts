@@ -14,7 +14,6 @@
 
 import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals, assertExists } from "@std/assert";
-import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import { applyMessageToCell } from "../../denops/europa/kernel/execute.ts";
 import {
@@ -23,7 +22,6 @@ import {
   enqueue,
   markSent,
 } from "../../denops/europa/session/pending-requests.ts";
-import type { EuropaConfig } from "../../schema/config.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
 import {
   type ConformanceServer,
@@ -31,6 +29,12 @@ import {
   JupyterMissingError,
   spawnConformanceServer,
 } from "./setup.ts";
+import { createConformanceClient, startConformanceKernel } from "./client.ts";
+import {
+  assertWithinBudget,
+  EXECUTE_BUDGET_MS,
+  RUN_ALL_100_BUDGET_MS,
+} from "./timeouts.ts";
 
 let jupyterPresent = true;
 try {
@@ -42,40 +46,6 @@ try {
   } else {
     throw e;
   }
-}
-
-function makeMockDenops() {
-  return { eval: (_expr: string): Promise<unknown> => Promise.resolve("") };
-}
-
-function attachConfig(url: string, token: string): EuropaConfig {
-  return {
-    connection_mode: "server",
-    jupyter_url: url,
-    jupyter_token: token,
-    jupyter_ws_subprotocol: "auto",
-    default_kernel: "python3",
-    auto_start_kernel: false,
-    jupyter_executable: "",
-    python_env_detect: "auto",
-    image_backend: "auto",
-    mime_priority: ["image/png", "text/plain"],
-    max_output_lines: 100,
-    cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
-    cell_border_padding: 4,
-    cell_border_align: "left" as const,
-    lazy_padding: 10,
-    auto_save: false,
-    use_subprocess: false,
-    wsReconnectMaxRetries: 5,
-    wsReconnectInitialIntervalMs: 1000,
-    wsReconnectMultiplier: 2.0,
-    kernelInfoTimeoutMs: 10000,
-    undo_max_history: 100,
-    disable_default_mappings: false,
-    ts_highlight: "auto",
-    lsp_enable: "auto",
-  };
 }
 
 function makeCodeCell(source: string): CodeCell {
@@ -94,7 +64,7 @@ describe("conformance: execute lifecycle (shared server)", () => {
 
   beforeAll(async () => {
     if (!jupyterPresent) return;
-    server = await spawnConformanceServer({ timeoutMs: 30_000 });
+    server = await spawnConformanceServer();
   });
 
   afterAll(async () => {
@@ -106,13 +76,8 @@ describe("conformance: execute lifecycle (shared server)", () => {
     it("execute print('hi') yields stream output 'hi' and execution_count=1", async () => {
       if (!jupyterPresent) return;
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
-      const runtime = await client.start({ kernelName: "python3" });
+      const client = createConformanceClient(server, pool);
+      const runtime = await startConformanceKernel(client, server);
 
       const cell = makeCodeCell("print('hi')");
       const msgId = enqueue(runtime, 1, cell.id);
@@ -126,7 +91,7 @@ describe("conformance: execute lifecycle (shared server)", () => {
       complete(runtime, msgId);
 
       // SC-001: must complete within 5 s
-      assert(elapsed < 5_000, `execute took ${elapsed}ms, expected < 5000ms`);
+      assertWithinBudget("execute", elapsed, EXECUTE_BUDGET_MS);
       const streamOut = cell.outputs.find((o) => o.output_type === "stream");
       assertExists(streamOut, "Expected stream output");
       assert(
@@ -143,13 +108,8 @@ describe("conformance: execute lifecycle (shared server)", () => {
     it("executes 3 code cells in order and the last output is 2", async () => {
       if (!jupyterPresent) return;
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
-      const runtime = await client.start({ kernelName: "python3" });
+      const client = createConformanceClient(server, pool);
+      const runtime = await startConformanceKernel(client, server);
 
       const codeCells = [
         makeCodeCell("a = 1"),
@@ -187,13 +147,8 @@ describe("conformance: execute lifecycle (shared server)", () => {
     it("stops at the erroring cell and cancels remaining (Q2 default A)", async () => {
       if (!jupyterPresent) return;
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
-      const runtime = await client.start({ kernelName: "python3" });
+      const client = createConformanceClient(server, pool);
+      const runtime = await startConformanceKernel(client, server);
 
       const codeCells = [
         makeCodeCell("x = 1"),
@@ -250,14 +205,8 @@ describe("conformance: execute lifecycle (shared server)", () => {
     it("executes 100 short cells in under 30s", async () => {
       if (!jupyterPresent) return;
       const pool = new ServerPool();
-      const config = attachConfig(server.url, server.token);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-        { kernelInfoTimeoutMs: 60_000 },
-      );
-      const runtime = await client.start({ kernelName: "python3" });
+      const client = createConformanceClient(server, pool);
+      const runtime = await startConformanceKernel(client, server);
 
       const cells = Array.from(
         { length: 100 },
@@ -280,10 +229,7 @@ describe("conformance: execute lifecycle (shared server)", () => {
       const elapsed = Date.now() - t0;
 
       // SC-002: 100 cells must finish within 30 s on real jupyter.
-      assert(
-        elapsed < 30_000,
-        `100-cell runAll took ${elapsed}ms, expected < 30000ms`,
-      );
+      assertWithinBudget("100-cell runAll", elapsed, RUN_ALL_100_BUDGET_MS);
 
       await client.shutdown();
     });
