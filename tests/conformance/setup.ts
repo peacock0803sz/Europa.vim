@@ -23,7 +23,7 @@ export interface ConformanceServer {
   port: number;
   /** Resolves when the server process has fully stopped. Idempotent. */
   stop(): Promise<void>;
-  /** Last {@link STDERR_TAIL_LINES} lines of the server's stderr, oldest first. */
+  /** Last 200 lines of the server's stderr, oldest first. */
   stderrTail(): string;
   /**
    * Print the stderr tail to the test log, tagged with `reason` and numbered so
@@ -135,27 +135,6 @@ function traceMark(phase: string, t0: number): void {
   console.error(`[spawn-trace] phase=${phase} elapsed_ms=${elapsedMs}`);
 }
 
-/**
- * Spawn a real `jupyter server` on a free port with the given token. Polls
- * the HTTP `/api` endpoint with exponential backoff until the server is ready.
- * Races against `proc.status` so an early process exit (e.g. port collision)
- * is detected without waiting for the full deadline.
- *
- * Note: `--port=0` cannot be used because jupyter logs the configured value (0)
- * rather than the OS-assigned port. We use pickFreePort() + explicit port instead.
- *
- * Parallel test execution amplifies the TOCTOU window in pickFreePort() (the
- * port is released before jupyter binds it). If jupyter exits early — which
- * with the disabled-extensions setup almost always indicates EADDRINUSE — we
- * retry up to MAX_PORT_RETRIES times with a fresh port before giving up.
- *
- * Each attempt gets its own full `timeoutMs` budget, and the server's stderr
- * is captured so a failure can say what jupyter actually complained about.
- *
- * @throws Error if the server does not become reachable on `/api` within
- *   `timeoutMs` (default {@link SERVER_READY_TIMEOUT_MS}), or if every retry's
- *   process exits before becoming ready.
- */
 const MAX_PORT_RETRIES = 3;
 
 /**
@@ -257,6 +236,27 @@ function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
   };
 }
 
+/**
+ * Spawn a real `jupyter server` on a free port with the given token. Polls
+ * the HTTP `/api` endpoint with exponential backoff until the server is ready.
+ * Races against `proc.status` so an early process exit (e.g. port collision)
+ * is detected without waiting for the full deadline.
+ *
+ * Note: `--port=0` cannot be used because jupyter logs the configured value (0)
+ * rather than the OS-assigned port. We use pickFreePort() + explicit port instead.
+ *
+ * Parallel test execution amplifies the TOCTOU window in pickFreePort() (the
+ * port is released before jupyter binds it). If jupyter exits early — which
+ * with the disabled-extensions setup almost always indicates EADDRINUSE — we
+ * retry up to MAX_PORT_RETRIES times with a fresh port before giving up.
+ *
+ * Each attempt gets its own full `timeoutMs` budget, and the server's stderr
+ * is captured so a failure can say what jupyter actually complained about.
+ *
+ * @throws Error if the server does not become reachable on `/api` within
+ *   `timeoutMs` (default {@link SERVER_READY_TIMEOUT_MS}), or if every retry's
+ *   process exits before becoming ready.
+ */
 export async function spawnConformanceServer(
   opts: { timeoutMs?: number } = {},
 ): Promise<ConformanceServer> {
@@ -303,7 +303,8 @@ export async function spawnConformanceServer(
     const attemptStart = performance.now();
     const deadline = attemptStart + timeoutMs;
 
-    // procExited resolves if jupyter dies before becoming ready.
+    // procExited is the readiness loop's cheap synchronous check; procStatus is
+    // the promise the teardown paths await.
     let procExited = false;
     const procStatus = proc.status.then((s: Deno.CommandStatus) => {
       procExited = true;
@@ -341,9 +342,9 @@ export async function spawnConformanceServer(
         stderrTail: () => stderr.tail(),
         dumpStderr: (reason: string) => stderr.dump(reason),
         async stop() {
-          // abort_race_spec stops the same server from a describe teardown and
-          // from a finally block, and the stderr reader cannot be cancelled
-          // twice, so this has to be idempotent.
+          // Idempotence is part of the ConformanceServer contract: a caller may
+          // race a describe teardown against a `finally` cleanup, and that is
+          // cheaper to settle once here than to guard at every call site.
           if (stopped) return;
           stopped = true;
           try {
