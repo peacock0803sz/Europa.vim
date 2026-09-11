@@ -2,11 +2,13 @@
  * Central timeout and wall-clock budget constants for the conformance suite.
  *
  * Every budget in the SCALED section is multiplied by {@link TIMEOUT_SCALE} at
- * module load, so call sites use the exported constants verbatim and must never
- * call {@link scaleMs} on them again. Constants in the EXACT section carry the
- * `EXACT_` prefix and are deliberately left unscaled: they encode a semantic
- * ("fire immediately", "sampling resolution"), not a budget, so scaling them
- * would change what a test asserts rather than how much slack it has.
+ * module load, so call sites use the exported constants verbatim; the
+ * multiplier itself stays module-private so nothing can scale one of them
+ * twice. Constants in the EXACT section carry the `EXACT_` prefix and are
+ * deliberately left unscaled: they encode a semantic ("fire immediately",
+ * "sampling resolution", "this exit was too early to be anything but a port
+ * race"), not a budget, so scaling them would change what a test asserts
+ * rather than how much slack it has.
  *
  * Every base value except the port-retry gate is the largest value its call
  * site used before this module existed, which keeps the invariant "no budget
@@ -46,8 +48,15 @@ function parseScale(raw: string | undefined): number {
 /** Multiplier applied to every scaled budget below. Defaults to 1. */
 export const TIMEOUT_SCALE: number = parseScale(Deno.env.get(SCALE_ENV));
 
-/** Multiply an environment-sensitive budget. Returns whole milliseconds. */
-export function scaleMs(ms: number): number {
+/**
+ * Multiply an environment-sensitive budget. Returns whole milliseconds.
+ *
+ * Module-private so a budget cannot be scaled twice: every exported constant
+ * below is already scaled, and re-scaling one at a call site would leave it
+ * strict locally at scale 1 while relaxing it fourfold on CI — a pass nobody
+ * can reproduce.
+ */
+function scaleMs(ms: number): number {
   return Math.ceil(ms * TIMEOUT_SCALE);
 }
 
