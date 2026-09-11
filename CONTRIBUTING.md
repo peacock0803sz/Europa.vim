@@ -63,7 +63,7 @@ Every budget the conformance specs assert against, and every deadline they wait 
 | `EUROPA_CONFORMANCE_TIMEOUT_SCALE` | `1` | Multiplies every scaled budget. Must be a finite number in `(0, 100]`; anything else fails at module load rather than silently disabling the budgets. CI sets `4`. |
 | `DENO_JOBS` | CPU count | Worker count for `deno test --parallel`. CI sets `2` to limit how many `jupyter server` processes boot at once. |
 | `EUROPA_SPAWN_TRACE` | unset | Emits `[spawn-trace] phase=... elapsed_ms=...` markers for each server boot. |
-| `EUROPA_JUPYTER_LOG` | unset | Dumps the jupyter server's stderr tail on every `stop()`, not only on failure. Failures dump it either way. |
+| `EUROPA_JUPYTER_LOG` | unset | Dumps the jupyter server's stderr tail on every `stop()`. Without it only `client.start()` and `client.restart()` failures dump on their own, so a budget miss, a wrong `ename` or a failed `shutdown()` reaches the log with nothing about the server. CI sets `1`. |
 
 Constants prefixed `EXACT_` are never scaled. They encode a semantic rather than a budget, such as a `kernelInfoTimeoutMs` of 1 ms that must always time out, so scaling them would change what the test asserts.
 

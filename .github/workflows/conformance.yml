@@ -88,3 +88,9 @@ jobs:
           # phase=http_ready elapsed_ms is the only measurement we have of how
           # starved a runner is; ~30 extra log lines buys that signal.
           EUROPA_SPAWN_TRACE: '1'
+          # Only client.start() and client.restart() dump the server log on
+          # their own, so without this an interrupt budget miss or a wrong
+          # ename arrives with nothing to say whether the kernel was even
+          # alive. Dumping on stop() covers every other failure; the dump
+          # dedup bounds the cost to roughly one tail per server.
+          EUROPA_JUPYTER_LOG: '1'
