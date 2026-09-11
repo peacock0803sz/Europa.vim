@@ -319,8 +319,8 @@ export async function spawnConformanceServer(
             proc.kill("SIGTERM");
           } catch { /* already dead */ }
           await procStatus;
-          await stderr.close();
           if (ALWAYS_LOG_JUPYTER) stderr.dump("EUROPA_JUPYTER_LOG");
+          await stderr.close();
         },
       };
     }
@@ -330,13 +330,16 @@ export async function spawnConformanceServer(
       proc.kill("SIGTERM");
     } catch { /* already dead */ }
     await procStatus;
-    await stderr.close();
 
     const attemptMs = Math.round(performance.now() - attemptStart);
 
+    // Every dump below runs before close(): close() cancels the reader, which
+    // settles the pending read as done and drops whatever is still sitting in
+    // the pipe — precisely the bytes a dying jupyter wrote on its way out.
     if (procExited && attemptMs < PORT_RETRY_EARLY_EXIT_MS) {
       // A port collision kills jupyter within a second or two, so respawning
       // on a fresh port is worth it.
+      await stderr.close();
       lastError = new Error(
         `jupyter server exited after ${attemptMs}ms before becoming ready ` +
           `(port ${port}, attempt ${attempt})`,
@@ -348,6 +351,7 @@ export async function spawnConformanceServer(
       // Stayed up a long while and then died: not a collision, so a retry
       // would only multiply the wall-clock cost.
       stderr.dump(`jupyter exited after ${attemptMs}ms without answering /api`);
+      await stderr.close();
       throw new Error(
         `jupyter server exited after ${attemptMs}ms without ever answering ` +
           `/api (port ${port}, attempt ${attempt})`,
@@ -355,6 +359,7 @@ export async function spawnConformanceServer(
     }
 
     stderr.dump(`jupyter did not become ready within ${timeoutMs}ms`);
+    await stderr.close();
     throw new Error(
       `jupyter server did not become ready within ${timeoutMs}ms`,
     );
