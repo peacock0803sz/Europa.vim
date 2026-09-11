@@ -32,9 +32,12 @@ const SCALE_ENV = "EUROPA_CONFORMANCE_TIMEOUT_SCALE";
  * CI asks for 4, so a typo there would quietly run the whole suite at 1 —
  * every budget four times tighter than intended, under an environment variable
  * that still looks set, and the flake this scaling exists to absorb back with
- * no explanation. A value at or below 0 is refused for the same reason: a
- * fraction only tightens, and 0 leaves every budget unsatisfiable rather than
- * switching the checks off.
+ * no explanation.
+ *
+ * The accepted range is (0, 100]. Fractions are inside it on purpose: they
+ * tighten every budget at once, which is how you go looking for a real
+ * regression. Zero and negatives are refused because they do not switch the
+ * checks off — they leave every budget unsatisfiable.
  */
 function parseScale(raw: string | undefined): number {
   if (raw === undefined || raw === "") return 1;

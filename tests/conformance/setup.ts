@@ -398,9 +398,14 @@ export async function spawnConformanceServer(
         port,
         dumpStderr: (reason: string) => stderr.dump(reason),
         async stop() {
-          // Idempotence is part of the ConformanceServer contract: a caller may
-          // race a describe teardown against a `finally` cleanup, and that is
-          // cheaper to settle once here than to guard at every call site.
+          // Idempotence is part of the ConformanceServer contract, and this
+          // guard is what makes it true. The kill and the status await are
+          // already harmless twice, and close() has its own guard; the tail
+          // dump is not, so without this a second call would print the same
+          // tail again under EUROPA_JUPYTER_LOG. No caller relies on it today
+          // — abort_race_spec, the only spec that can reach stop() twice,
+          // guards at its own call site — so the reason to keep it is the
+          // documented contract, not a live race.
           if (stopped) return;
           stopped = true;
           // Dump before the kill, for the same reason the failure paths below
