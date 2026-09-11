@@ -420,6 +420,19 @@ export async function spawnConformanceServer(
             proc.kill("SIGTERM");
           } catch { /* already dead */ }
           await procStatus;
+          // Jupyter writes `Shutting down N kernels` and `Kernel shutdown:
+          // <id>` only once SIGTERM reaches it, so the pre-kill dump cannot
+          // contain them and close() below cancels the reader before anything
+          // reads them. A kernel count higher than the spec started is the
+          // clearest evidence of the session leak clearAllSessions exists to
+          // prevent, so take a second dump here. The cost is bounded: a
+          // procStatus that never settles skips this entirely, and a tail
+          // nothing was appended to collapses to one `<unchanged since #N>`
+          // line.
+          if (ALWAYS_LOG_JUPYTER) {
+            await stderr.flush(STDERR_FLUSH_MS);
+            stderr.dump("EUROPA_JUPYTER_LOG (post-shutdown)");
+          }
           await stderr.close();
         },
       };
