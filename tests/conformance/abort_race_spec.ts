@@ -2,11 +2,17 @@
  * Conformance: AbortController abort-race scenarios against a real Jupyter Server.
  *
  * Covers SC-010a: three cases where AbortController.abort() is called during
- * an async operation, each resolving within `ABORT_PROPAGATION_BUDGET_MS`.
+ * an async operation. The first two time the abort itself and assert against
+ * `ABORT_PROPAGATION_BUDGET_MS`; the third times a whole `start()` settling
+ * after an abort and asserts against `START_ABORT_BUDGET_MS`, which is 50x
+ * larger.
  *
  * - during-reconnect: abort fired while the reconnect backoff timer is active
- * - during-kernel-info: abort fired before kernel_info_reply arrives (timeout path)
+ *   (ABORT_PROPAGATION_BUDGET_MS)
+ * - during-kernel-info: abort fired before kernel_info_reply arrives, timeout
+ *   path (ABORT_PROPAGATION_BUDGET_MS)
  * - during-open: abort fired immediately after start() is initiated
+ *   (START_ABORT_BUDGET_MS)
  *
  * Skips early if `jupyter` is not installed.
  *
