@@ -148,6 +148,10 @@ const STDERR_TAIL_LINES = 200;
 const ALWAYS_LOG_JUPYTER = (Deno.env.get("EUROPA_JUPYTER_LOG") ?? "") !== "";
 
 interface StderrCapture {
+  /**
+   * Buffered stderr, with a `<stderr capture aborted: ...>` marker appended if
+   * the drain loop died before `close()` and the buffer is therefore short.
+   */
   tail(): string;
   dump(reason: string): void;
   /** Stop draining and release the pipe. Safe to call more than once. */
@@ -169,6 +173,7 @@ function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
   let lastDump: string | undefined;
   let dumpCount = 0;
   let closed = false;
+  let captureError: unknown;
 
   const drain = (async () => {
     try {
@@ -183,13 +188,21 @@ function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
           if (lines.length > STDERR_TAIL_LINES) lines.shift();
         }
       }
-    } catch {
-      // Cancelled, or the pipe broke. Whatever is buffered is all we get.
+    } catch (e) {
+      // A read that fails before close() means the pipe broke under us and the
+      // buffer stops here, several lines short of whatever jupyter went on to
+      // say. Remember it: an unexplained "<empty>" reads as "jupyter never
+      // started", which is the wrong thing to go looking for.
+      if (!closed) captureError = e;
     }
   })();
 
-  const tail = (): string =>
-    (partial === "" ? lines : [...lines, partial]).join("\n");
+  const tail = (): string => {
+    const body = (partial === "" ? lines : [...lines, partial]).join("\n");
+    if (captureError === undefined) return body;
+    const marker = `<stderr capture aborted: ${captureError}>`;
+    return body === "" ? marker : `${body}\n${marker}`;
+  };
 
   return {
     tail,
