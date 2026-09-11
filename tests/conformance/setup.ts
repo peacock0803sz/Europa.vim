@@ -21,8 +21,15 @@ export interface ConformanceServer {
   url: string;
   token: string;
   port: number;
-  /** Resolves when the server process has fully stopped. */
+  /** Resolves when the server process has fully stopped. Idempotent. */
   stop(): Promise<void>;
+  /** Last {@link STDERR_TAIL_LINES} lines of the server's stderr, oldest first. */
+  stderrTail(): string;
+  /**
+   * Print the stderr tail to the test log, tagged with `reason`. Idempotent, so
+   * a failure path and `stop()` cannot double-print the same buffer.
+   */
+  dumpStderr(reason: string): void;
 }
 
 /**
@@ -119,13 +126,92 @@ function traceMark(phase: string, t0: number): void {
  * with the disabled-extensions setup almost always indicates EADDRINUSE — we
  * retry up to MAX_PORT_RETRIES times with a fresh port before giving up.
  *
- * Each attempt gets its own full `timeoutMs` budget.
+ * Each attempt gets its own full `timeoutMs` budget, and the server's stderr
+ * is captured so a failure can say what jupyter actually complained about.
  *
  * @throws Error if the server does not become reachable on `/api` within
  *   `timeoutMs` (default {@link SERVER_READY_TIMEOUT_MS}), or if every retry's
  *   process exits before becoming ready.
  */
 const MAX_PORT_RETRIES = 3;
+
+/**
+ * Trailing stderr lines retained per server. A healthy run writes a few dozen;
+ * a kernel that keeps restarting writes thousands and only the end matters.
+ */
+const STDERR_TAIL_LINES = 200;
+
+/** When set, dump the jupyter stderr on every stop(), not only on failure. */
+const ALWAYS_LOG_JUPYTER = (Deno.env.get("EUROPA_JUPYTER_LOG") ?? "") !== "";
+
+interface StderrCapture {
+  tail(): string;
+  dump(reason: string): void;
+  /** Stop draining and release the pipe. Safe to call more than once. */
+  close(): Promise<void>;
+}
+
+/**
+ * Drain a child's stderr into a bounded tail buffer.
+ *
+ * The draining has to start immediately: an unread pipe fills up and blocks
+ * the child, and a blocked jupyter server is exactly the hang this capture
+ * exists to diagnose.
+ */
+function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  const lines: string[] = [];
+  let partial = "";
+  let dumped = false;
+  let closed = false;
+
+  const drain = (async () => {
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        partial += dec.decode(chunk.value, { stream: true });
+        const parts = partial.split("\n");
+        partial = parts.pop() ?? "";
+        for (const line of parts) {
+          lines.push(line);
+          if (lines.length > STDERR_TAIL_LINES) lines.shift();
+        }
+      }
+    } catch {
+      // Cancelled, or the pipe broke. Whatever is buffered is all we get.
+    }
+  })();
+
+  const tail = (): string =>
+    (partial === "" ? lines : [...lines, partial]).join("\n");
+
+  return {
+    tail,
+    dump(reason: string): void {
+      if (dumped) return;
+      dumped = true;
+      const body = tail();
+      console.error(`[europa.conformance] jupyter stderr (${reason}):`);
+      console.error(body === "" ? "  <empty>" : body);
+    },
+    async close(): Promise<void> {
+      if (closed) return;
+      closed = true;
+      // ipykernel children inherit the write end, so the pipe may never reach
+      // EOF on its own. Cancel instead of waiting: a pending read() settles as
+      // done, which lets the drain loop finish.
+      try {
+        await reader.cancel();
+      } catch { /* already closed */ }
+      await drain;
+      try {
+        reader.releaseLock();
+      } catch { /* already released */ }
+    },
+  };
+}
 
 export async function spawnConformanceServer(
   opts: { timeoutMs?: number } = {},
@@ -134,6 +220,7 @@ export async function spawnConformanceServer(
   const token = randomToken();
   const timeoutMs = opts.timeoutMs ?? SERVER_READY_TIMEOUT_MS;
   let lastError: Error | undefined;
+  let lastStderr: StderrCapture | undefined;
 
   for (let attempt = 0; attempt < MAX_PORT_RETRIES; attempt++) {
     const port = pickFreePort();
@@ -159,8 +246,11 @@ export async function spawnConformanceServer(
         "--ServerApp.terminals_enabled=False",
       ],
       stdout: "null",
-      stderr: "null",
+      // jupyter_server writes its whole log to stderr; stdout stays discarded.
+      stderr: "piped",
     }).spawn();
+    const stderr = captureStderr(proc.stderr);
+    lastStderr = stderr;
     traceMark(`proc_spawned_attempt_${attempt}`, t0);
 
     const url = `http://127.0.0.1:${port}`;
@@ -201,15 +291,25 @@ export async function spawnConformanceServer(
 
     if (ready) {
       traceMark("http_ready", t0);
+      let stopped = false;
       return {
         url,
         token,
         port,
+        stderrTail: () => stderr.tail(),
+        dumpStderr: (reason: string) => stderr.dump(reason),
         async stop() {
+          // abort_race_spec stops the same server from a describe teardown and
+          // from a finally block, and the stderr reader cannot be cancelled
+          // twice, so this has to be idempotent.
+          if (stopped) return;
+          stopped = true;
           try {
             proc.kill("SIGTERM");
           } catch { /* already dead */ }
           await procStatus;
+          await stderr.close();
+          if (ALWAYS_LOG_JUPYTER) stderr.dump("EUROPA_JUPYTER_LOG");
         },
       };
     }
@@ -219,6 +319,7 @@ export async function spawnConformanceServer(
       proc.kill("SIGTERM");
     } catch { /* already dead */ }
     await procStatus;
+    await stderr.close();
 
     const attemptMs = Math.round(performance.now() - attemptStart);
 
@@ -235,17 +336,22 @@ export async function spawnConformanceServer(
     if (procExited) {
       // Stayed up a long while and then died: not a collision, so a retry
       // would only multiply the wall-clock cost.
+      stderr.dump(`jupyter exited after ${attemptMs}ms without answering /api`);
       throw new Error(
         `jupyter server exited after ${attemptMs}ms without ever answering ` +
           `/api (port ${port}, attempt ${attempt})`,
       );
     }
 
+    stderr.dump(`jupyter did not become ready within ${timeoutMs}ms`);
     throw new Error(
       `jupyter server did not become ready within ${timeoutMs}ms`,
     );
   }
 
+  lastStderr?.dump(
+    `jupyter failed after ${MAX_PORT_RETRIES} port-collision retries`,
+  );
   throw lastError ?? new Error(
     `jupyter server failed after ${MAX_PORT_RETRIES} port-collision retries`,
   );
