@@ -23,8 +23,6 @@ export interface ConformanceServer {
   port: number;
   /** Resolves when the server process has fully stopped. Idempotent. */
   stop(): Promise<void>;
-  /** Last 200 lines of the server's stderr, oldest first. */
-  stderrTail(): string;
   /**
    * Print the stderr tail to the test log, tagged with `reason` and numbered so
    * several dumps from one server stay attributable. A dump whose body is
@@ -339,7 +337,6 @@ export async function spawnConformanceServer(
         url,
         token,
         port,
-        stderrTail: () => stderr.tail(),
         dumpStderr: (reason: string) => stderr.dump(reason),
         async stop() {
           // Idempotence is part of the ConformanceServer contract: a caller may
