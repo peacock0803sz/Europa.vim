@@ -55,7 +55,9 @@ export function mockDenops(): Denops {
  * object literals and nothing else, so a named binding such as
  * `abort_race_spec.ts`'s `SLOW_RECONNECT` could grow a `kernelInfoTimeoutMs`
  * later and still compile. `?: never` rejects any value for the key wherever
- * it is written.
+ * it is written — but not `undefined` itself, since `exactOptionalPropertyTypes`
+ * is off and the property type is therefore `undefined`. `conformanceConfig`
+ * closes that last gap by assigning these fields after the spread.
  */
 export type ConformanceConfigOverrides =
   & Omit<
@@ -85,9 +87,6 @@ export function conformanceConfig(
   overrides: ConformanceConfigOverrides = {},
 ): EuropaConfig {
   return {
-    connection_mode: "server",
-    jupyter_url: server.url,
-    jupyter_token: server.token,
     jupyter_ws_subprotocol: "auto",
     default_kernel: "python3",
     auto_start_kernel: false,
@@ -101,19 +100,29 @@ export function conformanceConfig(
     cell_border_align: "left" as const,
     lazy_padding: 10,
     auto_save: false,
-    use_subprocess: false,
     wsReconnectMaxRetries: 5,
     wsReconnectInitialIntervalMs: 1000,
     wsReconnectMultiplier: 2.0,
-    // Usable as-is: the constant is unscaled and is exactly the 60 s maximum
-    // schema/config.ts allows, so the config object stays schema-valid at
-    // every scale.
-    kernelInfoTimeoutMs: EXACT_KERNEL_INFO_TIMEOUT_MS,
     undo_max_history: 100,
     disable_default_mappings: false,
     ts_highlight: "auto",
     lsp_enable: "auto",
     ...overrides,
+    // The five fields this factory owns are assigned after the spread, so the
+    // type's `?: never` is not the only thing keeping them out of a spec's
+    // hands. With `exactOptionalPropertyTypes` off, `jupyter_url?: never` has
+    // the real property type `undefined`, so a named binding carrying
+    // `{ jupyter_url: undefined }` type-checks and — spread last — would blank
+    // the field that binds the client to `server`. Assigning last makes "not
+    // overridable" true rather than merely documented.
+    connection_mode: "server",
+    jupyter_url: server.url,
+    jupyter_token: server.token,
+    use_subprocess: false,
+    // Usable as-is: the constant is unscaled and is exactly the 60 s maximum
+    // schema/config.ts allows, so the config object stays schema-valid at
+    // every scale.
+    kernelInfoTimeoutMs: EXACT_KERNEL_INFO_TIMEOUT_MS,
   };
 }
 
