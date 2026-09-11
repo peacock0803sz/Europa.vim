@@ -79,7 +79,8 @@ jobs:
           # Local runs stay strict at the default of 1 so a real performance
           # regression still shows up somewhere.
           EUROPA_CONFORMANCE_TIMEOUT_SCALE: '4'
-          # Eight spec files boot a real jupyter server, so the default
+          # Nine spec files boot a real jupyter server — eight directly and
+          # orphan_prevention_spec through the watchdog — so the default
           # parallelism (one worker per CPU) starts 8-12 CPU-bound Python
           # processes at once on a 3-4 vCPU runner and starves ipykernel.
           # Two workers halve that while keeping the suite parallel.
