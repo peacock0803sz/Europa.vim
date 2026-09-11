@@ -133,10 +133,14 @@ export const EXACT_KERNEL_INFO_IMMEDIATE_MS = 1;
  *
  * Unscaled because there is nothing left to scale into. 30 s, 60 s and 240 s
  * have all failed the known handshake flake in the same way, so buying more
- * time past the schema maximum has never rescued a run; meanwhile at the CI
- * scale of 4 two stuck handshakes at 240 s each exhaust the 10-minute step
- * cap, and a killed step prints no stderr dump at all — the diagnostics go
- * first. Scaling downward is worse still: `parseScale` accepts a fraction, and
+ * time past the schema maximum has never rescued a run — while at the CI scale
+ * of 4 it would cost the step a great deal. Three stuck handshakes at 240 s
+ * come to 720 s, over the 10-minute step cap on their own; with `DENO_JOBS=2`
+ * even two, on separate workers, burn 240 s of the suite's wall clock waiting
+ * for a reply that is not coming. And a killed step prints no stderr dump at
+ * all, so the diagnostics go first.
+ *
+ * Scaling downward is no better: `parseScale` accepts a fraction, and
  * a scale of 0.01 would produce 600 ms, below the schema minimum of 1000, so
  * the config object the factory builds would no longer validate.
  */
