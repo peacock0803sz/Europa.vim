@@ -8,7 +8,10 @@
  * @module tests/conformance/setup
  */
 
-import { SERVER_READY_TIMEOUT_MS } from "./timeouts.ts";
+import {
+  PORT_RETRY_EARLY_EXIT_MS,
+  SERVER_READY_TIMEOUT_MS,
+} from "./timeouts.ts";
 
 /** Thrown by ensureJupyter() when the `jupyter` binary is absent. */
 export class JupyterMissingError extends Error {}
@@ -116,6 +119,8 @@ function traceMark(phase: string, t0: number): void {
  * with the disabled-extensions setup almost always indicates EADDRINUSE — we
  * retry up to MAX_PORT_RETRIES times with a fresh port before giving up.
  *
+ * Each attempt gets its own full `timeoutMs` budget.
+ *
  * @throws Error if the server does not become reachable on `/api` within
  *   `timeoutMs` (default {@link SERVER_READY_TIMEOUT_MS}), or if every retry's
  *   process exits before becoming ready.
@@ -128,7 +133,6 @@ export async function spawnConformanceServer(
   const t0 = performance.now();
   const token = randomToken();
   const timeoutMs = opts.timeoutMs ?? SERVER_READY_TIMEOUT_MS;
-  const deadline = performance.now() + timeoutMs;
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt < MAX_PORT_RETRIES; attempt++) {
@@ -160,6 +164,12 @@ export async function spawnConformanceServer(
     traceMark(`proc_spawned_attempt_${attempt}`, t0);
 
     const url = `http://127.0.0.1:${port}`;
+
+    // Each attempt gets its own budget. Sharing one deadline across retries let
+    // a slow first attempt starve the later ones, which then reported a bogus
+    // "did not become ready" instead of the port collision that really happened.
+    const attemptStart = performance.now();
+    const deadline = attemptStart + timeoutMs;
 
     // procExited resolves if jupyter dies before becoming ready.
     let procExited = false;
@@ -210,14 +220,27 @@ export async function spawnConformanceServer(
     } catch { /* already dead */ }
     await procStatus;
 
-    if (procExited && performance.now() < deadline) {
-      // Treat early exit as a port-collision symptom and retry with a fresh port.
+    const attemptMs = Math.round(performance.now() - attemptStart);
+
+    if (procExited && attemptMs < PORT_RETRY_EARLY_EXIT_MS) {
+      // A port collision kills jupyter within a second or two, so respawning
+      // on a fresh port is worth it.
       lastError = new Error(
-        `jupyter server exited before becoming ready (port ${port}, attempt ${attempt})`,
+        `jupyter server exited after ${attemptMs}ms before becoming ready ` +
+          `(port ${port}, attempt ${attempt})`,
       );
       continue;
     }
-    // Deadline reached without /api responding — no point retrying.
+
+    if (procExited) {
+      // Stayed up a long while and then died: not a collision, so a retry
+      // would only multiply the wall-clock cost.
+      throw new Error(
+        `jupyter server exited after ${attemptMs}ms without ever answering ` +
+          `/api (port ${port}, attempt ${attempt})`,
+      );
+    }
+
     throw new Error(
       `jupyter server did not become ready within ${timeoutMs}ms`,
     );
