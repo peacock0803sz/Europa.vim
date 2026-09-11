@@ -231,7 +231,6 @@ export async function spawnConformanceServer(
   const token = randomToken();
   const timeoutMs = opts.timeoutMs ?? SERVER_READY_TIMEOUT_MS;
   let lastError: Error | undefined;
-  let lastStderr: StderrCapture | undefined;
 
   for (let attempt = 0; attempt < MAX_PORT_RETRIES; attempt++) {
     const port = pickFreePort();
@@ -261,7 +260,6 @@ export async function spawnConformanceServer(
       stderr: "piped",
     }).spawn();
     const stderr = captureStderr(proc.stderr);
-    lastStderr = stderr;
     traceMark(`proc_spawned_attempt_${attempt}`, t0);
 
     const url = `http://127.0.0.1:${port}`;
@@ -338,11 +336,18 @@ export async function spawnConformanceServer(
     // the pipe — precisely the bytes a dying jupyter wrote on its way out.
     if (procExited && attemptMs < PORT_RETRY_EARLY_EXIT_MS) {
       // A port collision kills jupyter within a second or two, so respawning
-      // on a fresh port is worth it.
+      // on a fresh port is worth it. Each attempt has its own capture, so it
+      // has to dump its own log here — otherwise the retries that led to the
+      // final failure leave no trace of why they were classified as collisions.
+      stderr.dump(
+        `attempt ${attempt} exited after ${attemptMs}ms on port ${port}`,
+      );
       await stderr.close();
+      // Chain the attempts so the thrown error carries all of them.
       lastError = new Error(
         `jupyter server exited after ${attemptMs}ms before becoming ready ` +
           `(port ${port}, attempt ${attempt})`,
+        { cause: lastError },
       );
       continue;
     }
@@ -365,10 +370,10 @@ export async function spawnConformanceServer(
     );
   }
 
-  lastStderr?.dump(
-    `jupyter failed after ${MAX_PORT_RETRIES} port-collision retries`,
-  );
+  // Every attempt dumped its own log above, so there is nothing left to print
+  // here. The message says what was observed — an early exit on every attempt —
+  // rather than asserting the port collision the code only ever guessed at.
   throw lastError ?? new Error(
-    `jupyter server failed after ${MAX_PORT_RETRIES} port-collision retries`,
+    `jupyter server exited early on all ${MAX_PORT_RETRIES} attempts`,
   );
 }
