@@ -1,13 +1,19 @@
 /**
  * Shared EuropaConfig / ServerKernelClient factory for conformance specs.
  *
- * Eight specs used to carry a byte-identical copy of this config object, and
- * every copy set `kernelInfoTimeoutMs: 10000`. None of them took effect:
- * ServerKernelClient reads its handshake budget from the 4th constructor
- * argument and ignores `config.kernelInfoTimeoutMs` entirely, so those specs
- * silently ran on the constructor default of 30 s — which is exactly the
- * "within 30000ms" seen in the CI failures. Building clients here makes the
- * effective budget impossible to get wrong.
+ * Seven specs used to carry a byte-identical copy of this config object and an
+ * eighth a near-copy (`abort_race_spec.ts` took `wsReconnectMaxRetries` from a
+ * parameter and used a 2 s reconnect interval), and every copy set
+ * `kernelInfoTimeoutMs: 10000`. Not one of those took effect. The class reads
+ * its handshake budget from the 4th constructor argument alone; production
+ * bridges the config field into that argument in `createKernelClient`
+ * (`denops/europa/kernel/client.ts`), but a spec that constructs the class
+ * directly bypasses the bridge. The spec clients that passed no 4th argument
+ * either therefore ran on the constructor default of 30 s, which is the same
+ * number as the "within 30000ms" in the CI failures — suggestive, but raising
+ * the budget since has not made that flake go away. The others passed 30 s,
+ * 60 s or 1 ms explicitly. Building clients here makes the effective budget
+ * impossible to get wrong.
  *
  * Kept separate from setup.ts so that module stays a jupyter-process helper
  * with no dependency on denops/ or schema/.
@@ -23,7 +29,10 @@ import type { EuropaConfig } from "../../schema/config.ts";
 import type { ConformanceServer } from "./setup.ts";
 import { KERNEL_INFO_TIMEOUT_MS } from "./timeouts.ts";
 
-/** Minimal Denops stub: the kernel client only ever calls `eval()`. */
+/**
+ * Minimal Denops stub: the kernel client only ever calls `eval()`, from
+ * `resolveToken` in `denops/europa/kernel/auth.ts`.
+ */
 export function mockDenops(): Denops {
   return {
     eval: (_expr: string): Promise<unknown> => Promise.resolve(""),
@@ -96,7 +105,9 @@ export function conformanceConfig(
  * Construct a ServerKernelClient bound to `server`.
  *
  * `kernelInfoTimeoutMs` always goes through the 4th constructor argument,
- * because that is the only place ServerKernelClient reads it from.
+ * because that is the only place the class itself reads it from. Production
+ * reaches that argument from the config field via `createKernelClient`; these
+ * specs construct the class directly and so have to pass it themselves.
  */
 export function createConformanceClient(
   server: ConformanceServer,
