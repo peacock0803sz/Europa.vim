@@ -2,7 +2,8 @@
  * Conformance: interrupt a running cell against a real Jupyter Server.
  *
  * Covers US3: long-running cell interrupted via REST POST /interrupt,
- * resulting in KeyboardInterrupt traceback within 2s (SC-003).
+ * resulting in a KeyboardInterrupt traceback within `INTERRUPT_BUDGET_MS`
+ * (SC-003).
  *
  * Skips early if `jupyter` is not installed.
  *
@@ -46,7 +47,7 @@ function makeCodeCell(source: string): CodeCell {
 }
 
 describe("conformance: interrupt running cell (SC-003)", () => {
-  it("interrupt time.sleep(30) yields KeyboardInterrupt traceback within 2s", async () => {
+  it("interrupt time.sleep(30) yields KeyboardInterrupt within INTERRUPT_BUDGET_MS", async () => {
     if (!jupyterPresent) return;
     const server = await spawnConformanceServer();
     try {
@@ -88,7 +89,7 @@ describe("conformance: interrupt running cell (SC-003)", () => {
       await execPromise;
       const elapsed = Date.now() - t0;
 
-      // SC-003: interrupt must produce idle within 2 s.
+      // SC-003: interrupt must produce idle within INTERRUPT_BUDGET_MS.
       assertWithinBudget("interrupt→idle", elapsed, INTERRUPT_BUDGET_MS);
 
       // The cell must have a KeyboardInterrupt error output.

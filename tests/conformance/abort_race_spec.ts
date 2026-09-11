@@ -2,7 +2,7 @@
  * Conformance: AbortController abort-race scenarios against a real Jupyter Server.
  *
  * Covers SC-010a: three cases where AbortController.abort() is called during
- * an async operation, each resolving within 100ms.
+ * an async operation, each resolving within `ABORT_PROPAGATION_BUDGET_MS`.
  *
  * - during-reconnect: abort fired while the reconnect backoff timer is active
  * - during-kernel-info: abort fired before kernel_info_reply arrives (timeout path)
@@ -56,7 +56,7 @@ const SLOW_RECONNECT = {
 } as const;
 
 describe("conformance: abort race — during reconnect (SC-010a)", () => {
-  it("abort() during reconnect backoff timer resolves within 100ms", async () => {
+  it("abort() during reconnect backoff resolves within ABORT_PROPAGATION_BUDGET_MS", async () => {
     if (!jupyterPresent) return;
     const server = await spawnConformanceServer();
     let serverStopped = false;
@@ -79,9 +79,9 @@ describe("conformance: abort race — during reconnect (SC-010a)", () => {
       await delay(RECONNECT_SETTLE_DELAY_MS);
 
       // SC-010a: AbortController.abort() must propagate through the reconnect
-      // backoff delay() within 100ms. Measure abort signal propagation only —
-      // not shutdown(), which also awaits DELETE /api/sessions and is not bounded
-      // by this spec.
+      // backoff delay() within ABORT_PROPAGATION_BUDGET_MS. Measure abort
+      // signal propagation only — not shutdown(), which also awaits
+      // DELETE /api/sessions and is not bounded by this spec.
       const t0 = Date.now();
       runtime.abort.abort();
       while (
@@ -157,7 +157,7 @@ describe("conformance: abort race — non-destructive cases (SC-010a, shared ser
     const elapsed = Date.now() - t0;
 
     assert(threw, "start() should reject when aborted");
-    // SC-010a: abort must resolve within 100ms.
+    // SC-010a: abort must resolve within ABORT_PROPAGATION_BUDGET_MS.
     assertWithinBudget(
       "abort during kernel_info",
       elapsed,
