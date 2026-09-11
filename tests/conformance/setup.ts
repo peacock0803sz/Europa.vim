@@ -158,6 +158,13 @@ const MAX_PORT_RETRIES = 3;
  */
 const STDERR_TAIL_LINES = 200;
 
+/**
+ * Grace given to the drain loop before a teardown dump reads the tail. Nothing
+ * asserts on it, so it is a fixed wait rather than a scaled budget: it only
+ * decides how much of a dying jupyter's last output makes it into the log.
+ */
+const STDERR_FLUSH_MS = 500;
+
 /** When set, dump the jupyter stderr on `stop()` too, not only on failure. */
 const ALWAYS_LOG_JUPYTER = (Deno.env.get("EUROPA_JUPYTER_LOG") ?? "") !== "";
 
@@ -396,36 +403,59 @@ export async function spawnConformanceServer(
           // cheaper to settle once here than to guard at every call site.
           if (stopped) return;
           stopped = true;
+          // Dump before the kill, for the same reason the failure paths below
+          // do: `await procStatus` is unbounded, and stop() runs from
+          // `afterAll`, so a jupyter that ignores SIGTERM would take the whole
+          // suite down with nothing logged.
+          if (ALWAYS_LOG_JUPYTER) {
+            await stderr.flush(STDERR_FLUSH_MS);
+            stderr.dump("EUROPA_JUPYTER_LOG");
+          }
           try {
             proc.kill("SIGTERM");
           } catch { /* already dead */ }
           await procStatus;
-          if (ALWAYS_LOG_JUPYTER) stderr.dump("EUROPA_JUPYTER_LOG");
           await stderr.close();
         },
       };
     }
 
-    // Either procExited (likely EADDRINUSE) or deadline reached.
+    // Either procExited (likely EADDRINUSE) or deadline reached. Classify now,
+    // while `procExited` still distinguishes the two: after `await procStatus`
+    // it is unconditionally true, which folded the deadline path in with the
+    // late-exit one.
+    const attemptMs = Math.round(performance.now() - attemptStart);
+    const diedOnItsOwn = procExited;
+    const exitedEarly = diedOnItsOwn &&
+      attemptMs < EXACT_PORT_RETRY_EARLY_EXIT_MS;
+    const reason = !diedOnItsOwn
+      ? `jupyter did not become ready within ${timeoutMs}ms`
+      : exitedEarly
+      ? `attempt ${attempt} exited after ${attemptMs}ms on port ${port}`
+      : `jupyter exited after ${attemptMs}ms without answering /api`;
+
+    // The dump goes before the kill, not after it. `procStatus` has no timeout
+    // and no SIGKILL escalation, and on the deadline path the process is alive
+    // and unresponsive by construction: a jupyter wedged in extension loading
+    // that never honours SIGTERM leaves that await pending until the CI step's
+    // own `timeout-minutes` kills the job, and a killed step prints no dump, no
+    // message and no stack. `flush()` is what makes the tail complete this
+    // early — `dump()` is synchronous and prints only what the drain loop has
+    // already consumed.
+    await stderr.flush(STDERR_FLUSH_MS);
+    stderr.dump(reason);
+
     try {
       proc.kill("SIGTERM");
     } catch { /* already dead */ }
     await procStatus;
+    await stderr.close();
 
-    const attemptMs = Math.round(performance.now() - attemptStart);
-
-    // Every dump below runs before close(): close() cancels the reader, which
-    // settles the pending read as done and drops whatever is still sitting in
-    // the pipe — precisely the bytes a dying jupyter wrote on its way out.
-    if (procExited && attemptMs < EXACT_PORT_RETRY_EARLY_EXIT_MS) {
+    if (exitedEarly) {
       // A port collision kills jupyter within a second or two, so respawning
       // on a fresh port is worth it. Each attempt has its own capture, so it
-      // has to dump its own log here — otherwise the retries that led to the
+      // has to dump its own log above — otherwise the retries that led to the
       // final failure leave no trace of why they were classified as collisions.
-      stderr.dump(
-        `attempt ${attempt} exited after ${attemptMs}ms on port ${port}`,
-      );
-      await stderr.close();
       // Chain the attempts so the thrown error carries all of them.
       lastError = new Error(
         `jupyter server exited after ${attemptMs}ms before becoming ready ` +
@@ -435,19 +465,15 @@ export async function spawnConformanceServer(
       continue;
     }
 
-    if (procExited) {
+    if (diedOnItsOwn) {
       // Stayed up a long while and then died: not a collision, so a retry
       // would only multiply the wall-clock cost.
-      stderr.dump(`jupyter exited after ${attemptMs}ms without answering /api`);
-      await stderr.close();
       throw new Error(
         `jupyter server exited after ${attemptMs}ms without ever answering ` +
           `/api (port ${port}, attempt ${attempt})`,
       );
     }
 
-    stderr.dump(`jupyter did not become ready within ${timeoutMs}ms`);
-    await stderr.close();
     throw new Error(
       `jupyter server did not become ready within ${timeoutMs}ms`,
     );
