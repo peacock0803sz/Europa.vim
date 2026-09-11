@@ -33,7 +33,7 @@
     "npm:@sinclair/typebox@~0.34.49": "0.34.52",
     "npm:marked@^18.0.11": "18.0.12",
     "npm:typedoc-plugin-markdown@^4.12.0": "4.13.0_typedoc@0.28.20__typescript@6.0.3_typescript@6.0.3",
-    "npm:typedoc@~0.28.19": "0.28.20_typescript@6.0.3",
+    "npm:typedoc@~0.28.20": "0.28.20_typescript@6.0.3",
     "npm:typescript@^6.0.3": "6.0.3"
   },
   "jsr": {
@@ -303,7 +303,7 @@
       "npm:@sinclair/typebox@~0.34.49",
       "npm:marked@^18.0.11",
       "npm:typedoc-plugin-markdown@^4.12.0",
-      "npm:typedoc@~0.28.19",
+      "npm:typedoc@~0.28.20",
       "npm:typescript@^6.0.3"
     ]
   }
