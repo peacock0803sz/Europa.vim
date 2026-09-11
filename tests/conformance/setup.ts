@@ -8,6 +8,8 @@
  * @module tests/conformance/setup
  */
 
+import { SERVER_READY_TIMEOUT_MS } from "./timeouts.ts";
+
 /** Thrown by ensureJupyter() when the `jupyter` binary is absent. */
 export class JupyterMissingError extends Error {}
 
@@ -115,7 +117,8 @@ function traceMark(phase: string, t0: number): void {
  * retry up to MAX_PORT_RETRIES times with a fresh port before giving up.
  *
  * @throws Error if the server does not become reachable on `/api` within
- *   `timeoutMs` (default 30s), or if every retry's process exits before becoming ready.
+ *   `timeoutMs` (default {@link SERVER_READY_TIMEOUT_MS}), or if every retry's
+ *   process exits before becoming ready.
  */
 const MAX_PORT_RETRIES = 3;
 
@@ -124,7 +127,7 @@ export async function spawnConformanceServer(
 ): Promise<ConformanceServer> {
   const t0 = performance.now();
   const token = randomToken();
-  const timeoutMs = opts.timeoutMs ?? 30_000;
+  const timeoutMs = opts.timeoutMs ?? SERVER_READY_TIMEOUT_MS;
   const deadline = performance.now() + timeoutMs;
   let lastError: Error | undefined;
 
