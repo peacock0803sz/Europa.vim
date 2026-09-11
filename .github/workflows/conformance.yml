@@ -34,6 +34,10 @@ defaults:
 
 jobs:
   conformance:
+    # A hung kernel_info handshake once kept a macOS job alive for the full
+    # 360-minute default. Bound the job, and the test step separately so a hang
+    # still leaves the deno test output and the cache post-step behind.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +71,26 @@ jobs:
           key: ${{ runner.os }}-deno-${{ hashFiles('deno.lock') }}
 
       - name: Run conformance tests
+        timeout-minutes: 10
         run: deno task test:conformance --shuffle
         env:
           NO_COLOR: '1'
+          # Multiply every wall-clock budget in tests/conformance/timeouts.ts.
+          # Local runs stay strict at the default of 1 so a real performance
+          # regression still shows up somewhere.
+          EUROPA_CONFORMANCE_TIMEOUT_SCALE: '4'
+          # Nine spec files boot a real jupyter server — eight directly and
+          # orphan_prevention_spec through the watchdog — so the default
+          # parallelism (one worker per CPU) starts 8-12 CPU-bound Python
+          # processes at once on a 3-4 vCPU runner and starves ipykernel.
+          # Two workers halve that while keeping the suite parallel.
+          DENO_JOBS: '2'
+          # phase=http_ready elapsed_ms is the only measurement we have of how
+          # starved a runner is; ~30 extra log lines buys that signal.
+          EUROPA_SPAWN_TRACE: '1'
+          # Only client.start() and client.restart() dump the server log on
+          # their own, so without this an interrupt budget miss or a wrong
+          # ename arrives with nothing to say whether the kernel was even
+          # alive. Dumping on stop() covers every other failure; the dump
+          # dedup bounds the cost to roughly one tail per server.
+          EUROPA_JUPYTER_LOG: '1'

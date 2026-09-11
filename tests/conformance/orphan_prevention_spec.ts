@@ -3,7 +3,7 @@
  *
  * Covers SC-005a: when the parent Deno process is SIGKILL'd, the watchdog
  * (which polls the parent PID every 1 second) must detect the orphan and
- * kill the jupyter subprocess within 15 seconds.
+ * kill the jupyter subprocess within `WATCHDOG_KILL_BUDGET_MS`.
  *
  * This test spawns a real `jupyter server` guarded by the watchdog script, then
  * SIGKILLs a fake-parent process and observes that the jupyter pid disappears.
@@ -20,6 +20,10 @@ import { assert } from "@std/assert";
 import { delay } from "@std/async/delay";
 import { join } from "@std/path/join";
 import { ensureJupyter, JupyterMissingError } from "./setup.ts";
+import {
+  WATCHDOG_KILL_BUDGET_MS,
+  WATCHDOG_STARTUP_TIMEOUT_MS,
+} from "./timeouts.ts";
 
 let jupyterExec = "";
 let jupyterPresent = true;
@@ -76,7 +80,7 @@ async function spawnFakeParent(): Promise<
 }
 
 describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
-  it("watchdog detects fake-parent SIGKILL and kills jupyter within 15s", async () => {
+  it("watchdog kills jupyter within WATCHDOG_KILL_BUDGET_MS of parent SIGKILL", async () => {
     if (!jupyterPresent || isWindows) return;
 
     const token = crypto.randomUUID().replace(/-/g, "");
@@ -122,7 +126,7 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
     let jupyterStarted = false;
 
     const ac = new AbortController();
-    const tid = setTimeout(() => ac.abort(), 30_000);
+    const tid = setTimeout(() => ac.abort(), WATCHDOG_STARTUP_TIMEOUT_MS);
     try {
       while (!ac.signal.aborted) {
         let chunk: ReadableStreamReadResult<Uint8Array>;
@@ -155,7 +159,8 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
       } catch { /**/ }
       await watchdogProc.status;
       throw new Error(
-        "jupyter server did not start within 30s — cannot run orphan test",
+        `jupyter server did not start within ${WATCHDOG_STARTUP_TIMEOUT_MS}ms ` +
+          `— cannot run orphan test`,
       );
     }
 
@@ -170,12 +175,13 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
     fakeParent.kill("SIGKILL");
     await fakeParent.status;
 
-    // SC-005a: watchdog must clean up within 15 seconds.
-    const gone = await waitUntilGone(watchdogPid, 15_000);
+    // SC-005a: watchdog must clean up within WATCHDOG_KILL_BUDGET_MS.
+    const gone = await waitUntilGone(watchdogPid, WATCHDOG_KILL_BUDGET_MS);
 
     assert(
       gone,
-      `watchdog (pid=${watchdogPid}) still alive 15s after fake-parent SIGKILL`,
+      `watchdog (pid=${watchdogPid}) still alive ${WATCHDOG_KILL_BUDGET_MS}ms ` +
+        `after fake-parent SIGKILL`,
     );
   });
 });

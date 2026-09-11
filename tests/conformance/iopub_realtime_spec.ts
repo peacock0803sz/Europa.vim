@@ -1,16 +1,16 @@
 /**
  * Conformance: real-time IOPub stream output against a live Jupyter Server.
  *
- * Verifies that consecutive `print()` outputs in a
- * `for i in range(5): time.sleep(0.1)` cell arrive no more than 1000 ms apart
- * (SC-001 kernel-liveness check). Skips early if `jupyter` is not installed.
+ * Verifies that consecutive `print()` outputs from a
+ * `for i in range(5): ... time.sleep(0.5)` cell arrive no further apart than
+ * `STREAM_GAP_BUDGET_MS` (SC-001 kernel-liveness check). Skips early if
+ * `jupyter` is not installed.
  *
  * @spec-id europa.render.iopub-batch.tick-scheduling
  */
 
 import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals, assertExists } from "@std/assert";
-import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import { applyMessageToCell } from "../../denops/europa/kernel/execute.ts";
 import {
@@ -18,7 +18,6 @@ import {
   enqueue,
   markSent,
 } from "../../denops/europa/session/pending-requests.ts";
-import type { EuropaConfig } from "../../schema/config.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
 import { parseNotebook } from "../../denops/europa/notebook/parse.ts";
 import {
@@ -27,6 +26,8 @@ import {
   JupyterMissingError,
   spawnConformanceServer,
 } from "./setup.ts";
+import { createConformanceClient, startConformanceKernel } from "./client.ts";
+import { assertWithinBudget, STREAM_GAP_BUDGET_MS } from "./timeouts.ts";
 
 let jupyterPresent = true;
 try {
@@ -38,36 +39,6 @@ try {
   } else {
     throw e;
   }
-}
-
-function attachConfig(url: string, token: string): EuropaConfig {
-  return {
-    connection_mode: "server",
-    jupyter_url: url,
-    jupyter_token: token,
-    jupyter_ws_subprotocol: "auto",
-    default_kernel: "python3",
-    auto_start_kernel: false,
-    jupyter_executable: "",
-    python_env_detect: "auto",
-    image_backend: "auto",
-    mime_priority: ["image/png", "text/plain"],
-    max_output_lines: 100,
-    cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
-    cell_border_padding: 4,
-    cell_border_align: "left" as const,
-    lazy_padding: 10,
-    auto_save: false,
-    use_subprocess: false,
-    wsReconnectMaxRetries: 5,
-    wsReconnectInitialIntervalMs: 1000,
-    wsReconnectMultiplier: 2.0,
-    kernelInfoTimeoutMs: 10000,
-    undo_max_history: 100,
-    disable_default_mappings: false,
-    ts_highlight: "auto",
-    lsp_enable: "auto",
-  };
 }
 
 describe(
@@ -114,21 +85,13 @@ describe(
     });
 
     it(
-      "each stream message arrives within 50 ms wall-clock window (SC-001)",
+      "consecutive stream messages arrive within STREAM_GAP_BUDGET_MS (SC-001)",
       { ignore: !jupyterPresent },
       async () => {
-        const config = attachConfig(server.url, server.token);
         const pool = new ServerPool();
-        const client = new ServerKernelClient(
-          {
-            eval: (_e: string): Promise<unknown> => Promise.resolve(""),
-          } as never,
-          config,
-          pool,
-          { kernelInfoTimeoutMs: 60_000 },
-        );
+        const client = createConformanceClient(server, pool);
 
-        const runtime = await client.start({ kernelName: "python3" });
+        const runtime = await startConformanceKernel(client, server);
 
         const cell: CodeCell = {
           id: "realtime-test",
@@ -174,15 +137,15 @@ describe(
           `expected ≥ 4 stream messages, got ${streamTimestamps.length}`,
         );
 
-        // The messages should be spaced ~500 ms apart (we allow ×4 slack for CI)
+        // The messages should be spaced ~500 ms apart; the budget carries the
+        // slack, and how much of it, for both local and CI runs.
         if (streamTimestamps.length >= 2) {
           for (let i = 1; i < streamTimestamps.length; i++) {
             const gap = streamTimestamps[i] - streamTimestamps[i - 1];
-            assert(
-              gap < 2000,
-              `gap between stream msgs ${
-                i - 1
-              } and ${i} was ${gap} ms — kernel may be frozen`,
+            assertWithinBudget(
+              `gap between stream msgs ${i - 1} and ${i}`,
+              gap,
+              STREAM_GAP_BUDGET_MS,
             );
           }
         }
@@ -223,18 +186,10 @@ describe(
           "fixture cell starts empty",
         );
 
-        const config = attachConfig(server.url, server.token);
         const pool = new ServerPool();
-        const client = new ServerKernelClient(
-          {
-            eval: (_e: string): Promise<unknown> => Promise.resolve(""),
-          } as never,
-          config,
-          pool,
-          { kernelInfoTimeoutMs: 60_000 },
-        );
+        const client = createConformanceClient(server, pool);
 
-        const runtime = await client.start({ kernelName: "python3" });
+        const runtime = await startConformanceKernel(client, server);
         const kr = runtime;
         const msgId = enqueue(kr, 0, lastCodeCell.id);
         markSent(kr, msgId);

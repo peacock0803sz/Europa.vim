@@ -8,6 +8,11 @@
  * @module tests/conformance/setup
  */
 
+import {
+  EXACT_PORT_RETRY_EARLY_EXIT_MS,
+  SERVER_READY_TIMEOUT_MS,
+} from "./timeouts.ts";
+
 /** Thrown by ensureJupyter() when the `jupyter` binary is absent. */
 export class JupyterMissingError extends Error {}
 
@@ -16,8 +21,17 @@ export interface ConformanceServer {
   url: string;
   token: string;
   port: number;
-  /** Resolves when the server process has fully stopped. */
+  /** Resolves when the server process has fully stopped. Idempotent. */
   stop(): Promise<void>;
+  /**
+   * Print the stderr tail to the test log, tagged with `reason` and numbered so
+   * several dumps from one server stay attributable. The header always prints;
+   * a body byte-identical to the previous dump's is replaced by an
+   * `<unchanged since #N>` back-reference, which keeps the `stop()` echo of a
+   * failure dump short without silencing the second and later failures on a
+   * shared `beforeAll` server.
+   */
+  dumpStderr(reason: string): void;
 }
 
 /**
@@ -30,25 +44,61 @@ export interface ConformanceServer {
  * record can linger on the server. Sharing a server across tests would let
  * those orphans accumulate; this helper sweeps them between tests so each
  * shared-server test sees an empty session list.
+ *
+ * A sweep that cannot do its job reports to the test log and returns. It runs
+ * in `afterEach`, where throwing would replace the failure the test was about
+ * to report with this one.
  */
 export async function clearAllSessions(
   server: ConformanceServer,
 ): Promise<void> {
-  const headers = { Authorization: `token ${server.token}` };
-  const resp = await fetch(`${server.url}/api/sessions`, { headers });
-  if (!resp.ok) {
-    await resp.body?.cancel();
-    return;
+  try {
+    const headers = { Authorization: `token ${server.token}` };
+    const resp = await fetch(`${server.url}/api/sessions`, { headers });
+    if (!resp.ok) {
+      // Returning quietly here used to make a 403 or a 5xx look like "no
+      // sessions to clean up", while every kernel the tests started stayed
+      // alive on the shared server — the CPU starvation DENO_JOBS was lowered
+      // to avoid.
+      const body = (await resp.text()).trim().slice(0, 200);
+      console.error(
+        `[europa.conformance] session sweep failed: GET /api/sessions -> ` +
+          `${resp.status} ${resp.statusText}${body === "" ? "" : ` ${body}`}`,
+      );
+      return;
+    }
+    const sessions = (await resp.json()) as Array<{ id: string }>;
+    // allSettled, not all: one rejected DELETE must not abandon the sessions
+    // whose DELETE would have succeeded.
+    const outcomes = await Promise.allSettled(
+      sessions.map(async (s) => {
+        const r = await fetch(`${server.url}/api/sessions/${s.id}`, {
+          method: "DELETE",
+          headers,
+        });
+        await r.body?.cancel();
+        return r.ok ? "" : `${s.id} (${r.status})`;
+      }),
+    );
+    const failed = outcomes
+      .map((o, i) =>
+        o.status === "fulfilled" ? o.value : `${sessions[i].id} (${o.reason})`
+      )
+      .filter((s) => s !== "");
+    if (failed.length > 0) {
+      console.error(
+        `[europa.conformance] session sweep could not delete ${failed.length} ` +
+          `of ${sessions.length} sessions: ${failed.join(", ")}`,
+      );
+    }
+  } catch (e) {
+    // Every step above talks to a jupyter that may be wedged or being reaped:
+    // fetch() rejects on a refused or reset connection, and resp.text() and
+    // resp.json() reject when the socket drops mid-body. Letting any of that
+    // escape would make `deno test` report this instead of the assertion the
+    // test was failing on — precisely when that assertion matters most.
+    console.error(`[europa.conformance] session sweep failed: ${e}`);
   }
-  const sessions = (await resp.json()) as Array<{ id: string }>;
-  await Promise.all(
-    sessions.map((s) =>
-      fetch(`${server.url}/api/sessions/${s.id}`, {
-        method: "DELETE",
-        headers,
-      }).then((r) => r.body?.cancel())
-    ),
-  );
 }
 
 /**
@@ -100,6 +150,149 @@ function traceMark(phase: string, t0: number): void {
   console.error(`[spawn-trace] phase=${phase} elapsed_ms=${elapsedMs}`);
 }
 
+const MAX_PORT_RETRIES = 3;
+
+/**
+ * Trailing stderr lines retained per server. A healthy run writes a few dozen;
+ * a kernel that keeps restarting writes thousands and only the end matters.
+ */
+const STDERR_TAIL_LINES = 200;
+
+/**
+ * Grace given to the drain loop before a teardown dump reads the tail. Nothing
+ * asserts on it, so it is a fixed wait rather than a scaled budget: it only
+ * decides how much of a dying jupyter's last output makes it into the log.
+ */
+const STDERR_FLUSH_MS = 500;
+
+/** When set, dump the jupyter stderr on `stop()` too, not only on failure. */
+const ALWAYS_LOG_JUPYTER = (Deno.env.get("EUROPA_JUPYTER_LOG") ?? "") !== "";
+
+interface StderrCapture {
+  /**
+   * Buffered stderr, with a `<stderr capture aborted: ...>` marker appended if
+   * the drain loop died before `close()` and the buffer is therefore short.
+   */
+  tail(): string;
+  dump(reason: string): void;
+  /**
+   * Give the drain loop up to `ms` to catch up with the pipe, so a `tail()`
+   * taken right after sees everything the child has written.
+   *
+   * The bound is not optional. ipykernel grandchildren inherit the write end,
+   * so the pipe need never reach EOF on its own and an unbounded wait would
+   * hang — the same reason `close()` cancels the reader instead of waiting for
+   * it. A possibly-short tail beats a dump that never prints.
+   */
+  flush(ms: number): Promise<void>;
+  /** Stop draining and release the pipe. Safe to call more than once. */
+  close(): Promise<void>;
+}
+
+/**
+ * Drain a child's stderr into a bounded tail buffer.
+ *
+ * The draining has to start immediately: an unread pipe fills up and blocks
+ * the child, and a blocked jupyter server is exactly the hang this capture
+ * exists to diagnose.
+ */
+function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  const lines: string[] = [];
+  let partial = "";
+  let lastDump: string | undefined;
+  let dumpCount = 0;
+  let closed = false;
+  let captureError: unknown;
+
+  const drain = (async () => {
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        partial += dec.decode(chunk.value, { stream: true });
+        const parts = partial.split("\n");
+        partial = parts.pop() ?? "";
+        for (const line of parts) {
+          lines.push(line);
+          if (lines.length > STDERR_TAIL_LINES) lines.shift();
+        }
+      }
+    } catch (e) {
+      // A read that fails before close() means the pipe broke under us and the
+      // buffer stops here, several lines short of whatever jupyter went on to
+      // say. Remember it: an unexplained "<empty>" reads as "jupyter never
+      // started", which is the wrong thing to go looking for.
+      if (!closed) captureError = e;
+    }
+  })();
+
+  const tail = (): string => {
+    const body = (partial === "" ? lines : [...lines, partial]).join("\n");
+    if (captureError === undefined) return body;
+    const marker = `<stderr capture aborted: ${captureError}>`;
+    return body === "" ? marker : `${body}\n${marker}`;
+  };
+
+  return {
+    tail,
+    dump(reason: string): void {
+      // A beforeAll server outlives many tests, so dumping only once per server
+      // would leave every failure after the first with no log at all. Only the
+      // body is deduped: the repeat worth suppressing is a `stop()` echo of a
+      // dump nothing has been appended to since.
+      //
+      // The header always prints. `reason` carries which call failed and how,
+      // which is never a duplicate — two start() failures on one server can
+      // report different errors with nothing logged by jupyter in between,
+      // because the client never reached it. Advancing the counter every time
+      // also keeps the sequence contiguous, so a missing number means a failure
+      // path that did not dump rather than one that was suppressed.
+      const body = tail();
+      const unchangedSince = body === lastDump ? dumpCount : undefined;
+      lastDump = body;
+      dumpCount++;
+      console.error(
+        `[europa.conformance] jupyter stderr #${dumpCount} (${reason}):`,
+      );
+      if (unchangedSince !== undefined) {
+        console.error(`  <unchanged since #${unchangedSince}>`);
+        return;
+      }
+      console.error(body === "" ? "  <empty>" : body);
+    },
+    async flush(ms: number): Promise<void> {
+      // `drain` swallows its own errors, so this race can only ever resolve.
+      // Clear the timer on the way out: a pending setTimeout would trip the
+      // `deno test` async-op sanitizer once the drain wins the race.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const bound = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms);
+      });
+      try {
+        await Promise.race([drain, bound]);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    },
+    async close(): Promise<void> {
+      if (closed) return;
+      closed = true;
+      // ipykernel children inherit the write end, so the pipe may never reach
+      // EOF on its own. Cancel instead of waiting: a pending read() settles as
+      // done, which lets the drain loop finish.
+      try {
+        await reader.cancel();
+      } catch { /* already closed */ }
+      await drain;
+      try {
+        reader.releaseLock();
+      } catch { /* already released */ }
+    },
+  };
+}
+
 /**
  * Spawn a real `jupyter server` on a free port with the given token. Polls
  * the HTTP `/api` endpoint with exponential backoff until the server is ready.
@@ -114,18 +307,19 @@ function traceMark(phase: string, t0: number): void {
  * with the disabled-extensions setup almost always indicates EADDRINUSE — we
  * retry up to MAX_PORT_RETRIES times with a fresh port before giving up.
  *
+ * Each attempt gets its own full `timeoutMs` budget, and the server's stderr
+ * is captured so a failure can say what jupyter actually complained about.
+ *
  * @throws Error if the server does not become reachable on `/api` within
- *   `timeoutMs` (default 30s), or if every retry's process exits before becoming ready.
+ *   `timeoutMs` (default {@link SERVER_READY_TIMEOUT_MS}), or if every retry's
+ *   process exits before becoming ready.
  */
-const MAX_PORT_RETRIES = 3;
-
 export async function spawnConformanceServer(
   opts: { timeoutMs?: number } = {},
 ): Promise<ConformanceServer> {
   const t0 = performance.now();
   const token = randomToken();
-  const timeoutMs = opts.timeoutMs ?? 30_000;
-  const deadline = performance.now() + timeoutMs;
+  const timeoutMs = opts.timeoutMs ?? SERVER_READY_TIMEOUT_MS;
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt < MAX_PORT_RETRIES; attempt++) {
@@ -152,13 +346,22 @@ export async function spawnConformanceServer(
         "--ServerApp.terminals_enabled=False",
       ],
       stdout: "null",
-      stderr: "null",
+      // jupyter_server writes its whole log to stderr; stdout stays discarded.
+      stderr: "piped",
     }).spawn();
+    const stderr = captureStderr(proc.stderr);
     traceMark(`proc_spawned_attempt_${attempt}`, t0);
 
     const url = `http://127.0.0.1:${port}`;
 
-    // procExited resolves if jupyter dies before becoming ready.
+    // Each attempt gets its own budget. Sharing one deadline across retries let
+    // a slow first attempt starve the later ones, which then reported a bogus
+    // "did not become ready" instead of the port collision that really happened.
+    const attemptStart = performance.now();
+    const deadline = attemptStart + timeoutMs;
+
+    // procExited is the readiness loop's cheap synchronous check; procStatus is
+    // the promise the teardown paths await.
     let procExited = false;
     const procStatus = proc.status.then((s: Deno.CommandStatus) => {
       procExited = true;
@@ -188,39 +391,125 @@ export async function spawnConformanceServer(
 
     if (ready) {
       traceMark("http_ready", t0);
+      let stopped = false;
       return {
         url,
         token,
         port,
+        dumpStderr: (reason: string) => stderr.dump(reason),
         async stop() {
+          // Idempotence is part of the ConformanceServer contract, and this
+          // guard is what keeps stop() honest about it. The contract is the
+          // whole reason it stays: every step below survives a second call on
+          // its own — the kill and the status await always did, close() has
+          // its own guard, and a repeated dump now prints one
+          // `<unchanged since #N>` line instead of the tail again. No caller
+          // relies on it either; abort_race_spec, the only spec that can
+          // reach stop() twice, guards at its own call site.
+          if (stopped) return;
+          stopped = true;
+          // Dump before the kill, for the same reason the failure paths below
+          // do: `await procStatus` is unbounded, and stop() runs from
+          // `afterAll`, so a jupyter slow to honour SIGTERM would hold this
+          // tail back for as long as it holds up the suite.
+          if (ALWAYS_LOG_JUPYTER) {
+            await stderr.flush(STDERR_FLUSH_MS);
+            stderr.dump("EUROPA_JUPYTER_LOG");
+          }
           try {
             proc.kill("SIGTERM");
           } catch { /* already dead */ }
           await procStatus;
+          // Jupyter writes `Shutting down N kernels` and `Kernel shutdown:
+          // <id>` only once SIGTERM reaches it, so the pre-kill dump cannot
+          // contain them and close() below cancels the reader before anything
+          // reads them. A kernel count higher than the spec started is the
+          // clearest evidence of the session leak clearAllSessions exists to
+          // prevent, so take a second dump here. The cost is bounded: a
+          // procStatus that never settles skips this entirely, and a tail
+          // nothing was appended to collapses to one `<unchanged since #N>`
+          // line.
+          if (ALWAYS_LOG_JUPYTER) {
+            await stderr.flush(STDERR_FLUSH_MS);
+            stderr.dump("EUROPA_JUPYTER_LOG (post-shutdown)");
+          }
+          await stderr.close();
         },
       };
     }
 
-    // Either procExited (likely EADDRINUSE) or deadline reached.
+    // Either procExited (likely EADDRINUSE) or deadline reached. Classify now,
+    // while `procExited` still distinguishes the two: after `await procStatus`
+    // it is unconditionally true, which folded the deadline path in with the
+    // late-exit one.
+    const attemptMs = Math.round(performance.now() - attemptStart);
+    const diedOnItsOwn = procExited;
+    const exitedEarly = diedOnItsOwn &&
+      attemptMs < EXACT_PORT_RETRY_EARLY_EXIT_MS;
+    // Every reason names the attempt and the port. Each attempt gets a fresh
+    // capture, so the dump counter restarts at 1 per attempt: two collision
+    // retries followed by a deadline print three `#1` headers, and without
+    // this only the middle kind said which attempt it belonged to.
+    const reason = !diedOnItsOwn
+      ? `attempt ${attempt} did not become ready within ${timeoutMs}ms on ` +
+        `port ${port}`
+      : exitedEarly
+      ? `attempt ${attempt} exited after ${attemptMs}ms on port ${port}`
+      : `attempt ${attempt} exited after ${attemptMs}ms without answering ` +
+        `/api on port ${port}`;
+
+    // The dump goes before the kill, not after it. `procStatus` has no timeout
+    // and no SIGKILL escalation, and on the deadline path the process is alive
+    // and unresponsive by construction, so a jupyter slow to honour SIGTERM
+    // would hold the tail back for as long as it takes to die — and `close()`
+    // after it cancels the reader, dropping whatever is still unread. `flush()`
+    // is what makes the tail complete this early: `dump()` is synchronous and
+    // prints only what the drain loop has already consumed. Whether output
+    // written here also survives a step the job's own `timeout-minutes` kills
+    // is unverified — `deno test --parallel` buffers each test's output and
+    // replays it on completion, so a test that never completes may lose it
+    // wherever it was written.
+    await stderr.flush(STDERR_FLUSH_MS);
+    stderr.dump(reason);
+
     try {
       proc.kill("SIGTERM");
     } catch { /* already dead */ }
     await procStatus;
+    await stderr.close();
 
-    if (procExited && performance.now() < deadline) {
-      // Treat early exit as a port-collision symptom and retry with a fresh port.
+    if (exitedEarly) {
+      // A port collision kills jupyter within a second or two, so respawning
+      // on a fresh port is worth it. Each attempt has its own capture, so it
+      // has to dump its own log above — otherwise the retries that led to the
+      // final failure leave no trace of why they were classified as collisions.
+      // Chain the attempts so the thrown error carries all of them.
       lastError = new Error(
-        `jupyter server exited before becoming ready (port ${port}, attempt ${attempt})`,
+        `jupyter server exited after ${attemptMs}ms before becoming ready ` +
+          `(port ${port}, attempt ${attempt})`,
+        { cause: lastError },
       );
       continue;
     }
-    // Deadline reached without /api responding — no point retrying.
+
+    if (diedOnItsOwn) {
+      // Stayed up a long while and then died: not a collision, so a retry
+      // would only multiply the wall-clock cost.
+      throw new Error(
+        `jupyter server exited after ${attemptMs}ms without ever answering ` +
+          `/api (port ${port}, attempt ${attempt})`,
+      );
+    }
+
     throw new Error(
       `jupyter server did not become ready within ${timeoutMs}ms`,
     );
   }
 
+  // Every attempt dumped its own log above, so there is nothing left to print
+  // here. The message says what was observed — an early exit on every attempt —
+  // rather than asserting the port collision the code only ever guessed at.
   throw lastError ?? new Error(
-    `jupyter server failed after ${MAX_PORT_RETRIES} port-collision retries`,
+    `jupyter server exited early on all ${MAX_PORT_RETRIES} attempts`,
   );
 }

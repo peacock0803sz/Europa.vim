@@ -54,6 +54,21 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 | `deno task test:golden` | Runs golden-file diffs for `.ipynb` fixtures and `doc/europa.txt`. | Phase 2+ |
 | `deno task test:conformance` | Runs end-to-end conformance tests under `tests/conformance/` against a real `jupyter server`. Requires `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`. Not included in `deno task check` (Q5 decision). | Phase 3.2+ |
 
+### Conformance environment knobs
+
+Every budget the conformance specs assert against, and every deadline they wait on, lives in `tests/conformance/timeouts.ts`. A few fixed waits stay at their call sites because nothing asserts on them: the `/api` readiness probe, its backoff and the stderr flush grace in `setup.ts`, and the polling delays and the fake parent's lifetime in `orphan_prevention_spec.ts`. The default `wsReconnectInitialIntervalMs` in `client.ts` is not one of them — `kernel_lifecycle_spec.ts` asserts SC-020 against it — but it is a config default rather than a wall-clock budget, so it stays with the config it belongs to. These environment variables tune the suite without editing the constants.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `EUROPA_CONFORMANCE_TIMEOUT_SCALE` | `1` | Multiplies every scaled budget. Must be a finite number in `(0, 100]`; anything else fails at module load rather than silently disabling the budgets. CI sets `4`. |
+| `DENO_JOBS` | CPU count | Worker count for `deno test --parallel`. CI sets `2` to limit how many `jupyter server` processes boot at once. |
+| `EUROPA_SPAWN_TRACE` | unset | Emits `[spawn-trace] phase=... elapsed_ms=...` markers for each server boot. |
+| `EUROPA_JUPYTER_LOG` | unset | Dumps the jupyter server's stderr tail on every `stop()`. Without it the only dumps that still happen on their own are `client.start()` and `client.restart()` failures plus every `spawnConformanceServer` failure path, the boot deadline and the early and late exits alike, so a budget miss, a wrong `ename` or a failed `shutdown()` reaches the log with nothing about the server. CI sets `1`. |
+
+Constants prefixed `EXACT_` are never scaled, for one of two reasons. Most encode a semantic rather than a budget, such as a `kernelInfoTimeoutMs` of 1 ms that must always time out, so scaling them would change what the test asserts. The rest are budgets that scaling cannot improve in either direction: `EXACT_KERNEL_INFO_TIMEOUT_MS` already sits at the 60 s maximum `schema/config.ts` allows, so scaling it up only spends the CI step cap on handshakes that are not coming, while a fractional scale would drop it below the 1000 ms schema minimum and leave the config object invalid.
+
+Budgets deliberately keep their most generous historical value as the base, so a local run at scale 1 is never stricter than before. The port-retry gate `EXACT_PORT_RETRY_EARLY_EXIT_MS` is the one exception and is deliberately new: the retry window used to be whatever was left of one shared spawn deadline, and a fixed 10 s narrows it so a jupyter that dies late fails fast instead of being respawned twice more.
+
 ## 6. Guide chapter editing rules
 
 Each user-facing chapter ships as its own help file under `doc/europa-<slug>.txt` in vim help format. Vim/Neovim's `:helptags` scans `doc/` recursively, so keeping a separate sources directory inside `doc/` would produce duplicate-tag errors; the chapters themselves are the source of truth and are loaded directly. Only `doc/europa-api.txt` is generated, by `deno task gen:vimdoc` from TSDoc.

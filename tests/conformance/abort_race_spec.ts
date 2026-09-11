@@ -2,11 +2,17 @@
  * Conformance: AbortController abort-race scenarios against a real Jupyter Server.
  *
  * Covers SC-010a: three cases where AbortController.abort() is called during
- * an async operation, each resolving within 100ms.
+ * an async operation. The first two time the abort itself and assert against
+ * `ABORT_PROPAGATION_BUDGET_MS`; the third times a whole `start()` settling
+ * after an abort and asserts against `START_ABORT_BUDGET_MS`, which is 50x
+ * larger.
  *
  * - during-reconnect: abort fired while the reconnect backoff timer is active
- * - during-kernel-info: abort fired before kernel_info_reply arrives (timeout path)
+ *   (ABORT_PROPAGATION_BUDGET_MS)
+ * - during-kernel-info: abort fired before kernel_info_reply arrives, timeout
+ *   path (ABORT_PROPAGATION_BUDGET_MS)
  * - during-open: abort fired immediately after start() is initiated
+ *   (START_ABORT_BUDGET_MS)
  *
  * Skips early if `jupyter` is not installed.
  *
@@ -18,9 +24,7 @@
 import { afterAll, afterEach, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert } from "@std/assert";
 import { delay } from "@std/async/delay";
-import { ServerKernelClient } from "../../denops/europa/kernel/server-client.ts";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
-import type { EuropaConfig } from "../../schema/config.ts";
 import {
   clearAllSessions,
   type ConformanceServer,
@@ -28,6 +32,17 @@ import {
   JupyterMissingError,
   spawnConformanceServer,
 } from "./setup.ts";
+import { createConformanceClient, startConformanceKernel } from "./client.ts";
+import {
+  ABORT_POLL_LIMIT_MS,
+  ABORT_PROPAGATION_BUDGET_MS,
+  assertWithinBudget,
+  EXACT_ABORT_POLL_INTERVAL_MS,
+  EXACT_KERNEL_INFO_IMMEDIATE_MS,
+  RECONNECT_BACKOFF_INITIAL_MS,
+  RECONNECT_SETTLE_DELAY_MS,
+  START_ABORT_BUDGET_MS,
+} from "./timeouts.ts";
 
 let jupyterPresent = true;
 try {
@@ -41,89 +56,52 @@ try {
   }
 }
 
-function makeMockDenops() {
-  return { eval: (_expr: string): Promise<unknown> => Promise.resolve("") };
-}
-
-function makeConfig(
-  url: string,
-  token: string,
-  reconnectMax = 5,
-): EuropaConfig {
-  return {
-    connection_mode: "server",
-    jupyter_url: url,
-    jupyter_token: token,
-    jupyter_ws_subprotocol: "auto",
-    default_kernel: "python3",
-    auto_start_kernel: false,
-    jupyter_executable: "",
-    python_env_detect: "auto",
-    image_backend: "auto",
-    mime_priority: ["image/png", "text/plain"],
-    max_output_lines: 100,
-    cell_border_chars: ["╭", "─", "╮", "╰", "╯"],
-    cell_border_padding: 4,
-    cell_border_align: "left" as const,
-    lazy_padding: 10,
-    auto_save: false,
-    use_subprocess: false,
-    wsReconnectMaxRetries: reconnectMax,
-    wsReconnectInitialIntervalMs: 2000, // long initial delay for reliable abort test
-    wsReconnectMultiplier: 2.0,
-    kernelInfoTimeoutMs: 10000,
-    undo_max_history: 100,
-    disable_default_mappings: false,
-    ts_highlight: "auto",
-    lsp_enable: "auto",
-  };
-}
+/** Long initial backoff so the abort clearly races a sleeping reconnect loop. */
+const SLOW_RECONNECT = {
+  wsReconnectInitialIntervalMs: RECONNECT_BACKOFF_INITIAL_MS,
+} as const;
 
 describe("conformance: abort race — during reconnect (SC-010a)", () => {
-  it("abort() during reconnect backoff timer resolves within 100ms", async () => {
+  it("abort() during reconnect backoff resolves within ABORT_PROPAGATION_BUDGET_MS", async () => {
     if (!jupyterPresent) return;
-    const server = await spawnConformanceServer({ timeoutMs: 30_000 });
+    const server = await spawnConformanceServer();
     let serverStopped = false;
 
     try {
       const pool = new ServerPool();
-      // long reconnect interval so the abort timer is clearly racing against a
-      // 2s backoff sleep
-      const config = makeConfig(server.url, server.token, 5);
-      const client = new ServerKernelClient(
-        makeMockDenops() as never,
-        config,
-        pool,
-      );
+      const client = createConformanceClient(server, pool, {
+        config: SLOW_RECONNECT,
+      });
 
-      const runtime = await client.start({ kernelName: "python3" });
+      const runtime = await startConformanceKernel(client, server);
       assert(runtime.socket.readyState === WebSocket.OPEN);
 
       // Force the server down to trigger the reconnect loop.
       await server.stop();
       serverStopped = true;
 
-      // Wait briefly for the close event to fire and the reconnect loop to begin
-      // its first 2s sleep.
-      await delay(300);
+      // Wait briefly for the close event to fire and the reconnect loop to
+      // begin its first backoff sleep.
+      await delay(RECONNECT_SETTLE_DELAY_MS);
 
       // SC-010a: AbortController.abort() must propagate through the reconnect
-      // backoff delay() within 100ms. Measure abort signal propagation only —
-      // not shutdown(), which also awaits DELETE /api/sessions and is not bounded
-      // by this spec.
+      // backoff delay() within ABORT_PROPAGATION_BUDGET_MS. Measure abort
+      // signal propagation only — not shutdown(), which also awaits
+      // DELETE /api/sessions and is not bounded by this spec.
       const t0 = Date.now();
       runtime.abort.abort();
       while (
         runtime.info.state !== "disconnected" &&
-        Date.now() - t0 < 1_000
+        Date.now() - t0 < ABORT_POLL_LIMIT_MS
       ) {
-        await delay(5);
+        await delay(EXACT_ABORT_POLL_INTERVAL_MS);
       }
       const elapsed = Date.now() - t0;
 
-      assert(
-        elapsed < 100,
-        `abort signal propagation took ${elapsed}ms, expected < 100ms`,
+      assertWithinBudget(
+        "abort signal propagation",
+        elapsed,
+        ABORT_PROPAGATION_BUDGET_MS,
       );
 
       // Cleanup outside the timing window (shutdown may await slow DELETE fetch).
@@ -139,7 +117,7 @@ describe("conformance: abort race — non-destructive cases (SC-010a, shared ser
 
   beforeAll(async () => {
     if (!jupyterPresent) return;
-    server = await spawnConformanceServer({ timeoutMs: 30_000 });
+    server = await spawnConformanceServer();
   });
 
   afterAll(async () => {
@@ -160,13 +138,12 @@ describe("conformance: abort race — non-destructive cases (SC-010a, shared ser
     const pool = new ServerPool();
     // Use a 1ms kernel_info timeout so it always times out.
     // The real abort test: the caller's AbortController is used as the signal.
-    const config = makeConfig(server.url, server.token);
-    const client = new ServerKernelClient(
-      makeMockDenops() as never,
-      config,
-      pool,
-      { kernelInfoTimeoutMs: 1 }, // effectively times out immediately
-    );
+    const client = createConformanceClient(server, pool, {
+      config: SLOW_RECONNECT,
+      // Effectively times out immediately; never scaled, or this stops being
+      // an abort-race test.
+      kernelInfoTimeoutMs: EXACT_KERNEL_INFO_IMMEDIATE_MS,
+    });
 
     const ac = new AbortController();
     const startPromise = client.start({
@@ -186,22 +163,20 @@ describe("conformance: abort race — non-destructive cases (SC-010a, shared ser
     const elapsed = Date.now() - t0;
 
     assert(threw, "start() should reject when aborted");
-    // SC-010a: abort must resolve within 100ms.
-    assert(
-      elapsed < 100,
-      `abort during kernel_info took ${elapsed}ms, expected < 100ms`,
+    // SC-010a: abort must resolve within ABORT_PROPAGATION_BUDGET_MS.
+    assertWithinBudget(
+      "abort during kernel_info",
+      elapsed,
+      ABORT_PROPAGATION_BUDGET_MS,
     );
   });
 
   it("abort() immediately after start() fires is handled without dangling Promise", async () => {
     if (!jupyterPresent) return;
     const pool = new ServerPool();
-    const config = makeConfig(server.url, server.token);
-    const client = new ServerKernelClient(
-      makeMockDenops() as never,
-      config,
-      pool,
-    );
+    const client = createConformanceClient(server, pool, {
+      config: SLOW_RECONNECT,
+    });
 
     const ac = new AbortController();
     // Fire start() and abort in the same microtask batch — races WebSocket open.
@@ -223,9 +198,10 @@ describe("conformance: abort race — non-destructive cases (SC-010a, shared ser
 
     // In either outcome, there must be no dangling async work after this point.
     // Deno test sanitizer will catch any unresolved timers or promises.
-    assert(
-      elapsed < 5_000,
-      `start+abort resolution took ${elapsed}ms, expected < 5000ms`,
+    assertWithinBudget(
+      "start+abort resolution",
+      elapsed,
+      START_ABORT_BUDGET_MS,
     );
   });
 });
