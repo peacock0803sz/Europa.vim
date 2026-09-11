@@ -49,15 +49,30 @@ export function mockDenops(): Denops {
  * `kernelInfoTimeoutMs` is read from the constructor argument, so setting it
  * here would type-check and then be silently ignored — the exact trap this
  * module was written to close.
+ *
+ * The excluded keys are declared `?: never` rather than simply omitted. A bare
+ * `Omit` is enforced only by excess-property checking, which fires on inline
+ * object literals and nothing else, so a named binding such as
+ * `abort_race_spec.ts`'s `SLOW_RECONNECT` could grow a `kernelInfoTimeoutMs`
+ * later and still compile. `?: never` rejects any value for the key wherever
+ * it is written.
  */
-export type ConformanceConfigOverrides = Omit<
-  Partial<EuropaConfig>,
-  | "connection_mode"
-  | "jupyter_url"
-  | "jupyter_token"
-  | "use_subprocess"
-  | "kernelInfoTimeoutMs"
->;
+export type ConformanceConfigOverrides =
+  & Omit<
+    Partial<EuropaConfig>,
+    | "connection_mode"
+    | "jupyter_url"
+    | "jupyter_token"
+    | "use_subprocess"
+    | "kernelInfoTimeoutMs"
+  >
+  & {
+    connection_mode?: never;
+    jupyter_url?: never;
+    jupyter_token?: never;
+    use_subprocess?: never;
+    kernelInfoTimeoutMs?: never;
+  };
 
 /**
  * Build the EuropaConfig every conformance spec uses.
