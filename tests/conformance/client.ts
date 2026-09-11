@@ -31,6 +31,26 @@ export function mockDenops(): Denops {
 }
 
 /**
+ * Per-spec deviations from the conformance config.
+ *
+ * The fields the factory exists to own are not overridable. `connection_mode`,
+ * `jupyter_url` and `jupyter_token` are what bind the client to `server`;
+ * `use_subprocess: true` would send `denops/europa/kernel/session-api.ts` off to
+ * spawn a second jupyter instead of attaching to that one; and
+ * `kernelInfoTimeoutMs` is read from the constructor argument, so setting it
+ * here would type-check and then be silently ignored — the exact trap this
+ * module was written to close.
+ */
+export type ConformanceConfigOverrides = Omit<
+  Partial<EuropaConfig>,
+  | "connection_mode"
+  | "jupyter_url"
+  | "jupyter_token"
+  | "use_subprocess"
+  | "kernelInfoTimeoutMs"
+>;
+
+/**
  * Build the EuropaConfig every conformance spec uses.
  *
  * @param server jupyter server whose url and token get wired in
@@ -38,7 +58,7 @@ export function mockDenops(): Denops {
  */
 export function conformanceConfig(
   server: ConformanceServer,
-  overrides: Partial<EuropaConfig> = {},
+  overrides: ConformanceConfigOverrides = {},
 ): EuropaConfig {
   return {
     connection_mode: "server",
@@ -83,7 +103,7 @@ export function createConformanceClient(
   pool: ServerPool,
   opts: {
     kernelInfoTimeoutMs?: number;
-    config?: Partial<EuropaConfig>;
+    config?: ConformanceConfigOverrides;
     denops?: Denops;
   } = {},
 ): ServerKernelClient {
