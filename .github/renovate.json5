@@ -4,8 +4,14 @@
   "packageRules": [
     {
       // 生成物 (doc/europa-api.txt) に影響するため minor / patch でも automerge しない。
+      // typescript は typedoc の peerDependencies に拘束されるため同じ group に入れる。
       "groupName": "vimdoc-toolchain",
-      "matchPackageNames": ["typedoc", "typedoc-plugin-markdown", "@sinclair/typebox"],
+      "matchPackageNames": [
+        "typedoc",
+        "typedoc-plugin-markdown",
+        "@sinclair/typebox",
+        "typescript",
+      ],
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": false,
     },
@@ -15,6 +21,25 @@
       "groupName": "vimdoc-toolchain-major",
       "matchPackageNames": ["typedoc", "typedoc-plugin-markdown"],
       "matchUpdateTypes": ["major"],
+    },
+    {
+      // Hold typescript on 6.x.
+      //
+      // TypeScript 7.0 is the Go-native compiler, and its npm package no longer
+      // ships the JS Compiler API (lib/typescript.js). The main entry exports only
+      // `version` plus unstable entrypoints; the stable API is deferred to 7.1.
+      // Both consumers here need that API and break on 7.x:
+      //   - typedoc, whose peer range caps at typescript 6.0.x
+      //   - scripts/lint-no-handwritten-types.ts, which uses ts.ScriptTarget,
+      //     ts.SyntaxKind and ts.createScanner directly
+      //
+      // Nothing in this repo is built with tsc -- `deno check` does the type
+      // checking -- so TS 7's faster compiler buys us nothing today.
+      //
+      // Lift this once TS 7.1 ships the stable Compiler API *and* TypeDoc releases
+      // TS 7 support (TypeStrong/typedoc#3053, TypeStrong/typedoc#3098).
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7",
     },
   ],
 }
