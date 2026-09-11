@@ -44,15 +44,21 @@ jobs:
           key: deno-${{ runner.os }}-${{ hashFiles('deno.lock') }}
           restore-keys: deno-${{ runner.os }}-
 
+      # Renovate's Deno manager bumps deno.json but never touches deno.lock, so
+      # refresh it here before generating anything from those dependencies.
+      - name: Refresh deno.lock
+        run: deno install
+
       - name: Regenerate doc/europa-api.txt
         run: deno task gen:vimdoc
 
-      - name: Commit and push if doc/europa-api.txt changed
+      - name: Commit and push whatever the bump changed
         run: |
-          if [[ -n "$(git status --short doc/europa-api.txt)" ]]; then
-            git add doc/europa-api.txt
-            git commit -m ":memo: Regenerate doc/europa-api.txt"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          else
-            echo "doc/europa-api.txt is up to date; skipping commit"
+          mapfile -t changed < <(git diff --name-only -- deno.lock doc/europa-api.txt)
+          if [[ ${#changed[@]} -eq 0 ]]; then
+            echo "deno.lock and doc/europa-api.txt are up to date; skipping commit"
+            exit 0
           fi
+          git add -- "${changed[@]}"
+          git commit -m ":memo: Regenerate ${changed[*]}"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
