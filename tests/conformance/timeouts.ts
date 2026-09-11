@@ -142,8 +142,7 @@ export const EXACT_KERNEL_INFO_IMMEDIATE_MS = 1;
  * of 4 it would cost the step a great deal. Three stuck handshakes at 240 s
  * come to 720 s, over the 10-minute step cap on their own; with `DENO_JOBS=2`
  * even two, on separate workers, burn 240 s of the suite's wall clock waiting
- * for a reply that is not coming. And a killed step prints no stderr dump at
- * all, so the diagnostics go first.
+ * for a reply that is not coming.
  *
  * Scaling downward is no better: `parseScale` accepts a fraction, and
  * a scale of 0.01 would produce 600 ms, below the schema minimum of 1000, so
