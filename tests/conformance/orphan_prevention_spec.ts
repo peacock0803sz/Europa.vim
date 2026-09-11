@@ -159,7 +159,8 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
       } catch { /**/ }
       await watchdogProc.status;
       throw new Error(
-        "jupyter server did not start within 30s — cannot run orphan test",
+        `jupyter server did not start within ${WATCHDOG_STARTUP_TIMEOUT_MS}ms ` +
+          `— cannot run orphan test`,
       );
     }
 
@@ -179,7 +180,8 @@ describe("conformance: orphan prevention — parent SIGKILL (SC-005a)", () => {
 
     assert(
       gone,
-      `watchdog (pid=${watchdogPid}) still alive 15s after fake-parent SIGKILL`,
+      `watchdog (pid=${watchdogPid}) still alive ${WATCHDOG_KILL_BUDGET_MS}ms ` +
+        `after fake-parent SIGKILL`,
     );
   });
 });
