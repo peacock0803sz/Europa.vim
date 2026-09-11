@@ -21,11 +21,7 @@ import {
   JupyterMissingError,
   spawnConformanceServer,
 } from "./setup.ts";
-import {
-  conformanceConfig,
-  createConformanceClient,
-  startConformanceKernel,
-} from "./client.ts";
+import { createConformanceClient, startConformanceKernel } from "./client.ts";
 import {
   assertWithinBudget,
   KERNEL_SHUTDOWN_BUDGET_MS,
@@ -137,15 +133,16 @@ describe("conformance: kernel lifecycle (shared server)", () => {
       // backoff sequence.  We inspect the runtime abort signal — no actual
       // disconnect is triggered here (that path is covered by abort_race_spec).
       const pool = new ServerPool();
-      const config = conformanceConfig(server);
       const client = createConformanceClient(server, pool);
       const runtime = await startConformanceKernel(client, server);
 
-      // Default reconnect options exposed via config — validate they are
-      // the expected defaults per DESIGN.md §9.1.
-      assertEquals(config.wsReconnectMaxRetries, 5);
-      assertEquals(config.wsReconnectInitialIntervalMs, 1000);
-      assertEquals(config.wsReconnectMultiplier, 2.0);
+      // Read the values off the client, not off a second config object built
+      // for the assertion: the client builds its own config internally, so a
+      // separately built one proves nothing about what the client is using.
+      // These are the defaults per DESIGN.md §9.1.
+      assertEquals(client.wsReconnectMaxRetries, 5);
+      assertEquals(client.wsReconnectInitialIntervalMs, 1000);
+      assertEquals(client.wsReconnectMultiplier, 2.0);
       // The AbortController is live immediately after start().
       assert(!runtime.abort.signal.aborted);
 
