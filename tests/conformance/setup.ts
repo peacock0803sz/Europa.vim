@@ -45,6 +45,10 @@ export interface ConformanceServer {
  * record can linger on the server. Sharing a server across tests would let
  * those orphans accumulate; this helper sweeps them between tests so each
  * shared-server test sees an empty session list.
+ *
+ * A sweep that cannot do its job reports to the test log and returns. It runs
+ * in `afterEach`, where throwing would replace the failure the test was about
+ * to report with this one.
  */
 export async function clearAllSessions(
   server: ConformanceServer,
@@ -52,18 +56,34 @@ export async function clearAllSessions(
   const headers = { Authorization: `token ${server.token}` };
   const resp = await fetch(`${server.url}/api/sessions`, { headers });
   if (!resp.ok) {
-    await resp.body?.cancel();
+    // Returning quietly here used to make a 403 or a 5xx look like "no sessions
+    // to clean up", while every kernel the tests started stayed alive on the
+    // shared server — the CPU starvation DENO_JOBS was lowered to avoid.
+    const body = (await resp.text()).trim().slice(0, 200);
+    console.error(
+      `[europa.conformance] session sweep failed: GET /api/sessions -> ` +
+        `${resp.status} ${resp.statusText}${body === "" ? "" : ` ${body}`}`,
+    );
     return;
   }
   const sessions = (await resp.json()) as Array<{ id: string }>;
-  await Promise.all(
-    sessions.map((s) =>
-      fetch(`${server.url}/api/sessions/${s.id}`, {
+  const survivors = await Promise.all(
+    sessions.map(async (s) => {
+      const r = await fetch(`${server.url}/api/sessions/${s.id}`, {
         method: "DELETE",
         headers,
-      }).then((r) => r.body?.cancel())
-    ),
+      });
+      await r.body?.cancel();
+      return r.ok ? "" : `${s.id} (${r.status})`;
+    }),
   );
+  const failed = survivors.filter((s) => s !== "");
+  if (failed.length > 0) {
+    console.error(
+      `[europa.conformance] session sweep could not delete ${failed.length} of ` +
+        `${sessions.length} sessions: ${failed.join(", ")}`,
+    );
+  }
 }
 
 /**
