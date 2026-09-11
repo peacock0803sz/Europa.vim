@@ -14,7 +14,11 @@ import { assert, assertExists } from "@std/assert";
 import { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import { applyMessageToCell } from "../../denops/europa/kernel/execute.ts";
 import type { CodeCell } from "../../schema/notebook.ts";
-import { createConformanceClient, startConformanceKernel } from "./client.ts";
+import {
+  createConformanceClient,
+  restartConformanceKernel,
+  startConformanceKernel,
+} from "./client.ts";
 import { assertWithinBudget, RESTART_BUDGET_MS } from "./timeouts.ts";
 import {
   type ConformanceServer,
@@ -77,7 +81,7 @@ describe("conformance: restart — variable-space reset (SC-004)", () => {
 
     // Restart: must complete within 10 s (SC-004).
     const t0 = Date.now();
-    await client.restart();
+    await restartConformanceKernel(client, server);
     const elapsed = Date.now() - t0;
     assertWithinBudget("restart", elapsed, RESTART_BUDGET_MS);
 
@@ -109,7 +113,7 @@ describe("conformance: restart — variable-space reset (SC-004)", () => {
     const langBefore = runtime.info.languageInfo?.name;
     assertExists(langBefore, "Expected languageInfo before restart");
 
-    await client.restart();
+    await restartConformanceKernel(client, server);
 
     // After restart, languageInfo should still be present (re-fetched via kernelInfo).
     const langAfter = runtime.info.languageInfo?.name;
