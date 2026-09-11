@@ -446,11 +446,17 @@ export async function spawnConformanceServer(
     const diedOnItsOwn = procExited;
     const exitedEarly = diedOnItsOwn &&
       attemptMs < EXACT_PORT_RETRY_EARLY_EXIT_MS;
+    // Every reason names the attempt and the port. Each attempt gets a fresh
+    // capture, so the dump counter restarts at 1 per attempt: two collision
+    // retries followed by a deadline print three `#1` headers, and without
+    // this only the middle kind said which attempt it belonged to.
     const reason = !diedOnItsOwn
-      ? `jupyter did not become ready within ${timeoutMs}ms`
+      ? `attempt ${attempt} did not become ready within ${timeoutMs}ms on ` +
+        `port ${port}`
       : exitedEarly
       ? `attempt ${attempt} exited after ${attemptMs}ms on port ${port}`
-      : `jupyter exited after ${attemptMs}ms without answering /api`;
+      : `attempt ${attempt} exited after ${attemptMs}ms without answering ` +
+        `/api on port ${port}`;
 
     // The dump goes before the kill, not after it. `procStatus` has no timeout
     // and no SIGKILL escalation, and on the deadline path the process is alive
