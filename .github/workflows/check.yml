@@ -28,7 +28,7 @@ jobs:
           path: |
             ~/.cache/deno
             ~/.deno
-          key: deno-${{ runner.os }}-${{ hashFiles('deno.json') }}
+          key: deno-${{ runner.os }}-${{ hashFiles('deno.lock') }}
           restore-keys: deno-${{ runner.os }}-
 
       - run: deno task check
