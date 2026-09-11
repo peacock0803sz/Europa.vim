@@ -56,8 +56,17 @@ export function scaleMs(ms: number): number {
 /** Deadline for one `jupyter server` boot attempt to answer `/api`. */
 export const SERVER_READY_TIMEOUT_MS = scaleMs(30_000);
 
-/** Budget for the kernel_info_request/reply handshake. */
-export const KERNEL_INFO_TIMEOUT_MS = scaleMs(60_000);
+/**
+ * Budget for the kernel_info_request/reply handshake, capped at the 60 s
+ * maximum `schema/config.ts` allows.
+ *
+ * The cap matters more than the scaling. 30 s, 60 s and 240 s have all failed
+ * the known handshake flake in the same way, so buying more time past the
+ * schema maximum has never rescued a run; meanwhile at the CI scale of 4 two
+ * stuck handshakes at 240 s each exhaust the 10-minute step cap, and a killed
+ * step prints no stderr dump at all — the diagnostics go first.
+ */
+export const KERNEL_INFO_TIMEOUT_MS = Math.min(scaleMs(60_000), 60_000);
 
 /** SC-002: `ServerKernelClient.start()` round trip. */
 export const KERNEL_START_BUDGET_MS = scaleMs(5_000);
@@ -133,9 +142,6 @@ export const EXACT_ABORT_POLL_INTERVAL_MS = 5;
  * be scaled, so this one must stay fixed too.
  */
 export const EXACT_CANCEL_TRIGGER_DELAY_MS = 50;
-
-/** Upper bound `schema/config.ts` places on `kernelInfoTimeoutMs`. */
-export const CONFIG_KERNEL_INFO_MAX_MS = 60_000;
 
 // --- Assertion helper -------------------------------------------------------
 
