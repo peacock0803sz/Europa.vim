@@ -1,9 +1,10 @@
 /**
  * Conformance: real-time IOPub stream output against a live Jupyter Server.
  *
- * Verifies that consecutive `print()` outputs in a
- * `for i in range(5): time.sleep(0.1)` cell arrive no more than 1000 ms apart
- * (SC-001 kernel-liveness check). Skips early if `jupyter` is not installed.
+ * Verifies that consecutive `print()` outputs from a
+ * `for i in range(5): ... time.sleep(0.5)` cell arrive no further apart than
+ * `STREAM_GAP_BUDGET_MS` (SC-001 kernel-liveness check). Skips early if
+ * `jupyter` is not installed.
  *
  * @spec-id europa.render.iopub-batch.tick-scheduling
  */
@@ -84,7 +85,7 @@ describe(
     });
 
     it(
-      "each stream message arrives within 50 ms wall-clock window (SC-001)",
+      "consecutive stream messages arrive within STREAM_GAP_BUDGET_MS (SC-001)",
       { ignore: !jupyterPresent },
       async () => {
         const pool = new ServerPool();
@@ -136,7 +137,8 @@ describe(
           `expected ≥ 4 stream messages, got ${streamTimestamps.length}`,
         );
 
-        // The messages should be spaced ~500 ms apart (we allow ×4 slack for CI)
+        // The messages should be spaced ~500 ms apart; the budget carries the
+        // slack, and how much of it, for both local and CI runs.
         if (streamTimestamps.length >= 2) {
           for (let i = 1; i < streamTimestamps.length; i++) {
             const gap = streamTimestamps[i] - streamTimestamps[i - 1];
