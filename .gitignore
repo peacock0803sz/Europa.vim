@@ -246,5 +246,11 @@ __marimo__/
 !tests/fixtures/**/*.ipynb
 !tests/golden/ipynb/*.ipynb
 node_modules/
-deno.lock
 tmp/
+
+# The repo-root deno.lock is tracked on purpose: CI has to resolve the same
+# dependency versions on every run. See DESIGN.md (dependency lock, subject to
+# renovate). Nested project roots (denops/europa/deno.json) generate their own
+# lock, which is a separate runtime concern and stays untracked.
+deno.lock
+!/deno.lock

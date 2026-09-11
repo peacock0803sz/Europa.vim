@@ -4,6 +4,7 @@
     "lint": "deno lint && deno run --allow-read --allow-env scripts/lint-no-handwritten-types.ts && deno run --allow-read scripts/lint-spec-id-bijection.ts && deno run --allow-read scripts/lint-no-color-literal.ts",
     "validate": "deno check schema/ contracts/ denops/europa/",
     "gen:vimdoc": "deno run --allow-read --allow-write --allow-run scripts/gen-vimdoc.ts",
+    "typedoc": "typedoc --tsconfig tsconfig.json --out tmp/typedoc",
     "test:fixtures": "deno run --allow-read --allow-env scripts/validate-fixtures.ts",
     "test:spec": "deno test --allow-read --allow-write --allow-run --allow-net --allow-env --ignore=tests/spec/notebook/serialize_spec.ts 'tests/spec/**/*_spec.ts'",
     "check": "deno task fmt:check && deno task lint && deno task validate && deno task gen:vimdoc && deno task test:fixtures && deno task test:spec && deno task test:golden && git diff --exit-code doc/europa-api.txt",
