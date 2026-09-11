@@ -54,6 +54,21 @@ Every PR declares its phase in the description; section 8 covers the format. Pha
 | `deno task test:golden` | Runs golden-file diffs for `.ipynb` fixtures and `doc/europa.txt`. | Phase 2+ |
 | `deno task test:conformance` | Runs end-to-end conformance tests under `tests/conformance/` against a real `jupyter server`. Requires `pip install 'jupyter-server>=2.15,<3.0' 'ipykernel>=7.0,<8.0'`. Not included in `deno task check` (Q5 decision). | Phase 3.2+ |
 
+### Conformance environment knobs
+
+Every timeout and wall-clock budget the conformance suite uses lives in `tests/conformance/timeouts.ts`. These environment variables tune the suite without editing the constants.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `EUROPA_CONFORMANCE_TIMEOUT_SCALE` | `1` | Multiplies every scaled budget. Must be a finite number in `(0, 100]`; anything else fails at module load rather than silently disabling the budgets. CI sets `4`. |
+| `DENO_JOBS` | CPU count | Worker count for `deno test --parallel`. CI sets `2` to limit how many `jupyter server` processes boot at once. |
+| `EUROPA_SPAWN_TRACE` | unset | Emits `[spawn-trace] phase=... elapsed_ms=...` markers for each server boot. |
+| `EUROPA_JUPYTER_LOG` | unset | Dumps the jupyter server's stderr tail on every `stop()`, not only on failure. Failures dump it either way. |
+
+Constants prefixed `EXACT_` are never scaled. They encode a semantic rather than a budget, such as a `kernelInfoTimeoutMs` of 1 ms that must always time out, so scaling them would change what the test asserts.
+
+Budgets deliberately keep their most generous historical value as the base, so a local run at scale 1 is never stricter than before.
+
 ## 6. Guide chapter editing rules
 
 Each user-facing chapter ships as its own help file under `doc/europa-<slug>.txt` in vim help format. Vim/Neovim's `:helptags` scans `doc/` recursively, so keeping a separate sources directory inside `doc/` would produce duplicate-tag errors; the chapters themselves are the source of truth and are loaded directly. Only `doc/europa-api.txt` is generated, by `deno task gen:vimdoc` from TSDoc.
