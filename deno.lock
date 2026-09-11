@@ -32,7 +32,7 @@
     "jsr:@std/uuid@^1.1.1": "1.1.1",
     "npm:@sinclair/typebox@~0.34.49": "0.34.52",
     "npm:marked@^18.0.11": "18.0.12",
-    "npm:typedoc-plugin-markdown@^4.12.0": "4.13.0_typedoc@0.28.20__typescript@6.0.3_typescript@6.0.3",
+    "npm:typedoc-plugin-markdown@^4.12.0": "4.13.0_typedoc@0.28.20_typescript@6.0.3",
     "npm:typedoc@~0.28.20": "0.28.20_typescript@6.0.3",
     "npm:typescript@^6.0.3": "6.0.3"
   },
@@ -257,7 +257,7 @@
     "punycode.js@2.3.1": {
       "integrity": "sha512-uxFIHU0YlHYhDQtV4R9J6a52SLx28BCjT+4ieh7IGbgwVJWO+km431c4yRlREUAsAmt/uMjQUyQHNEPf0M39CA=="
     },
-    "typedoc-plugin-markdown@4.13.0_typedoc@0.28.20__typescript@6.0.3_typescript@6.0.3": {
+    "typedoc-plugin-markdown@4.13.0_typedoc@0.28.20_typescript@6.0.3": {
       "integrity": "sha512-OHaOLoMTS0wL2ud73WXvxv486mrUEtgXxW4iKiTOGJVipT/VBWY76rlVRMQGes7aVonoIf5roWRe1UvHbufLlQ==",
       "dependencies": [
         "typedoc"
