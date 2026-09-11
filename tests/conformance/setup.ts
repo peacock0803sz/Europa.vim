@@ -26,8 +26,11 @@ export interface ConformanceServer {
   /** Last {@link STDERR_TAIL_LINES} lines of the server's stderr, oldest first. */
   stderrTail(): string;
   /**
-   * Print the stderr tail to the test log, tagged with `reason`. Idempotent, so
-   * a failure path and `stop()` cannot double-print the same buffer.
+   * Print the stderr tail to the test log, tagged with `reason` and numbered so
+   * several dumps from one server stay attributable. A dump whose body is
+   * byte-identical to the previous one is skipped, which suppresses the `stop()`
+   * echo of a failure dump without silencing the second and later failures on a
+   * shared `beforeAll` server.
    */
   dumpStderr(reason: string): void;
 }
@@ -141,7 +144,7 @@ const MAX_PORT_RETRIES = 3;
  */
 const STDERR_TAIL_LINES = 200;
 
-/** When set, dump the jupyter stderr on every stop(), not only on failure. */
+/** When set, dump the jupyter stderr on `stop()` too, not only on failure. */
 const ALWAYS_LOG_JUPYTER = (Deno.env.get("EUROPA_JUPYTER_LOG") ?? "") !== "";
 
 interface StderrCapture {
@@ -163,7 +166,8 @@ function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
   const dec = new TextDecoder();
   const lines: string[] = [];
   let partial = "";
-  let dumped = false;
+  let lastDump: string | undefined;
+  let dumpCount = 0;
   let closed = false;
 
   const drain = (async () => {
@@ -190,10 +194,17 @@ function captureStderr(stream: ReadableStream<Uint8Array>): StderrCapture {
   return {
     tail,
     dump(reason: string): void {
-      if (dumped) return;
-      dumped = true;
+      // A beforeAll server outlives many tests, so dumping only once per server
+      // would leave every failure after the first with no log at all. Dedupe on
+      // the body instead: the repeat worth suppressing is a `stop()` echo of a
+      // dump nothing has been appended to since.
       const body = tail();
-      console.error(`[europa.conformance] jupyter stderr (${reason}):`);
+      if (body === lastDump) return;
+      lastDump = body;
+      dumpCount++;
+      console.error(
+        `[europa.conformance] jupyter stderr #${dumpCount} (${reason}):`,
+      );
       console.error(body === "" ? "  <empty>" : body);
     },
     async close(): Promise<void> {
