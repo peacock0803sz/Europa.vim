@@ -9,7 +9,7 @@
  */
 
 import {
-  PORT_RETRY_EARLY_EXIT_MS,
+  EXACT_PORT_RETRY_EARLY_EXIT_MS,
   SERVER_READY_TIMEOUT_MS,
 } from "./timeouts.ts";
 
@@ -334,7 +334,7 @@ export async function spawnConformanceServer(
     // Every dump below runs before close(): close() cancels the reader, which
     // settles the pending read as done and drops whatever is still sitting in
     // the pipe — precisely the bytes a dying jupyter wrote on its way out.
-    if (procExited && attemptMs < PORT_RETRY_EARLY_EXIT_MS) {
+    if (procExited && attemptMs < EXACT_PORT_RETRY_EARLY_EXIT_MS) {
       // A port collision kills jupyter within a second or two, so respawning
       // on a fresh port is worth it. Each attempt has its own capture, so it
       // has to dump its own log here — otherwise the retries that led to the

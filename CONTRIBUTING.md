@@ -67,7 +67,7 @@ Every timeout and wall-clock budget the conformance suite uses lives in `tests/c
 
 Constants prefixed `EXACT_` are never scaled. They encode a semantic rather than a budget, such as a `kernelInfoTimeoutMs` of 1 ms that must always time out, so scaling them would change what the test asserts.
 
-Budgets deliberately keep their most generous historical value as the base, so a local run at scale 1 is never stricter than before.
+Budgets deliberately keep their most generous historical value as the base, so a local run at scale 1 is never stricter than before. The port-retry gate `EXACT_PORT_RETRY_EARLY_EXIT_MS` is the one exception and is deliberately new: the retry window used to be whatever was left of one shared spawn deadline, and a fixed 10 s narrows it so a jupyter that dies late fails fast instead of being respawned twice more.
 
 ## 6. Guide chapter editing rules
 

@@ -8,10 +8,13 @@
  * ("fire immediately", "sampling resolution"), not a budget, so scaling them
  * would change what a test asserts rather than how much slack it has.
  *
- * Each base value is the largest value that call site used before this module
- * existed. That keeps the invariant "no budget gets stricter than it was" at
- * the default scale of 1, while a single environment variable buys headroom on
- * loaded CI runners.
+ * Every base value except the port-retry gate is the largest value its call
+ * site used before this module existed, which keeps the invariant "no budget
+ * gets stricter than it was" at the default scale of 1 while a single
+ * environment variable buys headroom on loaded CI runners. That gate is
+ * deliberately new: the retry window used to be whatever was left of one shared
+ * spawn deadline, and a fixed 10 s narrows it so a jupyter that dies late fails
+ * fast instead of being retried.
  *
  * @module tests/conformance/timeouts
  */
@@ -52,13 +55,6 @@ export function scaleMs(ms: number): number {
 
 /** Deadline for one `jupyter server` boot attempt to answer `/api`. */
 export const SERVER_READY_TIMEOUT_MS = scaleMs(30_000);
-
-/**
- * A jupyter server that dies sooner than this almost certainly lost a port
- * race, so respawning is worth it. One that ran longer and then died is broken
- * in some other way, and retrying would only multiply the wall-clock cost.
- */
-export const PORT_RETRY_EARLY_EXIT_MS = scaleMs(10_000);
 
 /** Budget for the kernel_info_request/reply handshake. */
 export const KERNEL_INFO_TIMEOUT_MS = scaleMs(60_000);
@@ -115,6 +111,18 @@ export const WATCHDOG_KILL_BUDGET_MS = scaleMs(15_000);
  * abort-race test into a plain success-path test.
  */
 export const EXACT_KERNEL_INFO_IMMEDIATE_MS = 1;
+
+/**
+ * How early a jupyter exit still counts as a lost port race, and so as worth
+ * respawning on a fresh port. A collision kills the process within a second or
+ * two; the rest is margin for a slow runner.
+ *
+ * Unscaled because this classifies a failure rather than bounding one. At the
+ * CI scale of 4 the window would reach 40 s, and a jupyter that spent 35 s
+ * dying of, say, a broken Python environment would be read as a port collision
+ * and respawned twice more into the same failure.
+ */
+export const EXACT_PORT_RETRY_EARLY_EXIT_MS = 10_000;
 
 /** Sampling resolution of the abort poll loop, not a budget. */
 export const EXACT_ABORT_POLL_INTERVAL_MS = 5;
