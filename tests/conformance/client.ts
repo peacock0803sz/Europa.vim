@@ -150,10 +150,13 @@ export async function startConformanceKernel(
  * `client.restart()` that dumps the jupyter server's stderr when it fails.
  *
  * Restart re-runs the same `kernel_info` handshake as start, so it can fail the
- * same way — but `denops/europa/kernel/restart.ts` rewrites every failure as
- * `EuropaKernelError("RESTART_HANDSHAKE_FAILED")`. Without this the known flake
- * reaches CI under a name that does not match it and with no server log to say
- * whether the restarted kernel process came up at all.
+ * same way — and `denops/europa/kernel/restart.ts` renames exactly that failure,
+ * and only it: a `KERNEL_INFO_TIMEOUT` comes back out as
+ * `EuropaKernelError("RESTART_HANDSHAKE_FAILED")`, while a non-2xx REST response
+ * surfaces as `RESTART_REST_FAILED` and anything else is rethrown unchanged.
+ * Without this the known flake reaches CI under a name that does not match it
+ * and with no server log to say whether the restarted kernel process came up at
+ * all.
  */
 export async function restartConformanceKernel(
   client: ServerKernelClient,
