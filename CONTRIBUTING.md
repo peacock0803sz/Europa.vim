@@ -65,7 +65,7 @@ Every budget the conformance specs assert against, and every deadline they wait 
 | `EUROPA_SPAWN_TRACE` | unset | Emits `[spawn-trace] phase=... elapsed_ms=...` markers for each server boot. |
 | `EUROPA_JUPYTER_LOG` | unset | Dumps the jupyter server's stderr tail on every `stop()`. Without it only `client.start()` and `client.restart()` failures dump on their own, so a budget miss, a wrong `ename` or a failed `shutdown()` reaches the log with nothing about the server. CI sets `1`. |
 
-Constants prefixed `EXACT_` are never scaled. They encode a semantic rather than a budget, such as a `kernelInfoTimeoutMs` of 1 ms that must always time out, so scaling them would change what the test asserts.
+Constants prefixed `EXACT_` are never scaled, for one of two reasons. Most encode a semantic rather than a budget, such as a `kernelInfoTimeoutMs` of 1 ms that must always time out, so scaling them would change what the test asserts. The rest are budgets that scaling cannot improve in either direction: `EXACT_KERNEL_INFO_TIMEOUT_MS` already sits at the 60 s maximum `schema/config.ts` allows, so scaling it up only spends the CI step cap on handshakes that are not coming, while a fractional scale would drop it below the 1000 ms schema minimum and leave the config object invalid.
 
 Budgets deliberately keep their most generous historical value as the base, so a local run at scale 1 is never stricter than before. The port-retry gate `EXACT_PORT_RETRY_EARLY_EXIT_MS` is the one exception and is deliberately new: the retry window used to be whatever was left of one shared spawn deadline, and a fixed 10 s narrows it so a jupyter that dies late fails fast instead of being respawned twice more.
 

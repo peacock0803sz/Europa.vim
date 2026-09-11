@@ -5,10 +5,12 @@
  * module load, so call sites use the exported constants verbatim; the
  * multiplier itself stays module-private so nothing can scale one of them
  * twice. Constants in the EXACT section carry the `EXACT_` prefix and are
- * deliberately left unscaled: they encode a semantic ("fire immediately",
- * "sampling resolution", "this exit was too early to be anything but a port
- * race"), not a budget, so scaling them would change what a test asserts
- * rather than how much slack it has.
+ * deliberately left unscaled, for one of two reasons. Most encode a semantic
+ * ("fire immediately", "sampling resolution", "this exit was too early to be
+ * anything but a port race") rather than a budget, so scaling them would
+ * change what a test asserts rather than how much slack it has. The rest are
+ * budgets for which scaling has no useful effect in either direction, as
+ * `EXACT_KERNEL_INFO_TIMEOUT_MS` sets out for itself below.
  *
  * Every base value except the port-retry gate is the largest value its call
  * site used before this module existed, which keeps the invariant "no budget
