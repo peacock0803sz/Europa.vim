@@ -69,18 +69,6 @@ function scaleMs(ms: number): number {
 /** Deadline for one `jupyter server` boot attempt to answer `/api`. */
 export const SERVER_READY_TIMEOUT_MS = scaleMs(30_000);
 
-/**
- * Budget for the kernel_info_request/reply handshake, capped at the 60 s
- * maximum `schema/config.ts` allows.
- *
- * The cap matters more than the scaling. 30 s, 60 s and 240 s have all failed
- * the known handshake flake in the same way, so buying more time past the
- * schema maximum has never rescued a run; meanwhile at the CI scale of 4 two
- * stuck handshakes at 240 s each exhaust the 10-minute step cap, and a killed
- * step prints no stderr dump at all — the diagnostics go first.
- */
-export const KERNEL_INFO_TIMEOUT_MS = Math.min(scaleMs(60_000), 60_000);
-
 /** SC-002: `ServerKernelClient.start()` round trip. */
 export const KERNEL_START_BUDGET_MS = scaleMs(5_000);
 
@@ -138,6 +126,21 @@ export const WATCHDOG_KILL_BUDGET_MS = scaleMs(15_000);
  * abort-race test into a plain success-path test.
  */
 export const EXACT_KERNEL_INFO_IMMEDIATE_MS = 1;
+
+/**
+ * Budget for the kernel_info_request/reply handshake: the 60 s maximum
+ * `schema/config.ts` allows, which the conformance config sets verbatim.
+ *
+ * Unscaled because there is nothing left to scale into. 30 s, 60 s and 240 s
+ * have all failed the known handshake flake in the same way, so buying more
+ * time past the schema maximum has never rescued a run; meanwhile at the CI
+ * scale of 4 two stuck handshakes at 240 s each exhaust the 10-minute step
+ * cap, and a killed step prints no stderr dump at all — the diagnostics go
+ * first. Scaling downward is worse still: `parseScale` accepts a fraction, and
+ * a scale of 0.01 would produce 600 ms, below the schema minimum of 1000, so
+ * the config object the factory builds would no longer validate.
+ */
+export const EXACT_KERNEL_INFO_TIMEOUT_MS = 60_000;
 
 /**
  * How early a jupyter exit still counts as a lost port race, and so as worth

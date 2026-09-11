@@ -27,7 +27,7 @@ import type { ServerPool } from "../../denops/europa/kernel/server-pool.ts";
 import type { KernelRuntime } from "../../contracts/kernel-client.ts";
 import type { EuropaConfig } from "../../schema/config.ts";
 import type { ConformanceServer } from "./setup.ts";
-import { KERNEL_INFO_TIMEOUT_MS } from "./timeouts.ts";
+import { EXACT_KERNEL_INFO_TIMEOUT_MS } from "./timeouts.ts";
 
 /**
  * Minimal Denops stub: the kernel client only ever calls `eval()`, from
@@ -90,9 +90,10 @@ export function conformanceConfig(
     wsReconnectMaxRetries: 5,
     wsReconnectInitialIntervalMs: 1000,
     wsReconnectMultiplier: 2.0,
-    // Usable as-is: the constant is already capped at the 60 s maximum
-    // schema/config.ts allows, so the config object stays schema-valid.
-    kernelInfoTimeoutMs: KERNEL_INFO_TIMEOUT_MS,
+    // Usable as-is: the constant is unscaled and is exactly the 60 s maximum
+    // schema/config.ts allows, so the config object stays schema-valid at
+    // every scale.
+    kernelInfoTimeoutMs: EXACT_KERNEL_INFO_TIMEOUT_MS,
     undo_max_history: 100,
     disable_default_mappings: false,
     ts_highlight: "auto",
@@ -122,7 +123,10 @@ export function createConformanceClient(
     opts.denops ?? mockDenops(),
     conformanceConfig(server, opts.config),
     pool,
-    { kernelInfoTimeoutMs: opts.kernelInfoTimeoutMs ?? KERNEL_INFO_TIMEOUT_MS },
+    {
+      kernelInfoTimeoutMs: opts.kernelInfoTimeoutMs ??
+        EXACT_KERNEL_INFO_TIMEOUT_MS,
+    },
   );
 }
 
