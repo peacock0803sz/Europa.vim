@@ -410,8 +410,8 @@ export async function spawnConformanceServer(
           stopped = true;
           // Dump before the kill, for the same reason the failure paths below
           // do: `await procStatus` is unbounded, and stop() runs from
-          // `afterAll`, so a jupyter that ignores SIGTERM would take the whole
-          // suite down with nothing logged.
+          // `afterAll`, so a jupyter slow to honour SIGTERM would hold this
+          // tail back for as long as it holds up the suite.
           if (ALWAYS_LOG_JUPYTER) {
             await stderr.flush(STDERR_FLUSH_MS);
             stderr.dump("EUROPA_JUPYTER_LOG");
@@ -454,12 +454,15 @@ export async function spawnConformanceServer(
 
     // The dump goes before the kill, not after it. `procStatus` has no timeout
     // and no SIGKILL escalation, and on the deadline path the process is alive
-    // and unresponsive by construction: a jupyter wedged in extension loading
-    // that never honours SIGTERM leaves that await pending until the CI step's
-    // own `timeout-minutes` kills the job, and a killed step prints no dump, no
-    // message and no stack. `flush()` is what makes the tail complete this
-    // early — `dump()` is synchronous and prints only what the drain loop has
-    // already consumed.
+    // and unresponsive by construction, so a jupyter slow to honour SIGTERM
+    // would hold the tail back for as long as it takes to die — and `close()`
+    // after it cancels the reader, dropping whatever is still unread. `flush()`
+    // is what makes the tail complete this early: `dump()` is synchronous and
+    // prints only what the drain loop has already consumed. Whether output
+    // written here also survives a step the job's own `timeout-minutes` kills
+    // is unverified — `deno test --parallel` buffers each test's output and
+    // replays it on completion, so a test that never completes may lose it
+    // wherever it was written.
     await stderr.flush(STDERR_FLUSH_MS);
     stderr.dump(reason);
 
