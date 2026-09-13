@@ -31,7 +31,7 @@
     "jsr:@std/ulid@1": "1.0.0",
     "jsr:@std/uuid@^1.1.1": "1.1.1",
     "npm:@sinclair/typebox@~0.34.49": "0.34.52",
-    "npm:marked@^18.0.11": "18.0.12",
+    "npm:marked@^18.0.12": "18.0.12",
     "npm:typedoc-plugin-markdown@^4.12.0": "4.13.0_typedoc@0.28.20_typescript@6.0.3",
     "npm:typedoc@~0.28.20": "0.28.20_typescript@6.0.3",
     "npm:typescript@^6.0.3": "6.0.3"
@@ -301,7 +301,7 @@
       "jsr:@std/testing@^1.0.20",
       "jsr:@std/uuid@^1.1.1",
       "npm:@sinclair/typebox@~0.34.49",
-      "npm:marked@^18.0.11",
+      "npm:marked@^18.0.12",
       "npm:typedoc-plugin-markdown@^4.12.0",
       "npm:typedoc@~0.28.20",
       "npm:typescript@^6.0.3"
