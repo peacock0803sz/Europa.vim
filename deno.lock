@@ -30,7 +30,7 @@
     "jsr:@std/ulid@1": "1.0.0",
     "jsr:@std/uuid@^1.1.2": "1.1.2",
     "npm:@sinclair/typebox@~0.34.49": "0.34.52",
-    "npm:marked@^18.0.13": "18.0.13",
+    "npm:marked@^18.0.14": "18.1.0",
     "npm:typedoc-plugin-markdown@^4.12.0": "4.13.0_typedoc@0.28.20_typescript@6.0.3",
     "npm:typedoc@~0.28.20": "0.28.20_typescript@6.0.3",
     "npm:typescript@^6.0.3": "6.0.3"
@@ -240,8 +240,8 @@
       ],
       "bin": true
     },
-    "marked@18.0.13": {
-      "integrity": "sha512-xTxVzZsBFwunP6HDmtBkabUQEYArnP7/rMDGmPj9SlrKlQ4i8MdYVow+nJL0eOqwpUqhzBoTBRADGN6uYwPyOw==",
+    "marked@18.1.0": {
+      "integrity": "sha512-PamYXWWWg2nboG3oX5Ffzpy3EFZROqZJK9hSlMmUnekp7TxPs5DcT95vwd46m73/exfKCRVMtgXoPMI4FEJL6w==",
       "bin": true
     },
     "mdurl@2.1.0": {
@@ -300,7 +300,7 @@
       "jsr:@std/testing@^1.0.21",
       "jsr:@std/uuid@^1.1.2",
       "npm:@sinclair/typebox@~0.34.49",
-      "npm:marked@^18.0.13",
+      "npm:marked@^18.0.14",
       "npm:typedoc-plugin-markdown@^4.12.0",
       "npm:typedoc@~0.28.20",
       "npm:typescript@^6.0.3"
